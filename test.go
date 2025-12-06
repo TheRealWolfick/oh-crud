@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"fmt"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -14,7 +15,7 @@ func main() {
 	writer_file, err := os.OpenFile("/opt/myapi/logs/log.json", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	logger := slog.New( slog.NewJSONHandler(io.MultiWriter(os.Stderr, writer_file),nil) )
 
-	conn, err := pgx.Connect(context.Background(), os.Getenv("DATABASE_URL"))
+	conn, err := pgx.Connect(context.Background(),  fmt.Sprintf("postgres://%s:%s@%s", os.Getenv("DATABASE_USER"), os.Getenv("DATABASE_PWD"), os.Getenv("DATABASE_URL")))
 	if err != nil {
 		if os.Getenv("DATABASE_URL") == "" {
 			logger.Error("Database connection failed", "error", "Database variable not found")
@@ -23,6 +24,8 @@ func main() {
 		}
 		os.Exit(1)
 	}
+
+	logger.Info("Database connection made")
 
 	// Close database connection
 	defer conn.Close(context.Background())
