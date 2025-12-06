@@ -8,7 +8,7 @@ import (
 type UserInfoResponse struct {
 	Username	 string `json:"username" db:"username"`
 	Api_Access bool   `json:"api_access" db:"api_access"`
-	email      string `json:"email" db:"email"`
+	Email      string `json:"email" db:"email"`
 	Mobile		 string `json:"mobile" db:"mobile"`
 }
 
