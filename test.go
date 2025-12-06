@@ -11,7 +11,7 @@ import (
 
 func main() {
 	// Create logger to write to both stderr and a logging file`
-	writer_file, err := os.OpenFile("/opt/myapy/logs/log.json", os.O_APPEND|os.O_CREATE, 0644)
+	writer_file, err := os.OpenFile("/opt/myapy/logs/log.json", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	logger := slog.New( slog.NewJSONHandler(io.MultiWriter(os.Stderr, writer_file),nil) )
 
 	conn, err := pgx.Connect(context.Background(), os.Getenv("DATABASE_URL"))
@@ -21,6 +21,7 @@ func main() {
 		} else {
 			logger.Error("Database connection failed", "database", os.Getenv("DATABASE_URL"), "error", err)
 		}
+		os.Exit(1)
 	}
 
 	// Close database connection
