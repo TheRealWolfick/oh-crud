@@ -50,7 +50,7 @@ func main() {
 	mux.Handle("GET /user", authMiddleware(http.HandlerFunc(userHandler.GetUserInfo)))
 
 	// Launch the server
-	http.ListenAndServeTLS("api.lotusforge.au:443", "/etc/letsencrypt/live/api.lotusforge.com.au/fullchain.pem", "/etc/letsencrypt/live/api.lotusforge.com.au/privkey.pem", mux)
+	http.ListenAndServeTLS(":443", "/etc/letsencrypt/live/api.lotusforge.com.au/fullchain.pem", "/etc/letsencrypt/live/api.lotusforge.com.au/privkey.pem", mux)
 
 	// Close database connection
 	defer pool.Close()
