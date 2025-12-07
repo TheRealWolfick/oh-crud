@@ -8,5 +8,6 @@ import (
 
 type BaseHandler struct {
 	logger *slog.Logger
+	log_level int
 	db *pgxpool.Pool
 }

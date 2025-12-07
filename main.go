@@ -16,8 +16,15 @@ import (
 
 func main() {
 	// Create logger to write to both stderr and a logging file`
-	writer_file, err := os.OpenFile("/opt/myapi/logs/log.json", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	logger := slog.New( slog.NewJSONHandler(io.MultiWriter(os.Stderr, writer_file),nil) )
+	// Create logger based on environment
+	log_type := os.Getenv("LOG_TYPE")
+	var logger *slog.Logger
+	if log_type == "production" {
+		writer_file, _ := os.OpenFile("/opt/myapi/logs/log.json", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		logger = slog.New( slog.NewJSONHandler(io.MultiWriter(os.Stderr, writer_file),nil) )
+	} else {
+		logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
+	}
 
 	// Load env variables
 	log_level, err := strconv.Atoi(os.Getenv("LOG_LEVEL"))
@@ -39,12 +46,12 @@ func main() {
 	if log_level > 0 {logger.Info("Database connection made")}
 
 	// Make the handlers
-	userHandler := handlers.NewUserHandler(logger, pool)
+	userHandler := handlers.NewUserHandler(logger, log_level, pool)
 	authMiddleware := middleware.RequireAuth(pool)
 
 	// Setup the server
 	mux := http.NewServeMux()
-	
+
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {w.Write([]byte("OK"))})
 
 	mux.Handle("GET /user", authMiddleware(http.HandlerFunc(userHandler.GetUserInfo)))

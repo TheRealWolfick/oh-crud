@@ -18,13 +18,18 @@ func validateAPIKey(ctx context.Context, db *pgxpool.Pool, username string, api_
 	var dbUsername string
 	var dbAuthorized bool
 
+	// Early validation
+	if username == "" || api_key == "" {
+		return "", errors.New("Missing credentials")
+	}
+
 	// Query db
 	qry := db.QueryRow(ctx, "SELECT username, api_access FROM users WHERE username = $1 and api_key = $2;", username, api_key).Scan(&dbUsername, &dbAuthorized)
 
 	// validate
 	if qry != nil {
 		if qry == pgx.ErrNoRows {
-			return "", errors.New("invalid credentials")
+			return "", errors.New("Invalid credentials")
 		}
 		return "", err
 	}
