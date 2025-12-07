@@ -12,6 +12,11 @@ type UserInfoResponse struct {
 	Mobile		 string `json:"mobile" db:"mobile"`
 }
 
+type User struct {
+	UserInfoResponse
+	Api_Key           string `json:"api_key", db:"api_key"`
+}
+
 type UserRequest struct {
 	Username	 string `json:"username" db:"username"`
 	Api_Key    string `json:"api_key" db:"api_key"`

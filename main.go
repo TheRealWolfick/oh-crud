@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"strconv"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"lotusforge.au/api-server/handlers"
+	"lotusforge.au/api-server/middleware"
 )
 
 func main() {
@@ -24,7 +27,7 @@ func main() {
 	}
 
 	// Connect to database
-	conn, err := pgx.Connect(context.Background(),  fmt.Sprintf("postgres://%s:%s@%s", os.Getenv("DATABASE_USER"), os.Getenv("DATABASE_PWD"), os.Getenv("DATABASE_URL")))
+	pool, err := pgxpool.New(context.Background(),  fmt.Sprintf("postgres://%s:%s@%s", os.Getenv("DATABASE_USER"), os.Getenv("DATABASE_PWD"), os.Getenv("DATABASE_URL")))
 	if err != nil && log_level > 0 {
 		if os.Getenv("DATABASE_URL") == "" {
 			logger.Error("Database connection failed", "error", "Database variable not found")
@@ -35,9 +38,20 @@ func main() {
 	}
 	if log_level > 0 {logger.Info("Database connection made")}
 
-	// Launch server
+	// Make the handlers
+	userHandler := handlers.NewUserHandler(logger, pool)
+	authMiddleware := middleware.RequireAuth(pool)
+
+	// Setup the server
+	mux := http.NewServeMux()
 	
+	mux.HandleFunc("Get /health", func(w http.ResponseWriter, r *http.Request) {w.Write([]byte("OK"))})
+
+	mux.Handle("GET /user", authMiddleware(http.HandlerFunc(userHandler.GetUserInfo)))
+
+	// Launch the server
+	http.ListenAndServe("api.lotusforge.au:443", mux)
 
 	// Close database connection
-	defer conn.Close(context.Background())
+	defer pool.Close()
 }
