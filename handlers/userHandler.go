@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -44,5 +46,12 @@ func (h *userHandler) GetUserInfo(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "GetUserInfo: Something went wrong!", http.StatusInternalServerError)
 	}
 	if h.log_level >= 1 { h.logger.Info("Success", "function", "getUserInfo", "user", username, "useragent", userAgent, "origin", origin) }
+
+	to_ret, err := json.Marshal(req)
+	if err != nil {
+		h.logger.Error("Error decoding req in GetUserInfo", "error", err)
+		http.Error(w, "Something went wrong!", http.StatusInternalServerError)
+	}
+	w.Write([]byte(string(to_ret)))
 }
 
