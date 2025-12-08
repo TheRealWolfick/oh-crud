@@ -14,7 +14,7 @@ type UserInfoResponse struct {
 type User struct {
 	UserInfoResponse
 	Api_Access bool   `json:"api_access" db:"api_access"`
-	Api_Key           string `json:"api_key", db:"api_key"`
+	Api_Key    string `json:"api_key" db:"api_key"`
 }
 
 type UserRequest struct {
