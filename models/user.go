@@ -29,7 +29,6 @@ type UserRequest struct {
 type UserUpdate struct {
 	Email     *string `json:"email,omitempty"`
 	Mobile    *string `json:"mobile,omitempty"`
-	Test      uint32  `json:"test"`
 }
 
 func (r *UserRequest) Validate() error {
