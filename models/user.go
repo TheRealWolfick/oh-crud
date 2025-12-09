@@ -27,7 +27,7 @@ type UserRequest struct {
 }
 
 type UserUpdate struct {
-	Email     *string `json:"username,omitempty"`
+	Email     *string `json:"email,omitempty"`
 	Mobile    *string `json:"mobile,omitempty"`
 }
 
