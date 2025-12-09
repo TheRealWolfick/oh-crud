@@ -64,7 +64,7 @@ func (h *userHandler) UpdateUserInfo(w http.ResponseWriter, r *http.Request) {
 	// Get vars
 	var req models.UserUpdate
 	err := json.NewDecoder(r.Body).Decode(&req)
-	username := r.Context().Value("user")
+	username := r.Context().Value("username")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
