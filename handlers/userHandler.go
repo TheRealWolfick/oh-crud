@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -62,14 +63,15 @@ func (h *userHandler) GetUserInfo(w http.ResponseWriter, r *http.Request) {
 func (h *userHandler) UpdateUserInfo(w http.ResponseWriter, r *http.Request) {
 	// Get vars
 	var req models.UserUpdate
-	
 	err := json.NewDecoder(r.Body).Decode(&req)
-
+	username := r.Context().Value("username")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
-	res, _ := json.Marshal(req)
-	w.Write(res)
+	// Return success or not
+	//res, _ := json.Marshal(req)
+	w.Write([]byte(fmt.Sprintf("%v", username)))
 	// Query database
 }
