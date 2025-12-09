@@ -11,6 +11,10 @@ type UserInfoResponse struct {
 	Mobile		 string `json:"mobile" db:"mobile"`
 }
 
+type CreateUserRequest struct {
+	UserInfoResponse
+}
+
 type User struct {
 	UserInfoResponse
 	Api_Access bool   `json:"api_access" db:"api_access"`
@@ -20,6 +24,11 @@ type User struct {
 type UserRequest struct {
 	Username	 string `json:"username" db:"username"`
 	Api_Key    string `json:"api_key" db:"api_key"`
+}
+
+type UserUpdate struct {
+	Email     *string `json:"username,omitempty"`
+	Mobile    *string `json:"mobile,omitempty"`
 }
 
 func (r *UserRequest) Validate() error {

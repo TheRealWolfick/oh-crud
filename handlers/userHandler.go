@@ -25,6 +25,7 @@ func NewUserHandler(logger *slog.Logger, log_level int, db *pgxpool.Pool) *userH
 }
 
 func (h *userHandler) GetUserInfo(w http.ResponseWriter, r *http.Request) {
+	// Get vars
 	var req models.UserInfoResponse
 	username := r.Header.Get("X-Username")
 	userAgent := r.Header.Get("User-Agent")
@@ -35,6 +36,7 @@ func (h *userHandler) GetUserInfo(w http.ResponseWriter, r *http.Request) {
 		h.logger.Info("Extracted the following info at GetUserInfo:", "Username", username, "user agent", userAgent, "origin", origin, "X-API-Key", api_key)
 	}
 
+	// Query database
 	err := h.db.QueryRow(r.Context(),"SELECT username, email, mobile FROM users WHERE username = $1;", username).Scan(&req.Username, &req.Email, &req.Mobile)
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -46,11 +48,28 @@ func (h *userHandler) GetUserInfo(w http.ResponseWriter, r *http.Request) {
 	}
 	if h.log_level >= 1 { h.logger.Info("Success", "function", "getUserInfo", "user", username, "useragent", userAgent, "origin", origin) }
 
+	// Build return value
 	to_ret, err := json.Marshal(req)
 	if err != nil {
 		h.logger.Error("Error decoding req in GetUserInfo", "error", err)
 		http.Error(w, "Something went wrong!", http.StatusInternalServerError)
 	}
+
+	// return
 	w.Write([]byte(string(to_ret)))
 }
 
+func (h *userHandler) UpdateUserInfo(w http.ResponseWriter, r *http.Request) {
+	// Get vars
+	var req models.UserUpdate
+	
+	err := json.NewDecoder(r.Body).Decode(&req)
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+
+	res, _ := json.Marshal(req)
+	w.Write(res)
+	// Query database
+}
