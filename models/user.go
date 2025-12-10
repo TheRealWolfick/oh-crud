@@ -11,10 +11,6 @@ type UserInfoResponse struct {
 	Mobile		 string `json:"mobile" db:"mobile"`
 }
 
-type CreateUserRequest struct {
-	UserInfoResponse
-}
-
 type User struct {
 	UserInfoResponse
 	Api_Access bool   `json:"api_access" db:"api_access"`
@@ -26,7 +22,8 @@ type UserRequest struct {
 	Api_Key    string `json:"api_key" db:"api_key"`
 }
 
-type UserUpdate struct {
+type UserCreateUpdate struct {
+	Username	*string `json:"username" db:"username"`
 	Email     *string `json:"email,omitempty"`
 	Mobile    *string `json:"mobile,omitempty"`
 }

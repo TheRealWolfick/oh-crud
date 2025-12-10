@@ -2,12 +2,12 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"net/http"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"lotusforge.au/api-server/middleware"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/tools"
 )
@@ -63,9 +63,14 @@ func (h *userHandler) GetUserInfo(w http.ResponseWriter, r *http.Request) {
 
 func (h *userHandler) UpdateUserInfo(w http.ResponseWriter, r *http.Request) {
 	// Get vars
-	var user models.User
+	var user models.UserCreateUpdate
 	err := json.NewDecoder(r.Body).Decode(&user)
-	//requester, _ := middleware.GetUser(r.Context())
+	
+	// Get auth data - and copy username across
+	requester, _ := middleware.GetUser(r.Context())
+	user.Username = &requester.Username
+
+	// Error checking
 	if err != nil {
 		http.Error(w, "No JSON sent with request", http.StatusBadRequest)
 		return
@@ -75,9 +80,25 @@ func (h *userHandler) UpdateUserInfo(w http.ResponseWriter, r *http.Request) {
 		return 
 	}
 
-	// Return success or not
-	//res, _ := json.Marshal(req)
-	err2 := json.NewEncoder(w).Encode(user)
-	fmt.Print(err2)
+	// Get current user info
+	var user_cur models.UserCreateUpdate
+	err = h.db.QueryRow(r.Context(), "SELECT email, mobile FROM users WHERE username = $1;", user.Username).Scan(&user_cur.Email, &user_cur.Mobile)
+
+	if err != nil {
+		http.Error(w, "Error occured during checking for current user data", http.StatusInternalServerError)
+	}
+	
+	// Create query builder and compare old an new info
+	qb := tools.NewQueryBuilder("username", user.Username)
+	middleware.CompareFirst(qb.Set, "email", user_cur.Email, user.Email)
+	middleware.CompareFirst(qb.Set, "mobile", user_cur.Mobile, user.Mobile)
+
+	w.Write([]byte(qb.BuildUpdate("users")))
+	// Check query actually has updated
+	//if qb.HasUpdates() {
+	//	err = h.db.QueryRow(r.Context(), qb.BuildUpdate("users"), qb.GetArgs()...)
+	//}
+
+
 	// Query database
 }

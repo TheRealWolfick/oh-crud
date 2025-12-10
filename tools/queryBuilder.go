@@ -12,6 +12,10 @@ type QueryBuilder struct {
 	pos    uint
 }
 
+type SetCallback interface {
+	Set(field string, value any)
+}
+
 func NewQueryBuilder(pk string, val any) *QueryBuilder {
 	return &QueryBuilder{
 		values: make(map[string]uint),
@@ -21,10 +25,21 @@ func NewQueryBuilder(pk string, val any) *QueryBuilder {
 	}
 }
 
+func (qb *QueryBuilder) HasUpdates() bool {
+	if len(qb.values) > 0 {
+		return true
+	}
+	return false
+}
+
+func (qb *QueryBuilder) GetArgs() []any {
+	return qb.args
+}
+
 func (qb *QueryBuilder) Set(field string, value any) {
 	// Check to make sure it isn't already in the updates
 	_, exists := qb.values[field]
-
+ 
 	if !exists {
 		qb.values[field] = qb.pos
 		qb.args = append(qb.args, value)
@@ -33,6 +48,7 @@ func (qb *QueryBuilder) Set(field string, value any) {
 		qb.args[qb.values[field]-1] = value
 	}
 }
+
 
 func (qb *QueryBuilder) BuildSelect(table string, select_fields []string) string {
 	w := make([]string, 0)
