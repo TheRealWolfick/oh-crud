@@ -69,9 +69,6 @@ func (h *userHandler) UpdateUserInfo(w http.ResponseWriter, r *http.Request) {
 	
 	// Get auth data - and copy username across
 	requester, _ := middleware.GetUser(r.Context())
-	user.Username = &requester.Username
-
-	qb := tools.NewQueryBuilder("username", user.Username)
 	
 	// Error checking
 	if err != nil {
@@ -82,6 +79,9 @@ func (h *userHandler) UpdateUserInfo(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "No valid Json in request", http.StatusBadRequest)
 		return 
 	}
+
+	user.Username = &requester.Username
+	qb := tools.NewQueryBuilder("username", user.Username)
 
 	// Get current user info
 	var user_cur models.UserCreateUpdate
