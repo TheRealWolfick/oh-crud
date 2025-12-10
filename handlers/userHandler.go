@@ -93,6 +93,9 @@ func (h *userHandler) UpdateUserInfo(w http.ResponseWriter, r *http.Request) {
 	middleware.CompareFirst(qb.Set, "email", user_cur.Email, user.Email)
 	middleware.CompareFirst(qb.Set, "mobile", user_cur.Mobile, user.Mobile)
 
+	if !qb.HasUpdates() {
+		http.Error(w, "No updates to make!", http.StatusExpectationFailed)
+	}
 	w.Write([]byte(qb.BuildUpdate("users")))
 	// Check query actually has updated
 	//if qb.HasUpdates() {
