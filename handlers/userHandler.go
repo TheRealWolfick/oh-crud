@@ -8,7 +8,6 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"lotusforge.au/api-server/middleware"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/tools"
 )
@@ -64,20 +63,21 @@ func (h *userHandler) GetUserInfo(w http.ResponseWriter, r *http.Request) {
 
 func (h *userHandler) UpdateUserInfo(w http.ResponseWriter, r *http.Request) {
 	// Get vars
-	var req models.User
-	err := json.NewDecoder(r.Body).Decode(&req)
-	user, _ := middleware.GetUser(r.Context())
+	var user models.User
+	err := json.NewDecoder(r.Body).Decode(&user)
+	//requester, _ := middleware.GetUser(r.Context())
 	if err != nil {
 		http.Error(w, "No JSON sent with request", http.StatusBadRequest)
 		return
 	}
-	if tools.StructIsEmpty(&req) {
+	if tools.StructIsEmpty(&user) {
 		http.Error(w, "No valid Json in request", http.StatusBadRequest)
 		return 
 	}
 
 	// Return success or not
 	//res, _ := json.Marshal(req)
-	w.Write([]byte(fmt.Sprintf("%v", user)))
+	err2 := json.NewEncoder(w).Encode(user)
+	fmt.Print(err2)
 	// Query database
 }
