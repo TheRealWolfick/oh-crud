@@ -73,6 +73,6 @@ func (h *userHandler) UpdateUserInfo(w http.ResponseWriter, r *http.Request) {
 
 	// Return success or not
 	//res, _ := json.Marshal(req)
-	w.Write([]byte(fmt.Sprintf("%v", username)))
+	w.Write([]byte(fmt.Sprintf("%v", username.Email)))
 	// Query database
 }
