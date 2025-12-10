@@ -20,11 +20,11 @@ func validateAPIKey(ctx context.Context, db *pgxpool.Pool, username string, api_
 	user := &models.User{}
 	
 	// Query db
-	qry := db.QueryRow(ctx, "SELECT username, email, mobile, api_access FROM users WHERE username = $1 and api_key = $2;", username, api_key).Scan(user.Username, user.Email, user.Mobile, user.Api_Access)
+	err = db.QueryRow(ctx, "SELECT username, email, mobile, api_access FROM users WHERE username = $1 and api_key = $2;", username, api_key).Scan(&user.Username, &user.Email, &user.Mobile, &user.Api_Access)
 
 	// validate
-	if qry != nil {
-		if qry == pgx.ErrNoRows {
+	if err != nil {
+		if err == pgx.ErrNoRows {
 			return nil, errors.New("Invalid credentials")
 		}
 		return nil, err
