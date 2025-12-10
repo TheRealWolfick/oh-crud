@@ -20,7 +20,7 @@ func validateAPIKey(ctx context.Context, db *pgxpool.Pool, username string, api_
 	}
 
 	// Query db
-	qry := db.QueryRow(ctx, "SELECT username, email, mobile FROM users WHERE username = $1 and api_key = $2;", username, api_key).Scan(&user.Username, &user.Email, user.Mobile)
+	qry := db.QueryRow(ctx, "SELECT username, email, mobile FROM users WHERE username = $1 and api_key = $2;", username, api_key).Scan(user.Username, user.Email, user.Mobile)
 
 	// validate
 	if qry != nil {
