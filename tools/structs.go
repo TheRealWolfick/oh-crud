@@ -1,8 +1,11 @@
 package tools
 
-func StructIsEmpty[T any](s *T, empty *T) bool {
-	if s == empty {
+import "reflect"
+
+func StructIsEmpty[T any](s *T) bool {
+	if s == nil {
 		return true
 	}
-	return false
+	v := reflect.ValueOf(s).Elem()  // Elem() dereferences the pointer
+	return v.IsZero()
 }

@@ -71,7 +71,7 @@ func (h *userHandler) UpdateUserInfo(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "No JSON sent with request", http.StatusBadRequest)
 		return
 	}
-	if tools.StructIsEmpty(&req, &models.User{}) {
+	if tools.StructIsEmpty(&req) {
 		http.Error(w, "No valid Json in request", http.StatusBadRequest)
 		return 
 	}
