@@ -2,10 +2,12 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"lotusforge.au/api-server/middleware"
 	"lotusforge.au/api-server/models"
@@ -70,6 +72,8 @@ func (h *userHandler) UpdateUserInfo(w http.ResponseWriter, r *http.Request) {
 	requester, _ := middleware.GetUser(r.Context())
 	user.Username = &requester.Username
 
+	qb := tools.NewQueryBuilder("username", user.Username)
+	
 	// Error checking
 	if err != nil {
 		http.Error(w, "No JSON sent with request", http.StatusBadRequest)
@@ -82,26 +86,30 @@ func (h *userHandler) UpdateUserInfo(w http.ResponseWriter, r *http.Request) {
 
 	// Get current user info
 	var user_cur models.UserCreateUpdate
-	err = h.db.QueryRow(r.Context(), "SELECT email, mobile FROM users WHERE username = $1;", user.Username).Scan(&user_cur.Email, &user_cur.Mobile)
+	err = h.db.QueryRow(r.Context(), qb.BuildSelect("users", []string{"email", "mobile"}), user.Username).Scan(&user_cur.Email, &user_cur.Mobile)
 
 	if err != nil {
 		http.Error(w, "Error occured during checking for current user data", http.StatusInternalServerError)
 	}
 	
 	// Create query builder and compare old an new info
-	qb := tools.NewQueryBuilder("username", user.Username)
 	middleware.CompareFirst(qb.Set, "email", user_cur.Email, user.Email)
 	middleware.CompareFirst(qb.Set, "mobile", user_cur.Mobile, user.Mobile)
 
-	if !qb.HasUpdates() {
+	//Check query actually has updated
+	if qb.HasUpdates() {
+		var cmdTag pgconn.CommandTag
+		cmdTag, err = h.db.Exec(r.Context(), qb.BuildUpdate("users"), qb.GetArgs()...)
+		if err != nil {
+		  http.Error(w, "Something went wrong in User Update!", http.StatusInternalServerError)
+		}
+		if cmdTag.Update() && cmdTag.RowsAffected() == 1 {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("Success"))
+		} else {
+			http.Error(w, "Something went wrong! User update status: " + cmdTag.String(), http.StatusInternalServerError)
+		}
+	} else {
 		http.Error(w, "No updates to make!", http.StatusExpectationFailed)
 	}
-	w.Write([]byte(qb.BuildUpdate("users")))
-	// Check query actually has updated
-	//if qb.HasUpdates() {
-	//	err = h.db.QueryRow(r.Context(), qb.BuildUpdate("users"), qb.GetArgs()...)
-	//}
-
-
-	// Query database
 }
