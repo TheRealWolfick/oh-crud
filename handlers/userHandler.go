@@ -65,7 +65,7 @@ func (h *userHandler) UpdateUserInfo(w http.ResponseWriter, r *http.Request) {
 	// Get vars
 	var req models.User
 	err := json.NewDecoder(r.Body).Decode(&req)
-	username, _ := middleware.GetUser(r.Context())
+	user, _ := middleware.GetUser(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -73,6 +73,6 @@ func (h *userHandler) UpdateUserInfo(w http.ResponseWriter, r *http.Request) {
 
 	// Return success or not
 	//res, _ := json.Marshal(req)
-	w.Write([]byte(fmt.Sprintf("%v", username.Email)))
+	w.Write([]byte(fmt.Sprintf("%v", user)))
 	// Query database
 }
