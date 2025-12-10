@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"lotusforge.au/api-server/middleware"
 	"lotusforge.au/api-server/models"
 )
 
@@ -64,7 +65,7 @@ func (h *userHandler) UpdateUserInfo(w http.ResponseWriter, r *http.Request) {
 	// Get vars
 	var req models.UserUpdate
 	err := json.NewDecoder(r.Body).Decode(&req)
-	username := r.Context().Value("username")
+	username, _ := middleware.GetUser(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
