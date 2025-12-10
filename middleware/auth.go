@@ -12,7 +12,7 @@ import (
 
 func validateAPIKey(ctx context.Context, db *pgxpool.Pool, username string, api_key string) (result *models.User, err error) {
 	// Memory location to scan username into
-	var user *models.User
+	var user models.User
 
 	// Early validation
 	if username == "" || api_key == "" {
@@ -20,7 +20,7 @@ func validateAPIKey(ctx context.Context, db *pgxpool.Pool, username string, api_
 	}
 
 	// Query db
-	qry := db.QueryRow(ctx, "SELECT username, email, mobile FROM users WHERE username = $1 and api_key = $2;", username, api_key).Scan(&user.Username, &user.Email, &user.Mobile)
+	qry := db.QueryRow(ctx, "SELECT username, email, mobile FROM users WHERE username = $1 and api_key = $2;", username, api_key).Scan(&user.Username, &user.Email, user.Mobile)
 
 	// validate
 	if qry != nil {
@@ -30,7 +30,7 @@ func validateAPIKey(ctx context.Context, db *pgxpool.Pool, username string, api_
 		return nil, err
 	}
 	if user.Api_Access {
-		return user, err
+		return &user, err
 	}
 	return nil, errors.New("Unauthorized user")
 }
