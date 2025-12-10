@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"lotusforge.au/api-server/middleware"
 	"lotusforge.au/api-server/models"
+	"lotusforge.au/api-server/tools"
 )
 
 type userHandler struct {
@@ -67,8 +68,12 @@ func (h *userHandler) UpdateUserInfo(w http.ResponseWriter, r *http.Request) {
 	err := json.NewDecoder(r.Body).Decode(&req)
 	user, _ := middleware.GetUser(r.Context())
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "No JSON sent with request", http.StatusBadRequest)
 		return
+	}
+	if tools.StructIsEmpty(&req, &models.User{}) {
+		http.Error(w, "No valid Json in request", http.StatusBadRequest)
+		return 
 	}
 
 	// Return success or not

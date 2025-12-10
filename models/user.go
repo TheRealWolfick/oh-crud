@@ -42,5 +42,5 @@ func (r *UserRequest) Validate() error {
 		return errors.New("Username too long")
 	}
 
-	return nil
+	return nil 
 }

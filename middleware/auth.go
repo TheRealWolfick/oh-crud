@@ -30,7 +30,7 @@ func validateAPIKey(ctx context.Context, db *pgxpool.Pool, username string, api_
 		return nil, err
 	}
 	if user.Api_Access {
-		return user, err
+		return user, nil
 	}
 	return nil, errors.New("Unauthorized user")
 }
