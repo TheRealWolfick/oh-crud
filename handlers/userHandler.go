@@ -63,7 +63,7 @@ func (h *userHandler) GetUserInfo(w http.ResponseWriter, r *http.Request) {
 
 func (h *userHandler) UpdateUserInfo(w http.ResponseWriter, r *http.Request) {
 	// Get vars
-	var req models.UserUpdate
+	var req models.User
 	err := json.NewDecoder(r.Body).Decode(&req)
 	username, _ := middleware.GetUser(r.Context())
 	if err != nil {
