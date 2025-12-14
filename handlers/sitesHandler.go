@@ -35,8 +35,14 @@ func (h *sitesHandler) AddNewDomain(w http.ResponseWriter, r *http.Request) {
 	if tools.StructIsEmpty(&domain) {
 		http.Error(w, "No domain supplied", http.StatusBadRequest)
 	}
+
+	// Build the query
+	qb := tools.NewQueryBuilder("domain_code", domain.Domain_code)
+	qb.Set("domain_code", domain.Domain_code)
+	qb.Set("wrong", nil)
+	test := qb.BuildInsert("domains", domain)
 	
-	res, _ := json.Marshal(domain)
+	res, _ := json.Marshal(test)
 	w.Write(res)
 }
 
@@ -56,13 +62,13 @@ func (h *sitesHandler) AddMultiNewDomain(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Build the query
-	vals, vals_success := tools.ExtractValueFromMultiStruct("domain_code", domains)
+	vals, vals_success := tools.ExtractValueFromMultiStruct("Domain_code", domains)
 	if !vals_success {
 		http.Error(w, "No proper values supplied in array", http.StatusBadRequest)
 		return
 	}
 	qb := tools.NewQueryBuilder("domain_code", vals)
-	test := qb.BuildSelect("domains", []string{"*"})
+	test := qb.BuildMultiInsert("domains", tools.ToAnySlice(domains))
 
 	// Insert into database
 	

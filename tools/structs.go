@@ -29,13 +29,15 @@ func ExtractValueFromMultiStruct[T any](key string, s []T) ([]any, bool) {
 	ret := make([]any, 0, len(s))
 
 	for _, v := range s {
-		value := reflect.ValueOf(v).Elem()
+		val := reflect.ValueOf(v)
 
-		if value.IsZero() {
+		field := val.FieldByName(key)
+
+		if !field.IsValid() || field.IsZero() {
 			continue
 		}
 
-		ret = append(ret, value)
+		ret = append(ret, field.Interface())
 	}
 
 	if len(ret) < 1 {
@@ -43,4 +45,12 @@ func ExtractValueFromMultiStruct[T any](key string, s []T) ([]any, bool) {
 	}
 
 	return ret, true
+}
+
+func ToAnySlice[T any](slice []T) []any {
+    var result []any
+    for _, item := range slice {
+        result = append(result, item)
+    }
+    return result
 }
