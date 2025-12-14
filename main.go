@@ -59,6 +59,7 @@ func main() {
 	mux.Handle("PUT /user", authMiddleware(http.HandlerFunc(userHandler.UpdateUserInfo)))
 	
 	mux.Handle("POST /domain", authMiddleware(http.HandlerFunc(siteHandler.AddNewDomain)))
+	mux.Handle("POST /domain-group", authMiddleware(http.HandlerFunc(siteHandler.AddMultiNewDomain))
 
 	// Launch the server
 	http.ListenAndServe(":8080", mux)

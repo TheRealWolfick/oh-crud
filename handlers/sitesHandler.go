@@ -39,3 +39,20 @@ func (h *sitesHandler) AddNewDomain(w http.ResponseWriter, r *http.Request) {
 	res, _ := json.Marshal(domain)
 	w.Write(res)
 }
+
+func (h *sitesHandler) AddMultiNewDomain(w http.ResponseWriter, r *http.Request) {
+	var domains []models.Domain
+
+	err := json.NewDecoder(r.Body).Decode(&domains)
+
+	// Validation and errors
+	if err != nil {
+		http.Error(w, "Error decoding body", http.StatusBadRequest)
+	}
+	if tools.StructIsEmpty(&domains) {
+		http.Error(w, "No domain supplied", http.StatusBadRequest)
+	}
+	
+	res, _ := json.Marshal(domains)
+	w.Write(res)
+}
