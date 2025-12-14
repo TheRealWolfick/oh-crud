@@ -46,8 +46,9 @@ func main() {
 	if log_level > 0 {logger.Info("Database connection made")}
 
 	// Make the handlers
-	userHandler := handlers.NewUserHandler(logger, log_level, pool)
 	authMiddleware := middleware.RequireAuth(pool)
+	userHandler := handlers.NewUserHandler(logger, log_level, pool)
+	siteHandler := handlers.NewSitesHandler(logger, log_level, pool)
 
 	// Setup the server
 	mux := http.NewServeMux()
@@ -57,6 +58,8 @@ func main() {
 	mux.Handle("GET /user", authMiddleware(http.HandlerFunc(userHandler.GetUserInfo)))
 	mux.Handle("PUT /user", authMiddleware(http.HandlerFunc(userHandler.UpdateUserInfo)))
 	
+	mux.Handle("POST /domain", authMiddleware(http.HandlerFunc(siteHandler.AddNewDomain)))
+
 	// Launch the server
 	http.ListenAndServe(":8080", mux)
 
