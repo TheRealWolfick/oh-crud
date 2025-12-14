@@ -48,11 +48,27 @@ func (h *sitesHandler) AddMultiNewDomain(w http.ResponseWriter, r *http.Request)
 	// Validation and errors
 	if err != nil {
 		http.Error(w, "Error decoding body", http.StatusBadRequest)
+		return
 	}
 	if tools.StructIsEmpty(&domains) {
 		http.Error(w, "No domain supplied", http.StatusBadRequest)
+		return
 	}
+
+	// Build the query
+	vals, vals_success := tools.ExtractValueFromMultiStruct("domain_code", domains)
+	if !vals_success {
+		http.Error(w, "No proper values supplied in array", http.StatusBadRequest)
+		return
+	}
+	qb := tools.NewQueryBuilder("domain_code", vals)
+	test := qb.BuildSelect("domains", []string{"*"})
+
+	// Insert into database
 	
-	res, _ := json.Marshal(domains)
+
+	
+	// Response
+	res, _ := json.Marshal(test)
 	w.Write(res)
 }

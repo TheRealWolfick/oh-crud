@@ -20,3 +20,27 @@ func Deref(v reflect.Value) reflect.Value {
 	}
 	return v
 }
+
+func ExtractValueFromMultiStruct[T any](key string, s []T) ([]any, bool) {
+	if len(s) < 1 {
+		return nil, false
+	}
+
+	ret := make([]any, 0, len(s))
+
+	for _, v := range s {
+		value := reflect.ValueOf(v).Elem()
+
+		if value.IsZero() {
+			continue
+		}
+
+		ret = append(ret, value)
+	}
+
+	if len(ret) < 1 {
+		return nil, false
+	}
+
+	return ret, true
+}
