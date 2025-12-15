@@ -94,7 +94,9 @@ func (qb *QueryBuilder) BuildInsert(table string, mod any) string {
 	return fmt.Sprintf("INSERT INTO %s (%s) VALUES %s;", table, strings.Join(c, ", "), fmt.Sprintf("(%s)",strings.Join(v, ", ")))
 }
 
-
+// Build a query to insert multiple entries. The slice of models must have all the keys as pointers and cannot use omitempty. Instead,
+// the json tag none:"<string>" should be used to specify a default value (DEFAULT and NULL accepted as strings).
+// Default values are not inserted as arguements, but inserted into the query directly.
 func (qb *QueryBuilder) BuildMultiInsert(table string, models []any) string {
 	// Reset the QueryBuilder to a blank state
 	qb = nil
@@ -149,7 +151,10 @@ func (qb *QueryBuilder) BuildMultiInsert(table string, models []any) string {
 }
 
 
+// Build the query to select from the database.
+// Must supply the table name to be selected from and what fields are required. The fields must be in a slice, even if it is only one value.
 func (qb *QueryBuilder) BuildSelect(table string, select_fields []string) string {
+	// Initiate slice for where values. Default will be primary key
 	w := make([]string, 0)
 
 	for key, val := range qb.where {
