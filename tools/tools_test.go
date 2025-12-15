@@ -14,10 +14,10 @@ type testStruct struct {
 }
 
 type testQueryableStruct struct {
-	Word *string `json:"jsonword" db:"dbword" none:"NULL"`
-	Value *int `json:"jsonvalue" db:"dbvalue" none:"0"`
-	IsTrue *bool `json:"jsonistrue" db:"dbistrue" none:"DEFAULT"`
-	Something *string `json:"jsonsomething" db:"dbsomething" none:""`
+	Word *string `json:"jsonword,omitempty" db:"dbword" none:"NULL"`
+	Value *int `json:"jsonvalue,omitempty" db:"dbvalue" none:"0"`
+	IsTrue *bool `json:"jsonistrue,omitempty" db:"dbistrue" none:"DEFAULT"`
+	Something *string `json:"jsonsomething,omitempty" db:"dbsomething" none:""`
 }
 
 func TestStructIsEmpty(t *testing.T) {
@@ -42,29 +42,32 @@ func TestStructIsEmpty(t *testing.T) {
 }
 
 func TestQueryBuilder(t *testing.T) {
-	qb := NewQueryBuilder("primkey", "primvalue")
+	qb := NewQueryBuilder("dbword", "primvalue")
+	insertStruct := &testQueryableStruct{}
+	insertData := `{"jsonvalue": 50, "jsonsomething": "some text"}`
+	json.Unmarshal([]byte(insertData), &insertStruct)
 
   t.Run("Does a new query builder have updates?", func(t *testing.T) {if qb.HasUpdates() {t.Error("Expected there to be no updates")}})
 
-	qb.Set("field1", "value1")
-	qb.Set("field2", 5)
+	qb.Set("dbsomething" ,*insertStruct.Something)
+	qb.Set("dbvalue", *insertStruct.Value)
 
-  t.Run("Does a query builder with updates have updates?", func(t *testing.T) {if !qb.HasUpdates() {t.Error("Expected there to be no updates")}})
+  t.Run("Does a query builder with updates have updates?", func(t *testing.T) {if !qb.HasUpdates() {t.Error("Expected there to be updates")}})
 	t.Run("Does the GetArgs return the correct values", func(t *testing.T) {
-		if !reflect.DeepEqual(qb.GetArgs(), []any{"primvalue", "value1", 5}) {
-			t.Errorf("Expected GetArgs to return [primvalue, value1, 5]. Returned: [%v, %v, %v]", qb.GetArgs()...)
+		if !reflect.DeepEqual(qb.GetArgs(), []any{"primvalue", "some text", 50}) {
+			t.Errorf("Expected GetArgs to return [primvalue, some text, 50]. Returned: [%v, %v, %v]", qb.GetArgs()...)
 		}
 	})
 
 	// Test bulding select and update queries
 	t.Run("Build select string", func(t *testing.T) {
-		if qb.BuildSelect("sometable", []string{"fieldA", "fieldB", "fieldC"}) != "SELECT fieldA, fieldB, fieldC FROM sometable WHERE primkey = $1;" {
-			t.Errorf("Expected: %s\nReceived:%s", "SELECT fieldA, fieldB, fieldC FROM sometable WHERE primkey = $1;", qb.BuildSelect("sometable", []string{"fieldA", "fieldB", "fieldC"}))
+		if qb.BuildSelect("sometable", []string{"fieldA", "fieldB", "fieldC"}) != "SELECT fieldA, fieldB, fieldC FROM sometable WHERE dbword = $1;" {
+			t.Errorf("Expected: %s\nReceived:%s", "SELECT fieldA, fieldB, fieldC FROM sometable WHERE dbword = $1;", qb.BuildSelect("sometable", []string{"fieldA", "fieldB", "fieldC"}))
 		}
 	})
 	t.Run("Build update string", func(t *testing.T) {
 		updateString := qb.BuildUpdate("sometable")
-		if updateString != "UPDATE sometable SET field1 = $2, field2 = $3 WHERE primkey = $1;" && updateString != "UPDATE sometable SET field2 = $3, field1 = $2 WHERE primkey = $1;" {
+		if updateString != "UPDATE sometable SET dbvalue = $3, dbsomething = $2 WHERE dbword = $1;" && updateString != "UPDATE sometable SET dbsomething = $2, dbvalue = $3 WHERE dbword = $1;" {
 			t.Errorf("Error in bulding update statement!\nReceived: '%s'", updateString)
 		}
 	})
