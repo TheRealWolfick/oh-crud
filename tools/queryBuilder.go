@@ -74,22 +74,23 @@ func (qb *QueryBuilder) BuildInsert(table string, mod any) string {
 	}
 
 	for i := 0; i < t.NumField(); i++ {
+		c = append(c, t.Field(i).Tag.Get("db"))
 		if vals.Field(i).Elem().IsValid() {
-			c = append(c, t.Field(i).Tag.Get("db"))
 			v = append(v, fmt.Sprintf("$%d", qb.pos))
 			qb.pos++
 			qb.args = append(qb.args, vals.Field(i).Elem())
 		} else {
 			empty_value, exists := t.Field(i).Tag.Lookup("none")
 			if exists {
-				v = append(v, fmt.Sprintf("$%d", qb.pos))
-				qb.pos++
-		  	qb.args = append(qb.args, empty_value)
+				if empty_value == "" {
+					v = append(v, "''")
+				} else {
+					v = append(v, empty_value)
+				}
 			}
 		}
-	} 
+	}
 
-	fmt.Println(qb.args...)
 	return fmt.Sprintf("INSERT INTO %s (%s) VALUES %s;", table, strings.Join(c, ", "), fmt.Sprintf("(%s)",strings.Join(v, ", ")))
 }
 
@@ -108,7 +109,7 @@ func (qb *QueryBuilder) BuildMultiInsert(table string, models []any) string {
 
 	// Iterate through each model
 	for model_pos, model := range models {
-		
+
 		local_v := make([]string, 0)
 		t := reflect.TypeOf(model)
 		vals := reflect.ValueOf(model)
@@ -120,11 +121,11 @@ func (qb *QueryBuilder) BuildMultiInsert(table string, models []any) string {
 		// Iterate through each field of the model
 		for i := 0; i < t.NumField(); i++ {
 
+			if model_pos == 0 {
+				c = append(c, t.Field(i).Tag.Get("db"))
+			}
 			// Check if it is a valid value (exists)
 			if vals.Field(i).Elem().IsValid() {
-				if model_pos == 0 {
-					c = append(c, t.Field(i).Tag.Get("db"))
-				}
 				local_v = append(local_v, fmt.Sprintf("$%d", qb.pos))
 				qb.pos++
 				qb.args = append(qb.args, vals.Field(i).Elem())
@@ -132,16 +133,17 @@ func (qb *QueryBuilder) BuildMultiInsert(table string, models []any) string {
 				// Read model's "none" default
 				empty_value, exists := t.Field(i).Tag.Lookup("none")
 				if exists {
-					local_v = append(local_v, fmt.Sprintf("$%d", qb.pos))
-					qb.pos++
-			  	qb.args = append(qb.args, empty_value)
+					if empty_value == "" {
+						local_v = append(local_v, "''")
+					} else {
+						local_v = append(local_v, empty_value)
+					}
 				}
 			}
 		} 
 
 		v = append(v, fmt.Sprintf(("(%s)"), strings.Join(local_v, ", ")))
 	}
-	fmt.Println(qb.args...)
 
 	return fmt.Sprintf("INSERT INTO %s (%s) VALUES %s;", table, strings.Join(c, ", "), fmt.Sprintf("%s",strings.Join(v, ", ")))
 }
