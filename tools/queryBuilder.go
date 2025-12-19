@@ -18,6 +18,13 @@ type BlankQueryBuilder struct {
 	query  string
 }
 
+type QueryBuildTool interface {
+	GetArgs() []any
+	GetArgsAsString() string
+	Set(field string, value any)
+	SetWhere(field string, value any)
+}
+
 type SetCallback interface {
 	Set(field string, value any)
 }
@@ -106,6 +113,55 @@ func (qb *QueryBuilder) Set(field string, value any) {
 		qb.values[field] = qb.pos
 		qb.args = append(qb.args, value)
 		qb.pos++	
+	} else {
+		qb.args[qb.values[field]-1] = value
+	}
+}
+func (qb *BlankQueryBuilder) Set(field string, value any) {
+	if value == nil {
+		return
+	}
+
+	// Check to make sure it isn't already in the updates
+	_, exists := qb.values[field]
+ 
+	if !exists {
+		qb.values[field] = qb.pos
+		qb.args = append(qb.args, value)
+		qb.pos++	
+	} else {
+		qb.args[qb.values[field]-1] = value
+	}
+}
+
+
+// Add a field and value into the where clause
+func (qb *QueryBuilder) SetWhere(field string, value any) {
+	if value == nil {
+		return
+	}
+
+	_, exists := qb.where[field]
+
+	if !exists {
+		qb.where[field] = qb.pos
+		qb.args = append(qb.args, value)
+		qb.pos++
+	} else {
+		qb.args[qb.values[field]-1] = value
+	}
+}
+func (qb *BlankQueryBuilder) SetWhere(field string, value any) {
+	if value == nil {
+		return
+	}
+
+	_, exists := qb.where[field]
+
+	if !exists {
+		qb.where[field] = qb.pos
+		qb.args = append(qb.args, value)
+		qb.pos++
 	} else {
 		qb.args[qb.values[field]-1] = value
 	}
@@ -226,6 +282,9 @@ func (qb *BlankQueryBuilder) BuildMultiInsert(table string, models []any) string
 // Build the query to select from the database.
 // Must supply the table name to be selected from and what fields are required. The fields must be in a slice, even if it is only one value.
 func (qb *QueryBuilder) BuildSelect(table string, select_fields []string) string {
+	if len(qb.where) < 1 {
+		return fmt.Sprintf("SELECT %s FROM %s;", strings.Join(select_fields, ", "), table)
+	}
 	// Initiate slice for where values. Default will be primary key
 	w := make([]string, 0)
 

@@ -2,7 +2,10 @@ package tools
 
 import (
 	"context"
+	"errors"
+	"net/http"
 	"reflect"
+	"strconv"
 
 	"lotusforge.au/api-server/models"
 )
@@ -106,4 +109,85 @@ func SetFromStruct(qb *QueryBuilder, v interface{}) {
 		
 		qb.Set(dbTag, actualValue)
 	}
+}
+
+
+
+func SetFromURL[T any](qb QueryBuildTool, r *http.Request, model T) error {
+	// Parse the form
+	if err := r.ParseForm(); err != nil {
+		return err
+	} 
+	
+	if len(r.URL.Query()) < 1 {
+		return nil
+	}
+ 
+	val := reflect.ValueOf(model)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+
+	// Ensure a struct was passed in
+	if reflect.TypeOf(model).Kind() != reflect.Struct {
+		return errors.New("Not a struct!")
+	}
+
+	typ := val.Type()
+	for i := 0; i < val.NumField(); i++ {
+		
+		field_name := typ.Field(i).Tag.Get("db")
+		if field_name == "" || field_name == "-" {
+			continue
+		}
+		
+		field_value := r.FormValue(field_name)
+		if field_value == "" {
+			continue
+		}
+
+		// Check to make sure it is valid
+		switch typ.Field(i).Type.Kind() {
+		case reflect.Int, reflect.Int32, reflect.Int64:
+			if _, err := strconv.ParseInt(field_value, 10, 64); err != nil {
+				continue 
+			}
+
+		case reflect.Bool:
+			if _, err := strconv.ParseBool(field_value); err != nil {
+				continue
+			}
+
+		case reflect.Float32, reflect.Float64:
+			if _, err := strconv.ParseFloat(field_value, 64); err != nil {
+				continue
+			}
+		}
+
+		qb.SetWhere(field_name, field_value)
+	}
+	return nil
+}
+
+
+func GetDatabaseColumns[T any](model T) []string {
+	val := reflect.TypeOf(model)
+	cols := make([]string, 0)
+
+	if val.Kind() != reflect.Struct {
+		cols = append(cols, "*")
+		return cols
+	}
+
+	for i := 0; i < val.NumField(); i++ {
+		dbCol := val.Field(i).Tag.Get("db")
+		
+		if dbCol == "" || dbCol == "-" {
+			continue
+		}
+
+		cols = append(cols, dbCol)
+	}
+
+	return cols
 }

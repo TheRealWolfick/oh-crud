@@ -33,9 +33,11 @@ func (h *sitesHandler) AddNewDomain(w http.ResponseWriter, r *http.Request) {
 	// Validation and errors
 	if err != nil {
 		http.Error(w, "Error decoding body", http.StatusBadRequest)
+		return
 	}
 	if tools.StructIsEmpty(&domain) {
 		http.Error(w, "No domain supplied", http.StatusBadRequest)
+		return
 	}
 	valid_domains, _ := tools.ValidateStruct(domain)
 	if len(valid_domains) < 1 {
@@ -95,4 +97,39 @@ func (h *sitesHandler) AddMultiNewDomain(w http.ResponseWriter, r *http.Request)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+
+// Select domains from DB
+func (h *sitesHandler) SelectDomains(w http.ResponseWriter, r *http.Request) {
+	var domainsRequest []models.GetDomains
+
+	// Create new query builder 
+	qb := tools.NewBlankQueryBuilder()
+	
+	// Load where vals
+	if err := tools.SetFromURL(qb, r, models.GetDomains{}); err != nil {
+		http.Error(w, "Error in parsing where clauses", http.StatusBadRequest)
+	}
+	
+	// Build the query
+	query := qb.BuildSelect("domains", tools.GetDatabaseColumns(models.GetDomains{}))
+
+	// Get the rows
+	rows, err := h.db.Query(r.Context(), query, qb.GetArgs()...)
+	
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Error with the query:\n%v", domainsRequest), http.StatusInternalServerError)
+	}
+	
+	defer rows.Close()
+	
+	for rows.Next() {
+		var domain models.GetDomains
+		rows.Scan(&domain.Domain_code, &domain.Description)
+		domainsRequest = append(domainsRequest, domain)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(domainsRequest)
 }

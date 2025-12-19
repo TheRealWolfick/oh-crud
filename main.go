@@ -58,6 +58,7 @@ func main() {
 	mux.Handle("GET /user", authMiddleware(http.HandlerFunc(userHandler.GetUserInfo)))
 	mux.Handle("PUT /user", authMiddleware(http.HandlerFunc(userHandler.UpdateUserInfo)))
 	
+	mux.Handle("GET /domain", authMiddleware(http.HandlerFunc(siteHandler.SelectDomains)))
 	mux.Handle("POST /domain", authMiddleware(http.HandlerFunc(siteHandler.AddNewDomain)))
 	mux.Handle("POST /domain-group", authMiddleware(http.HandlerFunc(siteHandler.AddMultiNewDomain)))
 
