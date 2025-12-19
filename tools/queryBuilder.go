@@ -13,10 +13,18 @@ type QueryBuilder struct {
 	pos    uint
 }
 
+type BlankQueryBuilder struct {
+	QueryBuilder
+	query  string
+}
+
 type SetCallback interface {
 	Set(field string, value any)
 }
 
+
+// Create new new QueryBuilder and insert the primary key to be
+// used in any update statement
 func NewQueryBuilder(pk string, val any) *QueryBuilder {
 	return &QueryBuilder{
 		values: make(map[string]uint),
@@ -26,6 +34,24 @@ func NewQueryBuilder(pk string, val any) *QueryBuilder {
 	}
 }
 
+
+// Create a new blank query builder without a primary key where value.
+// Primarily used when there won't be a WHERE clause in the SQL (INSERT)
+func NewBlankQueryBuilder() *BlankQueryBuilder {
+	return &BlankQueryBuilder{
+		QueryBuilder: QueryBuilder{
+			values: make(map[string]uint),
+			where: make(map[string]uint),
+			args: []any{},
+			pos: 1,
+		},
+		query: "",
+	}
+}
+
+
+// Return whether there are fields to be updated in QueryBuilder.
+// To be used to only push updates to the database where necessary.
 func (qb *QueryBuilder) HasUpdates() bool {
 	if len(qb.values) > 0 {
 		return true
@@ -33,10 +59,41 @@ func (qb *QueryBuilder) HasUpdates() bool {
 	return false
 }
 
+
+// Receive the args from the query builder
 func (qb *QueryBuilder) GetArgs() []any {
 	return qb.args
 }
 
+
+// Receive the args from the query builder
+func (qb *BlankQueryBuilder) GetArgs() []any {
+	return qb.args
+}
+
+
+// Return all the args as a string (debugging)
+func (qb *QueryBuilder) GetArgsAsString() string {
+	args_string := []string{}
+	for _, v := range qb.args {
+		args_string = append(args_string, fmt.Sprintf("%v", v))
+	}
+	return strings.Join(args_string, ", ")
+}
+
+
+// Return all the args as a string (debugging)
+func (qb *BlankQueryBuilder) GetArgsAsString() string {
+	args_string := []string{}
+	for _, v := range qb.args {
+		args_string = append(args_string, fmt.Sprintf("%v", v))
+	}
+	return strings.Join(args_string, ", ")
+}
+
+
+// Save a field and value into the query builder. Intended to use with
+// updating fields (set only the relevant fields)
 func (qb *QueryBuilder) Set(field string, value any) {
 	if value == nil {
 		return
@@ -54,17 +111,18 @@ func (qb *QueryBuilder) Set(field string, value any) {
 	}
 }
 
-func (qb *QueryBuilder) BuildInsert(table string, mod any) string {
-	// Reset the QueryBuilder to a blank state
-	qb = nil
-	qb = &QueryBuilder{
-		values: make(map[string]uint),
-		where: map[string]uint{},
-		args: []any{},
-		pos: 1,
+
+// Build the insert query, saving all the values into the args key to be 
+// safely loaded into the sql.
+func (qb *BlankQueryBuilder) BuildInsert(table string, mod any) string {
+	// Early return
+	if qb.query != "" {
+		return qb.query
 	}
-	c := make([]string, 0)
-	v := make([]string, 0)
+
+	// Reset the QueryBuilder to a blank state
+	db_column := make([]string, 0)
+	value := make([]string, 0)
 
 	t := reflect.TypeOf(mod)
 	vals := reflect.ValueOf(mod)
@@ -74,38 +132,51 @@ func (qb *QueryBuilder) BuildInsert(table string, mod any) string {
 	}
 
 	for i := 0; i < t.NumField(); i++ {
-		c = append(c, t.Field(i).Tag.Get("db"))
-		if vals.Field(i).Elem().IsValid() {
-			v = append(v, fmt.Sprintf("$%d", qb.pos))
+		db_column = append(db_column, t.Field(i).Tag.Get("db"))
+		
+		field := vals.Field(i)
+		
+		// Check if field is a pointer and not nil
+		if field.Kind() == reflect.Ptr && !field.IsNil() {
+			value = append(value, fmt.Sprintf("$%d", qb.pos))
 			qb.pos++
-			qb.args = append(qb.args, vals.Field(i).Elem())
+			// Use .Interface() to get the actual value
+			qb.args = append(qb.args, field.Elem().Interface())
+		} else if field.Kind() != reflect.Ptr && field.IsValid() {
+			// Non-pointer field
+			value = append(value, fmt.Sprintf("$%d", qb.pos))
+			qb.pos++
+			qb.args = append(qb.args, field.Interface())
 		} else {
+			// Field is nil or invalid, use default from "none" tag
 			empty_value, exists := t.Field(i).Tag.Lookup("none")
 			if exists {
 				if empty_value == "" {
-					v = append(v, "''")
+					value = append(value, "''")
 				} else {
-					v = append(v, empty_value)
+					value = append(value, empty_value)
 				}
 			}
 		}
 	}
 
-	return fmt.Sprintf("INSERT INTO %s (%s) VALUES %s;", table, strings.Join(c, ", "), fmt.Sprintf("(%s)",strings.Join(v, ", ")))
+	qb.query = fmt.Sprintf("INSERT INTO %s (%s) VALUES %s;", table, strings.Join(db_column, ", "), fmt.Sprintf("(%s)",strings.Join(value, ", ")))
+	
+	return qb.query
 }
+
 
 // Build a query to insert multiple entries. The slice of models must have all the keys as pointers and cannot use omitempty. Instead,
 // the json tag none:"<string>" should be used to specify a default value (DEFAULT and NULL accepted as strings).
 // Default values are not inserted as arguements, but inserted into the query directly.
-func (qb *QueryBuilder) BuildMultiInsert(table string, models []any) string {
-	// Reset the QueryBuilder to a blank state
-	qb = nil
-	qb = &QueryBuilder{
-		values: make(map[string]uint),
-		where: map[string]uint{},
-		args: []any{},
-		pos: 1,
+func (qb *BlankQueryBuilder) BuildMultiInsert(table string, models []any) string {
+
+	// Early return
+	if qb.query != "" {
+		return qb.query
 	}
+
+	// Initiate columns and values
 	c := make([]string, 0)
 	v := make([]string, 0)
 
@@ -147,7 +218,8 @@ func (qb *QueryBuilder) BuildMultiInsert(table string, models []any) string {
 		v = append(v, fmt.Sprintf(("(%s)"), strings.Join(local_v, ", ")))
 	}
 
-	return fmt.Sprintf("INSERT INTO %s (%s) VALUES %s;", table, strings.Join(c, ", "), fmt.Sprintf("%s",strings.Join(v, ", ")))
+	qb.query = fmt.Sprintf("INSERT INTO %s (%s) VALUES %s;", table, strings.Join(c, ", "), fmt.Sprintf("%s",strings.Join(v, ", ")))
+	return qb.query
 }
 
 

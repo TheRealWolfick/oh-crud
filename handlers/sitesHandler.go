@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -24,6 +25,7 @@ func NewSitesHandler(logger *slog.Logger, log_level int, db *pgxpool.Pool) *site
 	}
 }
 
+
 func (h *sitesHandler) AddNewDomain(w http.ResponseWriter, r *http.Request) {
   var domain models.Domain
 	err := json.NewDecoder(r.Body).Decode(&domain)
@@ -35,20 +37,34 @@ func (h *sitesHandler) AddNewDomain(w http.ResponseWriter, r *http.Request) {
 	if tools.StructIsEmpty(&domain) {
 		http.Error(w, "No domain supplied", http.StatusBadRequest)
 	}
+	valid_domains, _ := tools.ValidateStruct(domain)
+	if len(valid_domains) < 1 {
+		http.Error(w, "No valid domains", http.StatusBadRequest)
+		return
+	}
 
-	// Build the query
-	qb := tools.NewQueryBuilder("domain_code", domain.Domain_code)
-	qb.Set("domain_code", domain.Domain_code)
-	qb.Set("wrong", nil)
-	test := qb.BuildInsert("domains", domain)
+  suc, _ := tools.SingleInsert(r.Context(), h.db, "domains", valid_domains)
+
+	// Validate Response
+	if !suc {
+		http.Error(w, fmt.Sprintf("Failed to insert domain '%s'", *domain.Domain_code), http.StatusInternalServerError)
+		return
+	}
 	
-	res, _ := json.Marshal(test)
-	w.Write(res)
+	// Response
+	response := map[string]interface{}{
+		"action":        "INSERT",
+		"rows_received": 1,
+		"rows_affected": 1,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
 
+
+// Add multiple domains at once
 func (h *sitesHandler) AddMultiNewDomain(w http.ResponseWriter, r *http.Request) {
 	var domains []models.Domain
-
 	err := json.NewDecoder(r.Body).Decode(&domains)
 
 	// Validation and errors
@@ -57,24 +73,26 @@ func (h *sitesHandler) AddMultiNewDomain(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if tools.StructIsEmpty(&domains) {
-		http.Error(w, "No domain supplied", http.StatusBadRequest)
+		http.Error(w, "No domains supplied", http.StatusBadRequest)
+		return
+	}
+	
+	valid_domains, invalid_domains := tools.ValidateMultiStruct(domains)
+	if len(valid_domains) < 1 {
+		http.Error(w, "No valid domains", http.StatusBadRequest)
 		return
 	}
 
-	// Build the query
-	vals, vals_success := tools.ExtractValueFromMultiStruct("Domain_code", domains)
-	if !vals_success {
-		http.Error(w, "No proper values supplied in array", http.StatusBadRequest)
-		return
+	result := tools.RecursiveBatchInsert(r.Context(), h.db, "domains", tools.ToAnySlice(valid_domains))
+
+	// Respond
+	response := map[string]interface{}{
+		"action":        "INSERT",
+		"rows_received": len(domains),
+		"rows_affected": result.SuccessCount,
+		"invalid":       invalid_domains,
+		"failed":        result.FailedItems,
 	}
-	qb := tools.NewQueryBuilder("domain_code", vals)
-	test := qb.BuildMultiInsert("domains", tools.ToAnySlice(domains))
-
-	// Insert into database
-	
-
-	
-	// Response
-	res, _ := json.Marshal(test)
-	w.Write(res)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }

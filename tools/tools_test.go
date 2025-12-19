@@ -7,17 +7,17 @@ import (
 )
 
 type testStruct struct {
-	Word string `json:"jsonword" db:"dbword" none:"NULL"`
-	Value int `json:"jsonvalue" db:"dbvalue" none:0`
-	IsTrue bool `json:"jsonistrue" db:"dbistrue" none:"DEFAULT"`
-	Something string `json:"jsonsomething" db:"dbsomething"`
+	Word string `json:"word" db:"dbword" none:"NULL"`
+	Value int `json:"value" db:"dbvalue" none:0`
+	IsTrue bool `json:"istrue" db:"dbistrue" none:"DEFAULT"`
+	Something string `json:"something" db:"dbsomething"`
 }
 
 type testQueryableStruct struct {
-	Word *string `json:"jsonword,omitempty" db:"dbword" none:"NULL"`
-	Value *int `json:"jsonvalue,omitempty" db:"dbvalue" none:"0"`
-	IsTrue *bool `json:"jsonistrue,omitempty" db:"dbistrue" none:"DEFAULT"`
-	Something *string `json:"jsonsomething,omitempty" db:"dbsomething" none:""`
+	Word *string `json:"word,omitempty" db:"dbword" req:"true"`
+	Value *int `json:"value,omitempty" db:"dbvalue" none:"0"`
+	IsTrue *bool `json:"istrue,omitempty" db:"dbistrue" none:"DEFAULT"`
+	Something *string `json:"something,omitempty" db:"dbsomething" none:""`
 }
 
 func TestStructIsEmpty(t *testing.T) {
@@ -44,7 +44,7 @@ func TestStructIsEmpty(t *testing.T) {
 func TestQueryBuilder(t *testing.T) {
 	qb := NewQueryBuilder("dbword", "primvalue")
 	insertStruct := &testQueryableStruct{}
-	insertData := `{"jsonvalue": 50, "jsonsomething": "some text"}`
+	insertData := `{"value": 50, "something": "some text"}`
 	json.Unmarshal([]byte(insertData), &insertStruct)
 
   t.Run("Does a new query builder have updates?", func(t *testing.T) {if qb.HasUpdates() {t.Error("Expected there to be no updates")}})
@@ -73,28 +73,57 @@ func TestQueryBuilder(t *testing.T) {
 	})
 
 	// Test insert and multi insert queries
-	new1json := `{"jsonword": "new1", "jsonvalue": 5}`
-	newgroupjson := `[{"jsonword": "new1", "jsonvalue": 5}, {"jsonword": "new2", "jsonistrue": true}, {"jsonistrue": false, "jsonsomething": "more text"}]`
+	new1json := `{"word": "new1", "value": 5}`
+	newgroupinvalidjson := `[{"word": "new1", "value": 5}, {"word": "new2", "istrue": true}, {"istrue": false, "something": "more text"}]`
+	newgroupvalidjson := `[{"word": "new1", "value": 5}, {"word": "new2", "istrue": true}, {"word": "valid", "istrue": false, "something": "more text"}]`
 	var new1 testQueryableStruct
-	var newGroup []testQueryableStruct
-	qb2 := NewQueryBuilder("primkey", "oops")
+	var newInvalidGroup []testQueryableStruct
+	var newValidGroup []testQueryableStruct
+	qb_singleValid := NewBlankQueryBuilder()
+	qb_groupValid := NewBlankQueryBuilder()
 	
+	// Read the data into the variables
 	json.Unmarshal([]byte(new1json), &new1)
-	json.Unmarshal([]byte(newgroupjson), &newGroup)
+	json.Unmarshal([]byte(newgroupinvalidjson), &newInvalidGroup)
+	json.Unmarshal([]byte(newgroupvalidjson), &newValidGroup)
 
+	// Test on one struct
 	t.Run("Test building insert for one struct", func(t *testing.T) {
-		qry := qb2.BuildInsert("sometable", new1)
+		qry := qb_singleValid.BuildInsert("sometable", new1)
 		exp := "INSERT INTO sometable (dbword, dbvalue, dbistrue, dbsomething) VALUES ($1, $2, DEFAULT, '');"
 		if qry != exp {
-			t.Errorf("Expected: %s\nReceived: %s", exp, qry)
+			t.Errorf("Expected: %s\nReceived: %v", exp, qry)
+		}
+		args := qb_singleValid.GetArgsAsString()
+		if args != "new1, 5" {
+			t.Errorf("Expected: new1 5\nReceived: %s", args)
 		}
 	})
-	t.Run("Test multi insert", func(t *testing.T) {
-		qry := qb2.BuildMultiInsert("sometable", ToAnySlice(newGroup))
-		vals := qb2.GetArgs()
-		exp := `INSERT INTO sometable (dbword, dbvalue, dbistrue, dbsomething) VALUES ($1, $2, DEFAULT, ''), ($3, 0, $4, ''), (NULL, 0, $5, $6);`
+
+	t.Run("Test multi insert - Invalid", func(t *testing.T) {
+		valid := ValidateMultiStruct(newInvalidGroup)
+		if valid {
+			t.Error("Expected object to be invalid, was valid")
+		}
+	})
+
+	t.Run("Test multi insert", func(t *testing.T) { 
+		valid := ValidateMultiStruct(newValidGroup)
+		if !valid {
+			t.Error("Expected object to be valid, was invalid")
+		}
+
+		qry := qb_groupValid.BuildMultiInsert("sometable", ToAnySlice(newValidGroup))
+		vals := qb_groupValid.GetArgs()
+		exp := `INSERT INTO sometable (dbword, dbvalue, dbistrue, dbsomething) VALUES ($1, $2, DEFAULT, ''), ($3, 0, $4, ''), ($5, 0, $6, $7);`
 		if qry != exp {
 			t.Errorf("Expected: %s\nReceived: %s\nVals: %v", exp, qry, vals)
 		}
+		args := qb_groupValid.GetArgsAsString()
+		if args != "new1, 5, new2, true, valid, false, more text" {
+			t.Errorf("Expected: new1, 5, new2, true, valid, false, more text\nReceived: %s", args)
+		}
+
+
 	})
 }
