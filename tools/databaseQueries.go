@@ -163,7 +163,6 @@ func SetFromURL[T any](qb QueryBuildTool, r *http.Request, model T) error {
 				continue
 			}
 		}
-
 		qb.SetWhere(field_name, field_value)
 	}
 	return nil
