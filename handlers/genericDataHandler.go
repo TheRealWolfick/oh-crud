@@ -52,11 +52,11 @@ func handleAddNewResource[T any](
 			return
 		}
 
-		suc, _ := tools.SingleInsert(r.Context(), db, tableName, valid_resources)
+		suc, res := tools.SingleInsert(r.Context(), db, tableName, resource)
 
 		// Validate Response
 		if !suc {
-			http.Error(w, fmt.Sprintf("Failed to insert resource into '%s'", tableName), http.StatusInternalServerError)
+			http.Error(w, fmt.Sprintf("Failed to insert resource into '%s'", res.Query), http.StatusInternalServerError)
 			return
 		}
 

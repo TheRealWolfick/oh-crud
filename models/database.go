@@ -10,6 +10,7 @@ import (
 type BatchInsertResult struct {
 	SuccessCount int
 	FailedItems  []interface{}
+	Query 			 string
 }
 
 type DBExecutor interface {

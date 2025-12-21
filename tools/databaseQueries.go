@@ -15,15 +15,15 @@ func SingleInsert(
 	db models.DBExecutor,
 	tableName string,
 	item interface{},
-) (bool, error) {
+) (bool, models.BatchInsertResult) {
 	result := RecursiveBatchInsert(ctx, db, tableName, []interface{}{item})
 	
 	if result.SuccessCount == 1 {
-		return true, nil
+		return true, result
 	}
 	
 	// Return false with no error since the item is in FailedItems
-	return false, nil
+	return false, result
 }
 
 func RecursiveBatchInsert(
@@ -74,6 +74,7 @@ func RecursiveBatchInsert(
 	result.SuccessCount += rightResult.SuccessCount
 	result.FailedItems = append(result.FailedItems, rightResult.FailedItems...)
 
+	result.Query = qb.query
 	return result
 }
 

@@ -50,6 +50,7 @@ func main() {
 	authMiddleware := middleware.RequireAuth(pool)
 	userHandler := handlers.NewUserHandler(logger, log_level, pool)
 	domainHandler := handlers.NewGenericDataHandler[models.GetDomain](logger, log_level, pool, "domains")
+	buildingHandler := handlers.NewGenericDataHandler[models.Building](logger, log_level, pool, "buildings")
 
 	// Setup the server
 	mux := http.NewServeMux()
@@ -59,11 +60,18 @@ func main() {
 	mux.Handle("GET /user", authMiddleware(http.HandlerFunc(userHandler.GetUserInfo)))
 	mux.Handle("PUT /user", authMiddleware(http.HandlerFunc(userHandler.UpdateUserInfo)))
 	
+	// Domain
 	mux.Handle("GET /domain", authMiddleware(domainHandler.HandleGet()))
 	mux.Handle("POST /domain", authMiddleware(domainHandler.HandleAddNew()))
 	mux.Handle("POST /domain-group", authMiddleware(domainHandler.HandleAddMultipleNew()))
 	mux.Handle("PUT /domain", authMiddleware(domainHandler.HandleUpdate()))
 	mux.Handle("DELETE /domain", authMiddleware(domainHandler.HandleDelete()))
+	// Building
+	mux.Handle("GET /building", authMiddleware(buildingHandler.HandleGet()))
+	mux.Handle("POST /building", authMiddleware(buildingHandler.HandleAddNew()))
+	mux.Handle("POST /building-group", authMiddleware(buildingHandler.HandleAddMultipleNew()))
+	mux.Handle("PUT /building", authMiddleware(buildingHandler.HandleUpdate()))
+	mux.Handle("DELETE /building", authMiddleware(buildingHandler.HandleDelete()))
 
 	// Launch the server
 	http.ListenAndServe(":8080", mux)

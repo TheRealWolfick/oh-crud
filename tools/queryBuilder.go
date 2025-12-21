@@ -249,46 +249,53 @@ func (qb *BlankQueryBuilder) BuildMultiInsert(table string, models []any) string
 	// Iterate through each model
 	for model_pos, model := range models {
 
-		local_v := make([]string, 0)
-		t := reflect.TypeOf(model)
+		local_values := make([]string, 0)
+		typ := reflect.TypeOf(model)
 		vals := reflect.ValueOf(model)
 
-		if t.Kind() != reflect.Struct {
-			continue
+		if typ.Kind() == reflect.Ptr {
+			typ = typ.Elem()
 		}
 
 		// Iterate through each field of the model
-		for i := 0; i < t.NumField(); i++ {
-			db_col := t.Field(i).Tag.Get("db")
-			if db_col == "" || db_col == "-" {
+		for i := 0; i < typ.NumField(); i++ {
+			database_column_name := typ.Field(i).Tag.Get("db")
+			if database_column_name == "" || database_column_name == "-" {
 				continue
 			}
 
 			if model_pos == 0 {
-				c = append(c, db_col)
+				c = append(c, database_column_name)
 			}
+
+			field_val := vals.Field(i)
+			if field_val.Kind() == reflect.Ptr {
+				field_val = field_val.Elem()
+			}
+
 			// Check if it is a valid value (exists)
-			if vals.Field(i).Elem().IsValid() {
-				local_v = append(local_v, fmt.Sprintf("$%d", qb.pos))
+			if field_val.IsValid() {
+				local_values = append(local_values, fmt.Sprintf("$%d", qb.pos))
 				qb.pos++
 				qb.args = append(qb.args, vals.Field(i).Elem())
 			} else {
 				// Read model's "none" default
-				empty_value, exists := t.Field(i).Tag.Lookup("none")
+				empty_value, exists := typ.Field(i).Tag.Lookup("none")
 				if exists {
 					if empty_value == "" {
-						local_v = append(local_v, "''")
+						local_values = append(local_values, "''")
 					} else {
-						local_v = append(local_v, empty_value)
+						local_values = append(local_values, empty_value)
 					}
 				}
 			}
 		} 
 
-		v = append(v, fmt.Sprintf(("(%s)"), strings.Join(local_v, ", ")))
+		v = append(v, fmt.Sprintf(("(%s)"), strings.Join(local_values, ", ")))
 	}
 
 	qb.query = fmt.Sprintf("INSERT INTO %s (%s) VALUES %s;", table, strings.Join(c, ", "), fmt.Sprintf("%s",strings.Join(v, ", ")))
+	fmt.Print(qb.query)
 	return qb.query
 }
 
