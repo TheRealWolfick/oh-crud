@@ -78,27 +78,25 @@ func RecursiveBatchInsert(
 }
 
 //
-func SetFromStruct(qb *QueryBuilder, v interface{}) {
+func SetValueFromStruct(qb QueryBuildTool, v interface{}) {
 	val := reflect.ValueOf(v)
 	if val.Kind() == reflect.Ptr {
 		val = val.Elem()
 	}
 	
-	typ := val.Type()
+	// Get all database field tags
+	dbFields := GetDatabaseFields(v)
 	
-	for i := 0; i < val.NumField(); i++ {
-		field := val.Field(i)
-		dbTag := typ.Field(i).Tag.Get("db")
-		
-		if dbTag == "" || dbTag == "-" {
-			continue
-		}
+	// Iterate through db fields and set values
+	for _, field_name := range dbFields {
+
+		field := val.FieldByName(field_name)
 		
 		// Skip nil pointers
 		if field.Kind() == reflect.Ptr && field.IsNil() {
 			continue
 		}
-		
+
 		// Get actual value (dereference if pointer)
 		var actualValue interface{}
 		if field.Kind() == reflect.Ptr {
@@ -107,67 +105,66 @@ func SetFromStruct(qb *QueryBuilder, v interface{}) {
 			actualValue = field.Interface()
 		}
 		
-		qb.Set(dbTag, actualValue)
+		qb.SetValue(GetDBTagFromField(v, field_name), actualValue)
 	}
 }
 
 
-
-func SetFromURL[T any](qb QueryBuildTool, r *http.Request, model T) error {
+func SetWhereFromURL[T any](qb QueryBuildTool, r *http.Request, model T) error {
 	// Parse the form
 	if err := r.ParseForm(); err != nil {
 		return err
-	} 
+	}
 	
 	if len(r.URL.Query()) < 1 {
 		return nil
 	}
- 
+	
 	val := reflect.ValueOf(model)
 	if val.Kind() == reflect.Ptr {
 		val = val.Elem()
 	}
-
+	
 	// Ensure a struct was passed in
 	if reflect.TypeOf(model).Kind() != reflect.Struct {
 		return errors.New("Not a struct!")
 	}
-
-	typ := val.Type()
-	for i := 0; i < val.NumField(); i++ {
-		
-		field_name := typ.Field(i).Tag.Get("db")
-		if field_name == "" || field_name == "-" {
+	
+	// Get all database fields
+	dbFields := GetDatabaseFields(model)
+	
+	// Iterate through db fields and set where clauses
+	for _, field_name := range dbFields {
+		fieldValue := r.FormValue(GetDBTagFromField(model, field_name))
+		if fieldValue == "" {
 			continue
 		}
 		
-		field_value := r.FormValue(field_name)
-		if field_value == "" {
-			continue
-		}
-
 		// Check to make sure it is valid
-		switch typ.Field(i).Type.Kind() {
-		case reflect.Int, reflect.Int32, reflect.Int64:
-			if _, err := strconv.ParseInt(field_value, 10, 64); err != nil {
-				continue 
-			}
+		field, _ := reflect.TypeOf(model).FieldByName(field_name)
 
-		case reflect.Bool:
-			if _, err := strconv.ParseBool(field_value); err != nil {
+		switch field.Type.Kind() {
+		case reflect.Int, reflect.Int32, reflect.Int64:
+			if _, err := strconv.ParseInt(fieldValue, 10, 64); err != nil {
 				continue
 			}
-
+			
+		case reflect.Bool:
+			if _, err := strconv.ParseBool(fieldValue); err != nil {
+				continue
+			}
+			
 		case reflect.Float32, reflect.Float64:
-			if _, err := strconv.ParseFloat(field_value, 64); err != nil {
+			if _, err := strconv.ParseFloat(fieldValue, 64); err != nil {
 				continue
 			}
 		}
-		qb.SetWhere(field_name, field_value)
+		
+		qb.SetWhere(GetDBTagFromField(model, field_name), fieldValue)
 	}
+	
 	return nil
 }
-
 
 func GetDatabaseColumns[T any](model T) []string {
 	val := reflect.TypeOf(model)

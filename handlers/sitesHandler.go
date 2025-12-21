@@ -101,19 +101,19 @@ func (h *sitesHandler) AddMultiNewDomain(w http.ResponseWriter, r *http.Request)
 
 
 // Select domains from DB
-func (h *sitesHandler) SelectDomains(w http.ResponseWriter, r *http.Request) {
-	var domainsRequest []models.GetDomains
+func (h *sitesHandler) GetDomains(w http.ResponseWriter, r *http.Request) {
+	var domainsRequest []models.GetDomain
 
 	// Create new query builder 
 	qb := tools.NewBlankQueryBuilder()
 	
 	// Load where vals
-	if err := tools.SetFromURL(qb, r, models.GetDomains{}); err != nil {
+	if err := tools.SetWhereFromURL(qb, r, models.GetDomain{}); err != nil {
 		http.Error(w, "Error in parsing where clauses", http.StatusBadRequest)
 	}
 	
 	// Build the query
-	query := qb.BuildSelect("domains", tools.GetDatabaseColumns(models.GetDomains{}))
+	query := qb.BuildSelect("domains", tools.GetDatabaseColumns(models.GetDomain{}))
 
 	// Get the rows
 	rows, err := h.db.Query(r.Context(), query, qb.GetArgs()...)
@@ -125,11 +125,47 @@ func (h *sitesHandler) SelectDomains(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	
 	for rows.Next() {
-		var domain models.GetDomains
+		var domain models.GetDomain
 		rows.Scan(&domain.Domain_code, &domain.Description)
 		domainsRequest = append(domainsRequest, domain)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(domainsRequest)
+}
+
+
+// Update domain
+func(h *sitesHandler) UpdateDomain(w http.ResponseWriter, r *http.Request) {
+	var updatedDomain models.GetDomain
+	err := json.NewDecoder(r.Body).Decode(&updatedDomain)
+	
+	if err != nil {
+		http.Error(w, "Error reading request body", http.StatusBadRequest)
+		return
+	}
+
+	// Create new query builder
+	qb := tools.NewBlankQueryBuilder()
+
+	// Set values from the struct
+	tools.SetValueFromStruct(qb, updatedDomain)
+
+	// Build the query
+	query := qb.BuildUpdate("domains", r, updatedDomain)
+
+	// Execute the query
+	cmdtag, err := h.db.Exec(r.Context(), query, qb.GetArgs()...)
+	if err != nil {
+		http.Error(w, "Error with executing query to update domain", http.StatusInternalServerError)
+		return
+	}
+
+	// Build and return
+	response := map[string]interface{}{
+		"action":        "UPDATE",
+		"rows_affected": cmdtag.RowsAffected(),
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }

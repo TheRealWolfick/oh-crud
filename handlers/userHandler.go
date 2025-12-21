@@ -81,7 +81,7 @@ func (h *userHandler) UpdateUserInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user.Username = &requester.Username
-	qb := tools.NewQueryBuilder("username", user.Username)
+	qb := tools.NewBlankQueryBuilder()
 
 	// Get current user info
 	var user_cur models.UserCreateUpdate
@@ -92,13 +92,13 @@ func (h *userHandler) UpdateUserInfo(w http.ResponseWriter, r *http.Request) {
 	}
 	
 	// Create query builder and compare old an new info
-	middleware.CompareFirst(qb.Set, "email", user_cur.Email, user.Email)
-	middleware.CompareFirst(qb.Set, "mobile", user_cur.Mobile, user.Mobile)
+	middleware.CompareFirst(qb.SetValue, "email", user_cur.Email, user.Email)
+	middleware.CompareFirst(qb.SetValue, "mobile", user_cur.Mobile, user.Mobile)
 
 	//Check query actually has updated
 	if qb.HasUpdates() {
 		var cmdTag pgconn.CommandTag
-		cmdTag, err = h.db.Exec(r.Context(), qb.BuildUpdate("users"), qb.GetArgs()...)
+		cmdTag, err = h.db.Exec(r.Context(), qb.BuildUpdate("users", r, models.UserCreateUpdate{}), qb.GetArgs()...)
 		if err != nil {
 		  http.Error(w, "Something went wrong in User Update!", http.StatusInternalServerError)
 		}

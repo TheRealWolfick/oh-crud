@@ -1,6 +1,8 @@
 package tools
 
-import "reflect"
+import (
+	"reflect"
+)
 
 func StructIsEmpty[T any](s *T) bool {
 	if s == nil {
@@ -21,11 +23,24 @@ func Deref(v reflect.Value) reflect.Value {
 	return v
 }
 
+
+// This function takes a struct and will return it inside a valid or invalid slice. This
+// is just a wrapper for ValidateMultiStruct.
+// Validation is done via the "req" tag which are extracted from the first struct being
+// passed to GetRequiredFields.
+// 
+// Return: []valid, []invalid
 func ValidateStruct[T any](s T) ([]T, []T) {
 	asStruct := []T{s}
 	return ValidateMultiStruct(asStruct)
 }
 
+
+// This function takes a slice of any struct and will return it as valid and invalid slices. 
+// Validation is done via the "req" tag which are extracted from the first struct being
+// passed to GetRequiredFields.
+// 
+// Return: []valid, []invalid
 func ValidateMultiStruct[T any](s []T) ([]T, []T) {
 	if len(s) < 1 {
 		return make([]T, 0), make([]T, 0)
@@ -34,21 +49,10 @@ func ValidateMultiStruct[T any](s []T) ([]T, []T) {
 		return make([]T, 0), make([]T, 0)
 	}
 
-	req_fields := make([]string, 0)
+	req_fields := GetRequiredFields(s[0])
 	valid_structs := make([]T, 0)
 	invalid_structs := make([]T, 0)
 	is_valid := true
-
-	// Get required fields
-	check_vals := reflect.ValueOf(s[0])
-	check_typ := check_vals.Type()
-
-	for i := 0; i < check_typ.NumField(); i++ {
-		fieldType := check_typ.Field(i)
-		if fieldType.Tag.Get("req") == "true" {
-			req_fields = append(req_fields, fieldType.Name)
-		}
-	}
 
 	for _, m := range s {
 		vals := reflect.ValueOf(m)
@@ -101,3 +105,70 @@ func ToAnySlice[T any](slice []T) []any {
 	}
 	return result
 }
+
+
+func GetFields[T any](model T, tag string, value string) []string {
+	if reflect.TypeOf(model).Kind() != reflect.Struct {
+		return nil
+	}
+
+	reqFields := make([]string, 0)
+
+	vals := reflect.ValueOf(model)
+	typ := reflect.TypeOf(model)
+
+	for i := 0; i < vals.NumField(); i++ {
+		// Read if required
+		req := typ.Field(i).Tag.Get(tag)
+
+		if value == "exists" && req != "" && req != "-" {
+			reqFields = append(reqFields, typ.Field(i).Name)
+		} else if req == value {
+			reqFields = append(reqFields, typ.Field(i).Name)
+		}
+	}
+
+	return reqFields
+}
+
+// Get all field where the struct has the tag req:"true"
+func GetRequiredFields[T any](model T) []string {
+	return GetFields(model, "req", "true")
+}
+
+// Get all the fields which have a "pk" tag
+func GetPrimaryKeys[T any](model T) []string {
+	return GetFields(model, "pk", "true")
+}
+
+// Get all the fields with a db tag
+func GetDatabaseFields[T any](model T) []string {
+	return GetFields(model, "db", "exists")
+}
+
+func GetDBTagFromField[T interface{}](model T, field string) string {
+	f, _ := reflect.TypeOf(model).FieldByName(field)
+	return f.Tag.Get("db")
+}
+
+// Remove all the items in element b from element a
+func StringSliceSubtract(a []string, b []string) []string {
+	new_slice := make([]string, 0, len(a))
+	var add bool
+
+	for _, a_val := range a {
+		add = true
+		for _, b_val := range b {
+			if a_val == b_val {
+				add = false
+				break
+			}
+		}
+		if add {
+			new_slice = append(new_slice, a_val)
+		}
+	}
+
+	return  new_slice
+}
+

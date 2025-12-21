@@ -2,6 +2,7 @@ package tools
 
 import (
 	"fmt"
+	"net/http"
 	"reflect"
 	"strings"
 )
@@ -21,7 +22,7 @@ type BlankQueryBuilder struct {
 type QueryBuildTool interface {
 	GetArgs() []any
 	GetArgsAsString() string
-	Set(field string, value any)
+	SetValue(field string, value any)
 	SetWhere(field string, value any)
 }
 
@@ -101,7 +102,7 @@ func (qb *BlankQueryBuilder) GetArgsAsString() string {
 
 // Save a field and value into the query builder. Intended to use with
 // updating fields (set only the relevant fields)
-func (qb *QueryBuilder) Set(field string, value any) {
+func (qb *QueryBuilder) SetValue(field string, value any) {
 	if value == nil {
 		return
 	}
@@ -117,7 +118,7 @@ func (qb *QueryBuilder) Set(field string, value any) {
 		qb.args[qb.values[field]-1] = value
 	}
 }
-func (qb *BlankQueryBuilder) Set(field string, value any) {
+func (qb *BlankQueryBuilder) SetValue(field string, value any) {
 	if value == nil {
 		return
 	}
@@ -175,9 +176,12 @@ func (qb *BlankQueryBuilder) BuildInsert(table string, mod any) string {
 	if qb.query != "" {
 		return qb.query
 	}
+	if reflect.TypeOf(mod).Kind() != reflect.Struct {
+		return ""
+	}
 
-	// Reset the QueryBuilder to a blank state
-	db_column := make([]string, 0)
+	//
+	db_columns := make([]string, 0)
 	value := make([]string, 0)
 
 	t := reflect.TypeOf(mod)
@@ -188,8 +192,14 @@ func (qb *BlankQueryBuilder) BuildInsert(table string, mod any) string {
 	}
 
 	for i := 0; i < t.NumField(); i++ {
-		db_column = append(db_column, t.Field(i).Tag.Get("db"))
+		// Test to ensure it has a db field
+		db_field := t.Field(i).Tag.Get("db")
+		if db_field == "" || db_field == "-" {
+			continue
+		}
 		
+		db_columns = append(db_columns, db_field)
+
 		field := vals.Field(i)
 		
 		// Check if field is a pointer and not nil
@@ -216,7 +226,7 @@ func (qb *BlankQueryBuilder) BuildInsert(table string, mod any) string {
 		}
 	}
 
-	qb.query = fmt.Sprintf("INSERT INTO %s (%s) VALUES %s;", table, strings.Join(db_column, ", "), fmt.Sprintf("(%s)",strings.Join(value, ", ")))
+	qb.query = fmt.Sprintf("INSERT INTO %s (%s) VALUES %s;", table, strings.Join(db_columns, ", "), fmt.Sprintf("(%s)",strings.Join(value, ", ")))
 	
 	return qb.query
 }
@@ -249,9 +259,13 @@ func (qb *BlankQueryBuilder) BuildMultiInsert(table string, models []any) string
 
 		// Iterate through each field of the model
 		for i := 0; i < t.NumField(); i++ {
+			db_col := t.Field(i).Tag.Get("db")
+			if db_col == "" || db_col == "-" {
+				continue
+			}
 
 			if model_pos == 0 {
-				c = append(c, t.Field(i).Tag.Get("db"))
+				c = append(c, db_col)
 			}
 			// Check if it is a valid value (exists)
 			if vals.Field(i).Elem().IsValid() {
@@ -297,9 +311,34 @@ func (qb *QueryBuilder) BuildSelect(table string, select_fields []string) string
 	}
 
 	return fmt.Sprintf("SELECT %s FROM %s WHERE %s;", strings.Join(select_fields, ", "), table, strings.Join(w, ", "))
-}
+} 
 
-func (qb *QueryBuilder) BuildUpdate(table string) string {
+func (qb *BlankQueryBuilder) BuildUpdate(table string, r *http.Request, model interface{}) string {
+	if qb.query != "" {
+		return qb.query
+	}
+
+	// Read the url annd get the database columns that where is allowed on
+	whereFields := r.URL.Query()
+	prim_keys := GetPrimaryKeys(model)
+
+	// Search for any of the main keys from the URL query for the where clause. Soft fail on no keys
+	whereExists := false
+	for _, key := range prim_keys {
+		f, _ := reflect.TypeOf(model).FieldByName(key)
+		whereval := whereFields.Get(f.Tag.Get("db"))
+
+		if whereval != "" {
+			qb.SetWhere(f.Tag.Get("db"), whereval)
+			whereExists = true
+		}
+	}
+
+	if !whereExists {
+		return ""
+	}
+
+	// Construct the where and value clauses, where must be an exact match
 	w := make([]string, 0)
 	v := make([]string, 0)
 
@@ -311,5 +350,6 @@ func (qb *QueryBuilder) BuildUpdate(table string) string {
 		v = append(v, fmt.Sprintf("%s = $%d", key, val))
 	}
 
-	return fmt.Sprintf("UPDATE %s SET %s WHERE %s;", table, strings.Join(v, ", "), strings.Join(w, ", "))
+	qb.query = fmt.Sprintf("UPDATE %s SET %s WHERE %s;", table, strings.Join(v, ", "), strings.Join(w, ", "))
+	return qb.query
 }

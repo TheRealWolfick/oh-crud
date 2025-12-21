@@ -2,6 +2,7 @@ package tools
 
 import (
 	"encoding/json"
+	"net/http"
 	"reflect"
 	"testing"
 )
@@ -14,11 +15,13 @@ type testStruct struct {
 }
 
 type testQueryableStruct struct {
-	Word *string `json:"word,omitempty" db:"dbword" req:"true"`
-	Value *int `json:"value,omitempty" db:"dbvalue" none:"0"`
+	Word *string `json:"word,omitempty" db:"dbword" req:"true" pk:"true"`
+	Value *int `json:"value,omitempty" db:"dbvalue" req:"true" none:"0"`
 	IsTrue *bool `json:"istrue,omitempty" db:"dbistrue" none:"DEFAULT"`
 	Something *string `json:"something,omitempty" db:"dbsomething" none:""`
+	NotDBVal *string `json:"notdbval,omitempty"`
 }
+
 
 func TestStructIsEmpty(t *testing.T) {
 	s := &testStruct{}
@@ -41,16 +44,46 @@ func TestStructIsEmpty(t *testing.T) {
 	})
 }
 
+
+func TestGettingFieldsFromStructs(t *testing.T) {
+	var testStruct testQueryableStruct
+	testjson := `{"word": "a word", "value": 15, "something", "description"}`
+	json.Unmarshal([]byte(testjson), &testStruct)
+
+	t.Run("Get all the required values", func(t *testing.T) {
+		req_fields := GetRequiredFields(testStruct)
+		if !reflect.DeepEqual(req_fields, []string{"Word", "Value"}) {
+			t.Errorf("Expected to receieve only Word and Value, recieved: %v", req_fields)
+		}
+	})
+
+	t.Run("Get the primary keys", func(t *testing.T) {
+		pk_fields := GetPrimaryKeys(testStruct)
+		if !reflect.DeepEqual(pk_fields, []string{"Word"}) {
+			t.Errorf("Expected to receieve only Word, recieved: %v", pk_fields)
+		}
+	})
+
+	t.Run("Get all the db fields", func(t *testing.T) {
+		db_fields := GetDatabaseFields(testStruct)
+		if !reflect.DeepEqual(db_fields, []string{"dbword", "dbvalue", "dbistrue", "dbsomething"}) {
+			t.Errorf("Expected to receieve [dbword, dbvalue, dbistrue, dbsomething] recieved: %v", db_fields)
+		}
+	})
+}
+
+
 func TestQueryBuilder(t *testing.T) {
-	qb := NewQueryBuilder("dbword", "primvalue")
+	qb := NewBlankQueryBuilder()
 	insertStruct := &testQueryableStruct{}
 	insertData := `{"value": 50, "something": "some text"}`
 	json.Unmarshal([]byte(insertData), &insertStruct)
 
   t.Run("Does a new query builder have updates?", func(t *testing.T) {if qb.HasUpdates() {t.Error("Expected there to be no updates")}})
 
-	qb.Set("dbsomething" ,*insertStruct.Something)
-	qb.Set("dbvalue", *insertStruct.Value)
+	qb.SetWhere("dbword", "primvalue")
+	qb.SetValue("dbsomething" ,*insertStruct.Something)
+	qb.SetValue("dbvalue", *insertStruct.Value)
 
   t.Run("Does a query builder with updates have updates?", func(t *testing.T) {if !qb.HasUpdates() {t.Error("Expected there to be updates")}})
 	t.Run("Does the GetArgs return the correct values", func(t *testing.T) {
@@ -61,21 +94,15 @@ func TestQueryBuilder(t *testing.T) {
 
 	// Test bulding select and update queries
 	t.Run("Build select string", func(t *testing.T) {
-		if qb.BuildSelect("sometable", []string{"fieldA", "fieldB", "fieldC"}) != "SELECT fieldA, fieldB, fieldC FROM sometable WHERE dbword = $1;" {
-			t.Errorf("Expected: %s\nReceived:%s", "SELECT fieldA, fieldB, fieldC FROM sometable WHERE dbword = $1;", qb.BuildSelect("sometable", []string{"fieldA", "fieldB", "fieldC"}))
-		}
-	})
-	t.Run("Build update string", func(t *testing.T) {
-		updateString := qb.BuildUpdate("sometable")
-		if updateString != "UPDATE sometable SET dbvalue = $3, dbsomething = $2 WHERE dbword = $1;" && updateString != "UPDATE sometable SET dbsomething = $2, dbvalue = $3 WHERE dbword = $1;" {
-			t.Errorf("Error in bulding update statement!\nReceived: '%s'", updateString)
+		if qb.BuildSelect("sometable", []string{"fieldA", "fieldB", "fieldC"}) != "SELECT fieldA, fieldB, fieldC FROM sometable WHERE dbword ~* $1;" {
+			t.Errorf("Expected: %s\nReceived:%s", "SELECT fieldA, fieldB, fieldC FROM sometable WHERE dbword ~* $1;", qb.BuildSelect("sometable", []string{"fieldA", "fieldB", "fieldC"}))
 		}
 	})
 
 	// Test insert and multi insert queries
 	new1json := `{"word": "new1", "value": 5}`
 	newgroupinvalidjson := `[{"word": "new1", "value": 5}, {"word": "new2", "istrue": true}, {"istrue": false, "something": "more text"}]`
-	newgroupvalidjson := `[{"word": "new1", "value": 5}, {"word": "new2", "istrue": true}, {"word": "valid", "istrue": false, "something": "more text"}]`
+	newgroupvalidjson := `[{"word": "new1", "value": 5}, {"word": "new2", "value": 50, "notdbval": "redundant"}, {"word": "valid", "value": 15, "istrue": false, "something": "more text"}]`
 	var new1 testQueryableStruct
 	var newInvalidGroup []testQueryableStruct
 	var newValidGroup []testQueryableStruct
@@ -101,29 +128,273 @@ func TestQueryBuilder(t *testing.T) {
 	})
 
 	t.Run("Test multi insert - Invalid", func(t *testing.T) {
-		valid := ValidateMultiStruct(newInvalidGroup)
-		if valid {
+		valid, invalid := ValidateMultiStruct(newInvalidGroup)
+		if len(valid) != 1 || len(invalid) != 2 {
 			t.Error("Expected object to be invalid, was valid")
 		}
 	})
 
-	t.Run("Test multi insert", func(t *testing.T) { 
-		valid := ValidateMultiStruct(newValidGroup)
-		if !valid {
-			t.Error("Expected object to be valid, was invalid")
+	t.Run("Test multi insert - valid", func(t *testing.T) { 
+		valid, invalid := ValidateMultiStruct(newValidGroup)
+		if len(valid) != 3 {
+			t.Errorf("Expected object to be valid, was invalid. Invalid entries: %v", invalid)
 		}
 
 		qry := qb_groupValid.BuildMultiInsert("sometable", ToAnySlice(newValidGroup))
 		vals := qb_groupValid.GetArgs()
-		exp := `INSERT INTO sometable (dbword, dbvalue, dbistrue, dbsomething) VALUES ($1, $2, DEFAULT, ''), ($3, 0, $4, ''), ($5, 0, $6, $7);`
+		exp := `INSERT INTO sometable (dbword, dbvalue, dbistrue, dbsomething) VALUES ($1, $2, DEFAULT, ''), ($3, $4, DEFAULT, ''), ($5, $6, $7, $8);`
 		if qry != exp {
 			t.Errorf("Expected: %s\nReceived: %s\nVals: %v", exp, qry, vals)
 		}
 		args := qb_groupValid.GetArgsAsString()
-		if args != "new1, 5, new2, true, valid, false, more text" {
-			t.Errorf("Expected: new1, 5, new2, true, valid, false, more text\nReceived: %s", args)
+		if args != "new1, 5, new2, 50, valid, 15, false, more text" {
+			t.Errorf("Expected: new1, 5, new2, 50, valid, 15, false, more text\nReceived: %s", args)
 		}
 
 
+	})
+}
+
+
+func TestSetValueFromStruct(t *testing.T) {
+	t.Run("Set values from struct with non-nil pointer fields", func(t *testing.T) {
+		qb := NewBlankQueryBuilder()
+		word := "test"
+		value := 42
+		isTrue := true
+		something := "description"
+		
+		testStruct := &testQueryableStruct{
+			Word:      &word,
+			Value:     &value,
+			IsTrue:    &isTrue,
+			Something: &something,
+		}
+		
+		SetValueFromStruct(qb, testStruct)
+		
+		args := qb.GetArgs()
+		expected := []any{"test", 42, true, "description"}
+		
+		if !reflect.DeepEqual(args, expected) {
+			t.Errorf("Expected args: %v\nReceived: %v", expected, args)
+		}
+	})
+	
+	t.Run("Skip nil pointer fields", func(t *testing.T) {
+		qb := NewBlankQueryBuilder()
+		value := 42
+		
+		testStruct := &testQueryableStruct{
+			Word:      nil,
+			Value:     &value,
+			IsTrue:    nil,
+			Something: nil,
+		}
+		
+		SetValueFromStruct(qb, testStruct)
+		
+		args := qb.GetArgs()
+		expected := []any{42}
+		
+		if !reflect.DeepEqual(args, expected) {
+			t.Errorf("Expected only Value to be set: %v\nReceived: %v", expected, args)
+		}
+	})
+	
+	t.Run("Skip fields without db tag", func(t *testing.T) {
+		qb := NewBlankQueryBuilder()
+		word := "test"
+		value := 42
+		notdbval := "should be skipped"
+		
+		testStruct := &testQueryableStruct{
+			Word:     &word,
+			Value:    &value,
+			NotDBVal: &notdbval,
+		}
+		
+		SetValueFromStruct(qb, testStruct)
+		
+		args := qb.GetArgs()
+		expected := []any{"test", 42}
+		
+		if !reflect.DeepEqual(args, expected) {
+			t.Errorf("Expected NotDBVal to be skipped: %v\nReceived: %v", expected, args)
+		}
+	})
+	
+	t.Run("Handle non-pointer struct", func(t *testing.T) {
+		qb := NewBlankQueryBuilder()
+		
+		testStruct := testStruct{
+			Word:      "hello",
+			Value:     100,
+			IsTrue:    false,
+			Something: "world",
+		}
+		
+		SetValueFromStruct(qb, testStruct)
+		
+		args := qb.GetArgs()
+		expected := []any{"hello", 100, false, "world"}
+		
+		if !reflect.DeepEqual(args, expected) {
+			t.Errorf("Expected all values from non-pointer struct: %v\nReceived: %v", expected, args)
+		}
+	})
+	
+	t.Run("Handle empty struct", func(t *testing.T) {
+		qb := NewBlankQueryBuilder()
+		
+		testStruct := &testQueryableStruct{}
+		
+		SetValueFromStruct(qb, testStruct)
+		
+		args := qb.GetArgs()
+		
+		if len(args) != 0 {
+			t.Errorf("Expected no values from empty struct\nReceived: %v", args)
+		}
+	})
+}
+func TestSetFromURL(t *testing.T) {
+	t.Run("Set where clauses from valid URL parameters", func(t *testing.T) {
+		qb := NewBlankQueryBuilder()
+		
+		req, _ := http.NewRequest("GET", "/?dbword=search&dbvalue=25&dbistrue=true", nil)
+		
+		model := testStruct{}
+		err := SetWhereFromURL(qb, req, model)
+		
+		if err != nil {
+			t.Errorf("Expected no error, got: %v", err)
+		}
+		
+		args := qb.GetArgs()
+		expected := []any{"search", "25", "true"}
+		
+		if !reflect.DeepEqual(args, expected) {
+			t.Errorf("Expected args: %v\nReceived: %v", expected, args)
+		}
+	})
+	
+	t.Run("Skip invalid integer values", func(t *testing.T) {
+		qb := NewBlankQueryBuilder()
+		
+		req, _ := http.NewRequest("GET", "/?dbword=search&dbvalue=notanumber", nil)
+		
+		model := testStruct{}
+		err := SetWhereFromURL(qb, req, model)
+		
+		if err != nil {
+			t.Errorf("Expected no error, got: %v", err)
+		}
+		
+		args := qb.GetArgs()
+		expected := []any{"search"}
+		
+		if !reflect.DeepEqual(args, expected) {
+			t.Errorf("Expected invalid integer to be skipped: %v\nReceived: %v", expected, args)
+		}
+	})
+	
+	t.Run("Skip invalid boolean values", func(t *testing.T) {
+		qb := NewBlankQueryBuilder()
+		
+		req, _ := http.NewRequest("GET", "/?dbword=test&dbistrue=notabool", nil)
+		
+		model := testStruct{}
+		err := SetWhereFromURL(qb, req, model)
+		
+		if err != nil {
+			t.Errorf("Expected no error, got: %v", err)
+		}
+		
+		args := qb.GetArgs()
+		expected := []any{"test"}
+		
+		if !reflect.DeepEqual(args, expected) {
+			t.Errorf("Expected invalid boolean to be skipped: %v\nReceived: %v", expected, args)
+		}
+	})
+	
+	t.Run("Handle empty query parameters", func(t *testing.T) {
+		qb := NewBlankQueryBuilder()
+		
+		req, _ := http.NewRequest("GET", "/", nil)
+		
+		model := testStruct{}
+		err := SetWhereFromURL(qb, req, model)
+		
+		if err != nil {
+			t.Errorf("Expected no error, got: %v", err)
+		}
+		
+		args := qb.GetArgs()
+		
+		if len(args) != 0 {
+			t.Errorf("Expected no args from empty query\nReceived: %v", args)
+		}
+	})
+	
+	t.Run("Skip fields without db tag", func(t *testing.T) {
+		qb := NewBlankQueryBuilder()
+		
+		req, _ := http.NewRequest("GET", "/?dbword=test&notdbval=shouldskip", nil)
+		
+		model := testQueryableStruct{}
+		err := SetWhereFromURL(qb, req, model)
+		
+		if err != nil {
+			t.Errorf("Expected no error, got: %v", err)
+		}
+		
+		args := qb.GetArgs()
+		expected := []any{"test"}
+		
+		if !reflect.DeepEqual(args, expected) {
+			t.Errorf("Expected field without db tag to be skipped: %v\nReceived: %v", expected, args)
+		}
+	})
+	
+	t.Run("Handle multiple valid parameters", func(t *testing.T) {
+		qb := NewBlankQueryBuilder()
+		
+		req, _ := http.NewRequest("GET", "/?dbword=search&dbvalue=100&dbistrue=false&dbsomething=text", nil)
+		
+		model := testStruct{}
+		err := SetWhereFromURL(qb, req, model)
+		
+		if err != nil {
+			t.Errorf("Expected no error, got: %v", err)
+		}
+		
+		args := qb.GetArgs()
+		expected := []any{"search", "100", "false", "text"}
+		
+		if !reflect.DeepEqual(args, expected) {
+			t.Errorf("Expected all valid parameters: %v\nReceived: %v", expected, args)
+		}
+	})
+	
+	t.Run("Skip empty parameter values", func(t *testing.T) {
+		qb := NewBlankQueryBuilder()
+		
+		req, _ := http.NewRequest("GET", "/?dbword=search&dbvalue=&dbsomething=text", nil)
+		
+		model := testStruct{}
+		err := SetWhereFromURL(qb, req, model)
+		
+		if err != nil {
+			t.Errorf("Expected no error, got: %v", err)
+		}
+		
+		args := qb.GetArgs()
+		expected := []any{"search", "text"}
+		
+		if !reflect.DeepEqual(args, expected) {
+			t.Errorf("Expected empty values to be skipped: %v\nReceived: %v", expected, args)
+		}
 	})
 }
