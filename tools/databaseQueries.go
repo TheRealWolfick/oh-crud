@@ -124,9 +124,15 @@ func SetWhereFromURL[T any](qb QueryBuildTool, r *http.Request, model T) error {
 	if val.Kind() == reflect.Ptr {
 		val = val.Elem()
 	}
+
+	typ := reflect.TypeOf(model)
+
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
 	
 	// Ensure a struct was passed in
-	if reflect.TypeOf(model).Kind() != reflect.Struct {
+	if typ.Kind() != reflect.Struct {
 		return errors.New("Not a struct!")
 	}
 	
@@ -141,9 +147,14 @@ func SetWhereFromURL[T any](qb QueryBuildTool, r *http.Request, model T) error {
 		}
 		
 		// Check to make sure it is valid
-		field, _ := reflect.TypeOf(model).FieldByName(field_name)
+		field, _ := typ.FieldByName(field_name)
+		fieldType := field.Type
+		if fieldType.Kind() == reflect.Ptr {
+			fieldType = fieldType.Elem()
+		}
 
-		switch field.Type.Kind() {
+
+		switch fieldType.Kind() {
 		case reflect.Int, reflect.Int32, reflect.Int64:
 			if _, err := strconv.ParseInt(fieldValue, 10, 64); err != nil {
 				continue

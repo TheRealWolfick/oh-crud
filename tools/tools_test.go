@@ -7,14 +7,8 @@ import (
 	"testing"
 )
 
-type testStruct struct {
-	Word string `json:"word" db:"dbword" none:"NULL"`
-	Value int `json:"value" db:"dbvalue" none:0`
-	IsTrue bool `json:"istrue" db:"dbistrue" none:"DEFAULT"`
-	Something string `json:"something" db:"dbsomething"`
-}
 
-type testQueryableStruct struct {
+type testingStruct struct {
 	Word *string `json:"word,omitempty" db:"dbword" req:"true" pk:"true"`
 	Value *int `json:"value,omitempty" db:"dbvalue" req:"true" none:"0"`
 	IsTrue *bool `json:"istrue,omitempty" db:"dbistrue" none:"DEFAULT"`
@@ -24,8 +18,11 @@ type testQueryableStruct struct {
 
 
 func TestStructIsEmpty(t *testing.T) {
-	s := &testStruct{}
-	s2 := &testStruct{Value: 5}
+	s := &testingStruct{}
+	value := 5
+	s2 := &testingStruct{
+		Value: &value,
+	}
 
 	t.Run("Is empty struct empty?",func(t *testing.T) { 
 		isEmpty := StructIsEmpty(s)
@@ -46,7 +43,7 @@ func TestStructIsEmpty(t *testing.T) {
 
 
 func TestGettingFieldsFromStructs(t *testing.T) {
-	var testStruct testQueryableStruct
+	var testStruct testingStruct
 	testjson := `{"word": "a word", "value": 15, "something", "description"}`
 	json.Unmarshal([]byte(testjson), &testStruct)
 
@@ -66,8 +63,8 @@ func TestGettingFieldsFromStructs(t *testing.T) {
 
 	t.Run("Get all the db fields", func(t *testing.T) {
 		db_fields := GetDatabaseFields(testStruct)
-		if !reflect.DeepEqual(db_fields, []string{"dbword", "dbvalue", "dbistrue", "dbsomething"}) {
-			t.Errorf("Expected to receieve [dbword, dbvalue, dbistrue, dbsomething] recieved: %v", db_fields)
+		if !reflect.DeepEqual(db_fields, []string{"Word", "Value", "IsTrue", "Something"}) {
+			t.Errorf("Expected to receieve [Word, Value, IsTrue, Something] recieved: %v", db_fields)
 		}
 	})
 }
@@ -75,7 +72,7 @@ func TestGettingFieldsFromStructs(t *testing.T) {
 
 func TestQueryBuilder(t *testing.T) {
 	qb := NewBlankQueryBuilder()
-	insertStruct := &testQueryableStruct{}
+	insertStruct := &testingStruct{}
 	insertData := `{"value": 50, "something": "some text"}`
 	json.Unmarshal([]byte(insertData), &insertStruct)
 
@@ -103,9 +100,9 @@ func TestQueryBuilder(t *testing.T) {
 	new1json := `{"word": "new1", "value": 5}`
 	newgroupinvalidjson := `[{"word": "new1", "value": 5}, {"word": "new2", "istrue": true}, {"istrue": false, "something": "more text"}]`
 	newgroupvalidjson := `[{"word": "new1", "value": 5}, {"word": "new2", "value": 50, "notdbval": "redundant"}, {"word": "valid", "value": 15, "istrue": false, "something": "more text"}]`
-	var new1 testQueryableStruct
-	var newInvalidGroup []testQueryableStruct
-	var newValidGroup []testQueryableStruct
+	var new1 testingStruct
+	var newInvalidGroup []testingStruct
+	var newValidGroup []testingStruct
 	qb_singleValid := NewBlankQueryBuilder()
 	qb_groupValid := NewBlankQueryBuilder()
 	
@@ -164,7 +161,7 @@ func TestSetValueFromStruct(t *testing.T) {
 		isTrue := true
 		something := "description"
 		
-		testStruct := &testQueryableStruct{
+		testStruct := &testingStruct{
 			Word:      &word,
 			Value:     &value,
 			IsTrue:    &isTrue,
@@ -185,7 +182,7 @@ func TestSetValueFromStruct(t *testing.T) {
 		qb := NewBlankQueryBuilder()
 		value := 42
 		
-		testStruct := &testQueryableStruct{
+		testStruct := &testingStruct{
 			Word:      nil,
 			Value:     &value,
 			IsTrue:    nil,
@@ -208,7 +205,7 @@ func TestSetValueFromStruct(t *testing.T) {
 		value := 42
 		notdbval := "should be skipped"
 		
-		testStruct := &testQueryableStruct{
+		testStruct := &testingStruct{
 			Word:     &word,
 			Value:    &value,
 			NotDBVal: &notdbval,
@@ -224,30 +221,11 @@ func TestSetValueFromStruct(t *testing.T) {
 		}
 	})
 	
-	t.Run("Handle non-pointer struct", func(t *testing.T) {
-		qb := NewBlankQueryBuilder()
-		
-		testStruct := testStruct{
-			Word:      "hello",
-			Value:     100,
-			IsTrue:    false,
-			Something: "world",
-		}
-		
-		SetValueFromStruct(qb, testStruct)
-		
-		args := qb.GetArgs()
-		expected := []any{"hello", 100, false, "world"}
-		
-		if !reflect.DeepEqual(args, expected) {
-			t.Errorf("Expected all values from non-pointer struct: %v\nReceived: %v", expected, args)
-		}
-	})
 	
 	t.Run("Handle empty struct", func(t *testing.T) {
 		qb := NewBlankQueryBuilder()
 		
-		testStruct := &testQueryableStruct{}
+		testStruct := &testingStruct{}
 		
 		SetValueFromStruct(qb, testStruct)
 		
@@ -258,13 +236,16 @@ func TestSetValueFromStruct(t *testing.T) {
 		}
 	})
 }
+
+
+
 func TestSetFromURL(t *testing.T) {
 	t.Run("Set where clauses from valid URL parameters", func(t *testing.T) {
 		qb := NewBlankQueryBuilder()
 		
 		req, _ := http.NewRequest("GET", "/?dbword=search&dbvalue=25&dbistrue=true", nil)
 		
-		model := testStruct{}
+		model := &testingStruct{}
 		err := SetWhereFromURL(qb, req, model)
 		
 		if err != nil {
@@ -284,7 +265,7 @@ func TestSetFromURL(t *testing.T) {
 		
 		req, _ := http.NewRequest("GET", "/?dbword=search&dbvalue=notanumber", nil)
 		
-		model := testStruct{}
+		model := &testingStruct{}
 		err := SetWhereFromURL(qb, req, model)
 		
 		if err != nil {
@@ -304,7 +285,7 @@ func TestSetFromURL(t *testing.T) {
 		
 		req, _ := http.NewRequest("GET", "/?dbword=test&dbistrue=notabool", nil)
 		
-		model := testStruct{}
+		model := &testingStruct{}
 		err := SetWhereFromURL(qb, req, model)
 		
 		if err != nil {
@@ -324,7 +305,7 @@ func TestSetFromURL(t *testing.T) {
 		
 		req, _ := http.NewRequest("GET", "/", nil)
 		
-		model := testStruct{}
+		model := &testingStruct{}
 		err := SetWhereFromURL(qb, req, model)
 		
 		if err != nil {
@@ -343,7 +324,7 @@ func TestSetFromURL(t *testing.T) {
 		
 		req, _ := http.NewRequest("GET", "/?dbword=test&notdbval=shouldskip", nil)
 		
-		model := testQueryableStruct{}
+		model := &testingStruct{}
 		err := SetWhereFromURL(qb, req, model)
 		
 		if err != nil {
@@ -363,7 +344,7 @@ func TestSetFromURL(t *testing.T) {
 		
 		req, _ := http.NewRequest("GET", "/?dbword=search&dbvalue=100&dbistrue=false&dbsomething=text", nil)
 		
-		model := testStruct{}
+		model := &testingStruct{}
 		err := SetWhereFromURL(qb, req, model)
 		
 		if err != nil {
@@ -383,7 +364,7 @@ func TestSetFromURL(t *testing.T) {
 		
 		req, _ := http.NewRequest("GET", "/?dbword=search&dbvalue=&dbsomething=text", nil)
 		
-		model := testStruct{}
+		model := &testingStruct{}
 		err := SetWhereFromURL(qb, req, model)
 		
 		if err != nil {

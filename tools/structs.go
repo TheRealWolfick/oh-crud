@@ -106,29 +106,35 @@ func ToAnySlice[T any](slice []T) []any {
 	return result
 }
 
-
 func GetFields[T any](model T, tag string, value string) []string {
-	if reflect.TypeOf(model).Kind() != reflect.Struct {
-		return nil
-	}
+    typ := reflect.TypeOf(model)
+    val := reflect.ValueOf(model)
+    
+    // Handle pointers
+    if typ.Kind() == reflect.Ptr {
+        typ = typ.Elem()
+        val = val.Elem()
+    }
+    
+    // Now check if it's a struct
+    if typ.Kind() != reflect.Struct {
+        return nil
+    }
 
-	reqFields := make([]string, 0)
+    reqFields := make([]string, 0)
 
-	vals := reflect.ValueOf(model)
-	typ := reflect.TypeOf(model)
+    for i := 0; i < val.NumField(); i++ {
+        // Read tag
+        tagVal := typ.Field(i).Tag.Get(tag)
 
-	for i := 0; i < vals.NumField(); i++ {
-		// Read if required
-		req := typ.Field(i).Tag.Get(tag)
+        if value == "exists" && tagVal != "" && tagVal != "-" {
+            reqFields = append(reqFields, typ.Field(i).Name)
+        } else if tagVal == value {
+            reqFields = append(reqFields, typ.Field(i).Name)
+        }
+    }
 
-		if value == "exists" && req != "" && req != "-" {
-			reqFields = append(reqFields, typ.Field(i).Name)
-		} else if req == value {
-			reqFields = append(reqFields, typ.Field(i).Name)
-		}
-	}
-
-	return reqFields
+    return reqFields
 }
 
 // Get all field where the struct has the tag req:"true"
@@ -147,7 +153,14 @@ func GetDatabaseFields[T any](model T) []string {
 }
 
 func GetDBTagFromField[T interface{}](model T, field string) string {
-	f, _ := reflect.TypeOf(model).FieldByName(field)
+	mod := reflect.TypeOf(model)
+
+	if reflect.TypeOf(mod).Kind() == reflect.Ptr {
+		mod = mod.Elem()
+	}
+
+	f, _ := mod.FieldByName(field)
+
 	return f.Tag.Get("db")
 }
 
