@@ -155,7 +155,7 @@ func GetDatabaseFields[T any](model T) []string {
 func GetDBTagFromField[T interface{}](model T, field string) string {
 	mod := reflect.TypeOf(model)
 
-	if reflect.TypeOf(mod).Kind() == reflect.Ptr {
+	if mod.Kind() == reflect.Ptr {
 		mod = mod.Elem()
 	}
 

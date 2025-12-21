@@ -145,6 +145,12 @@ func(h *sitesHandler) UpdateDomain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check for valid values
+	if tools.StructIsEmpty(&updatedDomain) {
+		http.Error(w, "No valid updates", http.StatusBadRequest)
+		return
+	}
+
 	// Create new query builder
 	qb := tools.NewBlankQueryBuilder()
 
