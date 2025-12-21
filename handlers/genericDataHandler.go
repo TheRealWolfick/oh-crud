@@ -29,7 +29,7 @@ func NewGenericDataHandler[T any](logger *slog.Logger, log_level int, db *pgxpoo
 
 
 // Add a new resource via the default path
-func handleAddNew[T any](
+func handleAddNewResource[T any](
 	db *pgxpool.Pool,
 	tableName string,
 ) http.HandlerFunc {
@@ -73,7 +73,7 @@ func handleAddNew[T any](
 
 
 // Add multiple resources via the default path
-func handleAddMultipleNew[T any](
+func handleAddMultipleNewResources[T any](
 	db *pgxpool.Pool,
 	tableName string,
 ) http.HandlerFunc {
@@ -194,6 +194,55 @@ func handleUpdateResource[T any](
 	}
 }
 
+func handleDeleteResource[T any](
+	db *pgxpool.Pool,
+	tableName string,
+) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var resource_to_delete *T
+		err := json.NewDecoder(r.Body).Decode(&resource_to_delete)
+
+		// Error checking
+		if err != nil {
+			http.Error(w, "Error reading request body", http.StatusBadRequest)
+			return
+		}
+
+		if tools.StructIsEmpty(resource_to_delete) {
+			http.Error(w, "Error reading request body", http.StatusBadRequest)
+			return
+		}
+
+		// Ensure the reosurce is valid for deletion
+		valid_resources, _ := tools.ValidateStruct(resource_to_delete)
+		if len(valid_resources) < 1 {
+			http.Error(w, "Resource is invalid for deletion", http.StatusBadRequest)
+			return
+		}
+
+		// Create query builder
+		qb := tools.NewBlankQueryBuilder()
+		query := qb.BuildDelete(tableName, resource_to_delete)
+
+		// Execute the query
+		cmdtag, err := db.Exec(r.Context(), query, qb.GetArgs()...)
+		if err != nil {
+
+			http.Error(w, "Error executing query", http.StatusInternalServerError)
+			return
+		}
+
+		// Build and return
+		response := map[string]interface{}{
+			"action":        "DELETE",
+			"rows_affected": cmdtag.RowsAffected(),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}
+}
+
+
 func (h *genericDataHandler[T]) HandleUpdate() http.HandlerFunc {
 	return handleUpdateResource[T](h.db, h.TableName)
 }
@@ -203,9 +252,13 @@ func (h *genericDataHandler[T]) HandleGet() http.HandlerFunc {
 }
 
 func (h *genericDataHandler[T]) HandleAddNew() http.HandlerFunc {
-	return handleAddNew[T](h.db, h.TableName)
+	return handleAddNewResource[T](h.db, h.TableName)
 }
 
 func (h *genericDataHandler[T]) HandleAddMultipleNew() http.HandlerFunc {
-	return handleAddMultipleNew[T](h.db, h.TableName)
+	return handleAddMultipleNewResources[T](h.db, h.TableName)
+}
+
+func (h *genericDataHandler[T]) HandleDelete() http.HandlerFunc {
+	return handleDeleteResource[T](h.db, h.TableName)
 }

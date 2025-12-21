@@ -350,6 +350,26 @@ func (qb *BlankQueryBuilder) BuildUpdate(table string, r *http.Request, model in
 		v = append(v, fmt.Sprintf("%s = $%d", key, val))
 	}
 
-	qb.query = fmt.Sprintf("UPDATE %s SET %s WHERE %s;", table, strings.Join(v, ", "), strings.Join(w, ", "))
+	qb.query = fmt.Sprintf("UPDATE %s SET %s WHERE %s;", table, strings.Join(v, ", "), strings.Join(w, " AND "))
+	return qb.query
+}
+
+
+func (qb *BlankQueryBuilder) BuildDelete(table string, model interface{}) string {
+	if qb.query != "" {
+		return qb.query
+	}
+
+	// Load the where values from the struct
+	SetWhereFromStruct(qb, model)
+
+	// Build the where values for the query
+	w := make([]string, 0)
+
+	for key, val := range qb.where {
+		w = append(w, fmt.Sprintf("%s = $%d", key, val))
+	}
+
+	qb.query = fmt.Sprintf("DELETE FROM %s WHERE %s;", table, strings.Join(w, " AND "))
 	return qb.query
 }

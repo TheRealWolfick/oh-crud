@@ -63,6 +63,7 @@ func main() {
 	mux.Handle("POST /domain", authMiddleware(domainHandler.HandleAddNew()))
 	mux.Handle("POST /domain-group", authMiddleware(domainHandler.HandleAddMultipleNew()))
 	mux.Handle("PUT /domain", authMiddleware(domainHandler.HandleUpdate()))
+	mux.Handle("DELETE /domain", authMiddleware(domainHandler.HandleDelete()))
 
 	// Launch the server
 	http.ListenAndServe(":8080", mux)

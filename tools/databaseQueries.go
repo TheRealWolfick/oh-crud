@@ -77,8 +77,9 @@ func RecursiveBatchInsert(
 	return result
 }
 
-//
-func SetValueFromStruct(qb QueryBuildTool, v interface{}) {
+
+// Save the struct fields into the query builder values data
+func setFromStruct(qb QueryBuildTool, v interface{}, setFunc func(string, any)) {
 	val := reflect.ValueOf(v)
 	if val.Kind() == reflect.Ptr {
 		val = val.Elem()
@@ -105,10 +106,19 @@ func SetValueFromStruct(qb QueryBuildTool, v interface{}) {
 			actualValue = field.Interface()
 		}
 		
-		qb.SetValue(GetDBTagFromField(v, field_name), actualValue)
+		setFunc(GetDBTagFromField(v, field_name), actualValue)
 	}
 }
 
+// Save the struct fields into the query builder values data
+func SetValueFromStruct(qb QueryBuildTool, v interface{}) {
+	setFromStruct(qb, v, qb.SetValue)
+}
+
+// Save the struct fields into the query builder where data
+func SetWhereFromStruct(qb QueryBuildTool, v interface{}) {
+	setFromStruct(qb, v, qb.SetWhere)
+}
 
 func SetWhereFromURL[T any](qb QueryBuildTool, r *http.Request, model T) error {
 	// Parse the form

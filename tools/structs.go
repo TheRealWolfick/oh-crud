@@ -45,24 +45,31 @@ func ValidateMultiStruct[T any](s []T) ([]T, []T) {
 	if len(s) < 1 {
 		return make([]T, 0), make([]T, 0)
 	}
-	if reflect.TypeOf(s[0]).Kind() != reflect.Struct {
+	if reflect.TypeOf(s[0]).Kind() != reflect.Struct && reflect.TypeOf(s[0]).Kind() != reflect.Ptr {
 		return make([]T, 0), make([]T, 0)
 	}
 
-	req_fields := GetRequiredFields(s[0])
+	req_fields := GetRequiredFields(s[0]) // struct field names
 	valid_structs := make([]T, 0)
 	invalid_structs := make([]T, 0)
 	is_valid := true
 
-	for _, m := range s {
+	// For each struct
+	for _, m := range s {	
+
+		// Reflect the struct
 		vals := reflect.ValueOf(m)
 
 		if vals.Kind() == reflect.Ptr {
 			vals = vals.Elem()
 		}
 		
+		// For each required field name
 		for _, fieldName := range req_fields {
 			field := vals.FieldByName(fieldName)
+			if field.Kind() == reflect.Ptr {
+				field = field.Elem()
+			}
 
 			if !field.IsValid() {
 				invalid_structs = append(invalid_structs, m)
