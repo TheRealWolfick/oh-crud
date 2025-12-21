@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"lotusforge.au/api-server/handlers"
 	"lotusforge.au/api-server/middleware"
+	"lotusforge.au/api-server/models"
 )
 
 func main() {
@@ -48,7 +49,7 @@ func main() {
 	// Make the handlers
 	authMiddleware := middleware.RequireAuth(pool)
 	userHandler := handlers.NewUserHandler(logger, log_level, pool)
-	siteHandler := handlers.NewSitesHandler(logger, log_level, pool)
+	domainHandler := handlers.NewGenericDataHandler[models.GetDomain](logger, log_level, pool, "domains")
 
 	// Setup the server
 	mux := http.NewServeMux()
@@ -58,10 +59,10 @@ func main() {
 	mux.Handle("GET /user", authMiddleware(http.HandlerFunc(userHandler.GetUserInfo)))
 	mux.Handle("PUT /user", authMiddleware(http.HandlerFunc(userHandler.UpdateUserInfo)))
 	
-	mux.Handle("GET /domain", authMiddleware(http.HandlerFunc(siteHandler.GetDomains)))
-	mux.Handle("POST /domain", authMiddleware(http.HandlerFunc(siteHandler.AddNewDomain)))
-	mux.Handle("POST /domain-group", authMiddleware(http.HandlerFunc(siteHandler.AddMultiNewDomain)))
-	mux.Handle("PUT /domain", authMiddleware(http.HandlerFunc(siteHandler.UpdateDomain)))
+	mux.Handle("GET /domain", authMiddleware(domainHandler.HandleGet()))
+	mux.Handle("POST /domain", authMiddleware(domainHandler.HandleAddNew()))
+	mux.Handle("POST /domain-group", authMiddleware(domainHandler.HandleAddMultipleNew()))
+	mux.Handle("PUT /domain", authMiddleware(domainHandler.HandleUpdate()))
 
 	// Launch the server
 	http.ListenAndServe(":8080", mux)
