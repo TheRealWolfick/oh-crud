@@ -49,8 +49,21 @@ func main() {
 	// Make the handlers
 	authMiddleware := middleware.RequireAuth(pool)
 	userHandler := handlers.NewUserHandler(logger, log_level, pool)
-	domainHandler := handlers.NewGenericDataHandler[models.GetDomain](logger, log_level, pool, "domains")
-	buildingHandler := handlers.NewGenericDataHandler[models.Building](logger, log_level, pool, "buildings")
+	domainHandler := handlers.NewGenericDataHandler[models.GetDomain](logger, log_level, pool, "domains", "domain")
+	buildingHandler := handlers.NewGenericDataHandler[models.Building](logger, log_level, pool, "buildings", "building")
+	floorHandler := handlers.NewGenericDataHandler[models.Floors](logger, log_level, pool, "floors", "floor")
+	buildingFloorHandler := handlers.NewGenericDataHandler[models.Building_Floor](logger, log_level, pool, "building_floor_combo", "bfloor")
+	buildingFloorRoomHandler := handlers.NewGenericDataHandler[models.Building_Floor_Room](logger, log_level, pool, "buildings_floor_room_combo", "room")
+	departmentsHandler := handlers.NewGenericDataHandler[models.Departments](logger, log_level, pool, "departments", "department")
+	conditionRatingsHandler := handlers.NewGenericDataHandler[models.Condition_Ratings](logger, log_level, pool, "condition_ratings", "condition/rating")
+	assetCategoriesHandler := handlers.NewGenericDataHandler[models.Asset_Categories](logger, log_level, pool, "asset_categories", "asset/category")
+	assetDataHandler := handlers.NewGenericDataHandler[models.Asset_Data](logger, log_level, pool, "asset_data", "asset/data")
+
+	// Group handlers
+	api_handlers := []handlers.DataHandler{
+		domainHandler, buildingHandler, floorHandler, buildingFloorHandler, buildingFloorRoomHandler, departmentsHandler, 
+		conditionRatingsHandler, assetCategoriesHandler, assetDataHandler,
+	}
 
 	// Setup the server
 	mux := http.NewServeMux()
@@ -60,18 +73,10 @@ func main() {
 	mux.Handle("GET /user", authMiddleware(http.HandlerFunc(userHandler.GetUserInfo)))
 	mux.Handle("PUT /user", authMiddleware(http.HandlerFunc(userHandler.UpdateUserInfo)))
 	
-	// Domain
-	mux.Handle("GET /domain", authMiddleware(domainHandler.HandleGet()))
-	mux.Handle("POST /domain", authMiddleware(domainHandler.HandleAddNew()))
-	mux.Handle("POST /domain-group", authMiddleware(domainHandler.HandleAddMultipleNew()))
-	mux.Handle("PUT /domain", authMiddleware(domainHandler.HandleUpdate()))
-	mux.Handle("DELETE /domain", authMiddleware(domainHandler.HandleDelete()))
-	// Building
-	mux.Handle("GET /building", authMiddleware(buildingHandler.HandleGet()))
-	mux.Handle("POST /building", authMiddleware(buildingHandler.HandleAddNew()))
-	mux.Handle("POST /building-group", authMiddleware(buildingHandler.HandleAddMultipleNew()))
-	mux.Handle("PUT /building", authMiddleware(buildingHandler.HandleUpdate()))
-	mux.Handle("DELETE /building", authMiddleware(buildingHandler.HandleDelete()))
+	// Register the routes for each handler
+	for _, handler := range api_handlers {
+		handler.RegisterRoutes(mux, authMiddleware)
+	}
 
 	// Launch the server
 	http.ListenAndServe(":8080", mux)

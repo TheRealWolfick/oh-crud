@@ -11,22 +11,40 @@ import (
 	"lotusforge.au/api-server/tools"
 )
 
-type genericDataHandler[T any] struct {
+type GenericDataHandler[T any] struct {
 	BaseHandler
 	TableName 	string
+	EndPoint    string
 }
 
-func NewGenericDataHandler[T any](logger *slog.Logger, log_level int, db *pgxpool.Pool, tableName string) *genericDataHandler[T] {
-	return &genericDataHandler[T]{
+type DataHandler interface {
+	RegisterRoutes(mux *http.ServeMux, auth func(http.Handler) http.Handler)
+	HandleUpdate() http.HandlerFunc
+	HandleGet() http.HandlerFunc 
+	HandleAddNew() http.HandlerFunc 
+	HandleAddMultipleNew() http.HandlerFunc 
+	HandleDelete() http.HandlerFunc 
+}
+
+func NewGenericDataHandler[T any](logger *slog.Logger, log_level int, db *pgxpool.Pool, tableName string, endPoint string) *GenericDataHandler[T] {
+	return &GenericDataHandler[T]{
 		BaseHandler: BaseHandler{
 			logger: logger,
 			log_level: log_level,
 			db: db,
 		},
 		TableName: tableName,
+		EndPoint: endPoint,
 	}
 }
 
+func (dh *GenericDataHandler[T]) RegisterRoutes(mux *http.ServeMux, auth func(http.Handler) http.Handler) {
+	mux.Handle(fmt.Sprintf("GET /%s", dh.EndPoint), auth(dh.HandleGet()))
+	mux.Handle(fmt.Sprintf("PUT /%s", dh.EndPoint), auth(dh.HandleUpdate()))
+	mux.Handle(fmt.Sprintf("POST /%s", dh.EndPoint), auth(dh.HandleAddNew()))
+	mux.Handle(fmt.Sprintf("POST /%s-group", dh.EndPoint), auth(dh.HandleAddMultipleNew()))
+	mux.Handle(fmt.Sprintf("DELETE /%s", dh.EndPoint), auth(dh.HandleDelete()))
+}
 
 // Add a new resource via the default path
 func handleAddNewResource[T any](
@@ -243,22 +261,22 @@ func handleDeleteResource[T any](
 }
 
 
-func (h *genericDataHandler[T]) HandleUpdate() http.HandlerFunc {
+func (h *GenericDataHandler[T]) HandleUpdate() http.HandlerFunc {
 	return handleUpdateResource[T](h.db, h.TableName)
 }
 
-func (h *genericDataHandler[T]) HandleGet() http.HandlerFunc {
+func (h *GenericDataHandler[T]) HandleGet() http.HandlerFunc {
 	return handleGetResource[T](h.db, h.TableName)
 }
 
-func (h *genericDataHandler[T]) HandleAddNew() http.HandlerFunc {
+func (h *GenericDataHandler[T]) HandleAddNew() http.HandlerFunc {
 	return handleAddNewResource[T](h.db, h.TableName)
 }
 
-func (h *genericDataHandler[T]) HandleAddMultipleNew() http.HandlerFunc {
+func (h *GenericDataHandler[T]) HandleAddMultipleNew() http.HandlerFunc {
 	return handleAddMultipleNewResources[T](h.db, h.TableName)
 }
 
-func (h *genericDataHandler[T]) HandleDelete() http.HandlerFunc {
+func (h *GenericDataHandler[T]) HandleDelete() http.HandlerFunc {
 	return handleDeleteResource[T](h.db, h.TableName)
 }
