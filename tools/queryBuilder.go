@@ -277,7 +277,7 @@ func (qb *BlankQueryBuilder) BuildMultiInsert(table string, models []any) string
 			if field_val.IsValid() {
 				local_values = append(local_values, fmt.Sprintf("$%d", qb.pos))
 				qb.pos++
-				qb.args = append(qb.args, vals.Field(i).Elem())
+				qb.args = append(qb.args, vals.Field(i).Interface())
 			} else {
 				// Read model's "none" default
 				empty_value, exists := typ.Field(i).Tag.Lookup("none")
