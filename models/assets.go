@@ -10,6 +10,7 @@ type Asset_Categories struct {
 type Condition_Ratings struct {
   Condition_rating  *int     `json:"condition_rating" db:"condition_rating"  pk:"true"  req:"true"          `
 	Description       *string  `json:"description"      db:"description"       pk:""      req:""      none:"" `
+	Long_description  *string  `json:"long_description" db:"long_description"  pk:""      req:""      none:"" `
 }
 
 type Asset_Data struct {
