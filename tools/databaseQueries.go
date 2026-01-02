@@ -167,24 +167,30 @@ func SetWhereFromURL[T any](qb QueryBuildTool, r *http.Request, model T) error {
 
 		switch fieldType.Kind() {
 		case reflect.Int, reflect.Int32, reflect.Int64:
-			if _, err := strconv.ParseInt(fieldValue, 10, 64); err != nil {
+			if valuesAsInt, err := strconv.ParseInt(fieldValue, 10, 64); err == nil {
+				qb.SetWhere(GetDBTagFromField(model, field_name), valuesAsInt)
+			} else {
 				continue
 			}
-			
+
 		case reflect.Bool:
-			if _, err := strconv.ParseBool(fieldValue); err != nil {
+			if valueAsBool, err := strconv.ParseBool(fieldValue); err != nil {
+				qb.SetWhere(GetDBTagFromField(model, field_name), valueAsBool)
+			} else {
 				continue
 			}
-			
-		case reflect.Float32, reflect.Float64:
-			if _, err := strconv.ParseFloat(fieldValue, 64); err != nil {
-				continue
-			}
-		}
 		
-		qb.SetWhere(GetDBTagFromField(model, field_name), fieldValue)
+		case reflect.Float32, reflect.Float64:
+			if valueAsFloat, err := strconv.ParseFloat(fieldValue, 64); err != nil {
+				qb.SetWhere(GetDBTagFromField(model, field_name), valueAsFloat)
+			} else {
+				continue
+			}
+		default:
+			qb.SetWhere(GetDBTagFromField(model, field_name), fieldValue)
+		}
 	}
-	
+
 	return nil
 }
 
@@ -199,7 +205,7 @@ func GetDatabaseColumns[T any](model T) []string {
 
 	for i := 0; i < val.NumField(); i++ {
 		dbCol := val.Field(i).Tag.Get("db")
-		
+
 		if dbCol == "" || dbCol == "-" {
 			continue
 		}
