@@ -29,12 +29,12 @@ type Asset_Data struct {
   Disposal_date            *string   `json:"disposal_date"           db:"disposal_date"           req:""      pk:""      none:"NULL"    `
   Domain                   *string   `json:"domain"                  db:"domain"                  req:"true"  pk:""                     `
   Finance_group_code       *string   `json:"finance_group_code"      db:"finance_group_code"      req:""      pk:""      none:"DEFAULT" `
-  Floor                    *string   `json:"floor"                   db:"floor"                   req:"true"  pk:""                     `
+	Floor                    *string   `json:"floor"                   db:"floor"                   req:"true"  pk:""                      absolute:"true" `
   GL_asset_reference       *string   `json:"GL_asset_reference"      db:"'GL_asset_reference'"    req:""      pk:""      none:"DEFAULT" `
   Install_date             *string   `json:"install_date"            db:"install_date"            req:""      pk:""      none:"NULL"    `
   Installation_cost        *float64  `json:"installation_cost"       db:"installation_cost"       req:""      pk:""      none:"DEFAULT" `
   Invoice_no               *string   `json:"invoice_no"              db:"invoice_no"              req:""      pk:""      none:"DEFAULT" `
-  Is_virtual_asset         *bool     `json:"is_virtual_asset"        db:"is_virtual_asset"        req:""      pk:""      none:"DEFAULT" `
+	Is_virtual_asset         *bool     `json:"is_virtual_asset"        db:"is_virtual_asset"        req:""      pk:""      none:"DEFAULT" `
   Label_location           *string   `json:"label_location"          db:"label_location"          req:""      pk:""      none:"DEFAULT" `
   Latitude                 *float64  `json:"latitude"                db:"latitude"                req:""      pk:""      none:"DEFAULT" `
   Location                 *string   `json:"location"                db:"location"                req:""      pk:""      none:"DEFAULT" `

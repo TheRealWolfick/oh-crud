@@ -379,3 +379,76 @@ func TestSetFromURL(t *testing.T) {
 		}
 	})
 }
+
+func TestValidation(t *testing.T) {
+	t.Run("Test valid string", func(t *testing.T) {
+		val := "A string"
+		expected := true
+
+		is_valid := ValidateValue(reflect.String, val)
+		if is_valid != expected {
+			t.Errorf("Expected: %v\nRecieved: %v", expected, is_valid)
+		}
+	})
+	t.Run("Test valid int", func(t *testing.T) {
+		val := "250"
+		expected := true
+
+		is_valid := ValidateValue(reflect.Int64, val)
+		if is_valid != expected {
+			t.Errorf("Expected: %v\nRecieved: %v", expected, is_valid)
+		}
+
+	})
+	t.Run("Test valid float", func(t *testing.T) {
+		val := "252.50"
+		expected := true
+
+		is_valid := ValidateValue(reflect.Float64, val)
+		if is_valid != expected {
+			t.Errorf("Expected: %v\nRecieved: %v", expected, is_valid)
+		}
+
+	})
+	t.Run("Test valid bool", func(t *testing.T) {
+		val := "true"
+		expected := true
+
+		is_valid := ValidateValue(reflect.Bool, val)
+		if is_valid != expected {
+			t.Errorf("Expected: %v\nRecieved: %v", expected, is_valid)
+		}
+
+	})
+	
+	t.Run("Test invalid int", func(t *testing.T) {
+		val := "Not an int"
+		expected := false
+
+		is_valid := ValidateValue(reflect.Int64, val)
+		if is_valid != expected {
+			t.Errorf("Expected: %v\nRecieved: %v", expected, is_valid)
+		}
+
+	})
+	t.Run("Test invalid float", func(t *testing.T) {
+		val := false
+		expected := false
+
+		is_valid := ValidateValue(reflect.Float64, val)
+		if is_valid != expected {
+			t.Errorf("Expected: %v\nRecieved: %v", expected, is_valid)
+		}
+
+	})
+	t.Run("Test invalid bool", func(t *testing.T) {
+		val := "maybe"
+		expected := false
+
+		is_valid := ValidateValue(reflect.Bool, val)
+		if is_valid != expected {
+			t.Errorf("Expected: %v\nRecieved: %v", expected, is_valid)
+		}
+
+	})
+}

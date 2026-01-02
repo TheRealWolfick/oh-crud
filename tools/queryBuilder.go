@@ -367,7 +367,7 @@ func (qb *BlankQueryBuilder) BuildInsert(table string, mod any) string {
 }
 
 
-// Build a query to insert multiple entries. The slice of models must have all the keys as pointers and cannot use omitempty. Instead,
+// Build a query to insert multiple entries. The slice of models must have all the keys as pointers and cannot omit fields. Instead,
 // the json tag none:"<string>" should be used to specify a default value (DEFAULT and NULL accepted as strings).
 // Default values are not inserted as arguements, but inserted into the query directly.
 func (qb *BlankQueryBuilder) BuildMultiInsert(table string, models []any) string {

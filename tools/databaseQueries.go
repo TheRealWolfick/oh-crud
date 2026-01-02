@@ -166,7 +166,14 @@ func SetWhereFromURL[T any](qb QueryBuildTool, r *http.Request, model T) error {
 			fieldType = fieldType.Elem()
 		}
 
-		qb.SetWhere(GetDBTagFromField(model, field_name), field_value, fieldType.Kind())
+		if IsAbsolute(model, field_name) {
+			if ValidateValue(fieldType.Kind(), field_value) == false {
+				continue
+			}
+			qb.SetWhereAbsolute(GetDBTagFromField(model, field_name), field_value)
+		} else {
+			qb.SetWhere(GetDBTagFromField(model, field_name), field_value, fieldType.Kind())
+		}
 	}
 
 	return nil
