@@ -316,7 +316,7 @@ func (qb *QueryBuilder) BuildSelect(table string, select_fields []string) string
 			if reflect.TypeOf(qb.args[val-1]).Kind() == reflect.Int {
 				w = append(w, fmt.Sprintf("%s = $%d", key, val))
 			} else {
-				w = append(w, fmt.Sprintf("%s ~* $%d", key, val))
+				w = append(w, fmt.Sprintf("%s = $%d", key, val))
 			}
 		}
 	}
