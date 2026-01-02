@@ -22,7 +22,7 @@ type Building struct {
 }
 
 type Floors struct {
-	Floor_id   *int     `json:"floor_id,omitempty" db:"floor" pk:"true" none:"DEFAULT"`
+	Floor_id   *int     `json:"floor_id,omitempty" db:"floor_id" pk:"true" none:"DEFAULT"`
 	Floor      *string  `json:"floor" db:"floor" pk:"true" req:"true"`
 }
 
