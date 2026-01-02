@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"strconv"
 	"strings"
 )
 
@@ -12,6 +13,7 @@ type QueryBuilder struct {
 	where  map[string]uint
 	args   []any
 	pos    uint
+	wheremod map[string]string
 }
 
 type BlankQueryBuilder struct {
@@ -23,7 +25,8 @@ type QueryBuildTool interface {
 	GetArgs() []any
 	GetArgsAsString() string
 	SetValue(field string, value any)
-	SetWhere(field string, value any)
+	SetWhere(field string, value any, fieldType reflect.Kind)
+	SetWhereAbsolute(field string, value any)
 }
 
 type SetCallback interface {
@@ -52,6 +55,7 @@ func NewBlankQueryBuilder() *BlankQueryBuilder {
 			where: make(map[string]uint),
 			args: []any{},
 			pos: 1,
+			wheremod: make(map[string]string),
 		},
 		query: "",
 	}
@@ -84,7 +88,12 @@ func (qb *BlankQueryBuilder) GetArgs() []any {
 func (qb *QueryBuilder) GetArgsAsString() string {
 	args_string := []string{}
 	for _, v := range qb.args {
-		args_string = append(args_string, fmt.Sprintf("%v", v))
+		val := reflect.ValueOf(v)
+		if val.Kind() == reflect.Ptr {
+			args_string = append(args_string, fmt.Sprintf("%v", val.Elem()))
+		} else {
+			args_string = append(args_string, fmt.Sprintf("%v", val))
+		}
 	}
 	return strings.Join(args_string, ", ")
 }
@@ -94,7 +103,12 @@ func (qb *QueryBuilder) GetArgsAsString() string {
 func (qb *BlankQueryBuilder) GetArgsAsString() string {
 	args_string := []string{}
 	for _, v := range qb.args {
-		args_string = append(args_string, fmt.Sprintf("%v", v))
+		val := reflect.ValueOf(v)
+		if val.Kind() == reflect.Ptr {
+			args_string = append(args_string, fmt.Sprintf("%v", val.Elem()))
+		} else {
+			args_string = append(args_string, fmt.Sprintf("%v", val))
+		}
 	}
 	return strings.Join(args_string, ", ")
 }
@@ -136,38 +150,159 @@ func (qb *BlankQueryBuilder) SetValue(field string, value any) {
 }
 
 
+// Inner function for setting the where value with the mod to apply to the query. Can only be called by internal functions
+func (qb *BlankQueryBuilder) innerSetWhere(field string, value any, mod string) {
+	if value == nil {
+		return
+	}
+
+	_, exists := qb.where[field]
+
+	if !exists {
+		qb.where[field] = qb.pos
+		qb.wheremod[field] = mod
+		qb.args = append(qb.args, value)
+		qb.pos++
+	} else {
+		qb.args[qb.values[field]-1] = value
+		qb.wheremod[field] = mod
+	}
+}
+
+
+// Inner function for setting the where value with the mod to apply to the query. Can only be called by internal functions
+func (qb *QueryBuilder) innerSetWhere(field string, value any, mod string) {
+	if value == nil {
+		return
+	}
+
+	_, exists := qb.where[field]
+
+	if !exists {
+		qb.where[field] = qb.pos
+		qb.wheremod[field] = mod
+		qb.args = append(qb.args, value)
+		qb.pos++
+	} else {
+		qb.args[qb.values[field]-1] = value
+		qb.wheremod[field] = mod
+	}
+}
+
+
+// Wrapper for directly interfacing with the innerSetWhere function
+func (qb *QueryBuilder) SetWhereAbsolute(field string, value any) {
+	if value == nil {
+		return
+	}
+
+	_, exists := qb.where[field]
+
+	if !exists {
+		qb.where[field] = qb.pos
+		qb.wheremod[field] = "="
+		qb.args = append(qb.args, value)
+		qb.pos++
+	} else {
+		qb.args[qb.values[field]-1] = value
+		qb.wheremod[field] = "="
+	}
+}
+
+
+// Wrapper for directly interfacing with the innerSetWhere function
+func (qb *BlankQueryBuilder) SetWhereAbsolute(field string, value any) {
+	if value == nil {
+		return
+	}
+
+	_, exists := qb.where[field]
+
+	if !exists {
+		qb.where[field] = qb.pos
+		qb.wheremod[field] = "="
+		qb.args = append(qb.args, value)
+		qb.pos++
+	} else {
+		qb.args[qb.values[field]-1] = value
+		qb.wheremod[field] = "="
+	}
+}
+
+
+// Helper wrapper function for setting Where values in a query builder. setFunc should be the innerSetWhere func
+func setWhere(field string, value any, fieldType reflect.Kind, setFunc func(string, any, string)) {
+	if value == nil {
+		return
+	}
+
+	var mod_guess string
+	var mod_guess2 string
+
+	// Determine the field type and extract mod based on that
+	if reflect.TypeOf(value).Kind() == reflect.String {
+		value_as_string := fmt.Sprintf("%s", value)
+
+		if len(value_as_string) > 0 {
+			mod_guess = fmt.Sprint(value_as_string[0:1])
+			if len(value_as_string) > 1 {
+				mod_guess2 = fmt.Sprint(value_as_string[0:2])
+			}
+			
+			switch fieldType {
+			case reflect.Int, reflect.Int32, reflect.Int64:
+				if mod_guess == "<" || mod_guess == ">" {
+					if mod_guess2 == "<=" || mod_guess2 == ">=" {
+						if value_as_int, err := strconv.ParseInt(value_as_string[2:], 10, 64); err == nil {
+							setFunc(field, value_as_int, mod_guess2)
+						} else {
+							return
+						}
+					} else {
+						if value_as_int, err := strconv.ParseInt(value_as_string[1:], 10, 64); err == nil {
+							setFunc(field, value_as_int, mod_guess)
+						} else {
+							return
+						}
+					}
+				} else {
+					if value_as_int, err := strconv.ParseInt(value_as_string, 10, 64); err == nil {
+						setFunc(field, value_as_int, "=")
+					} else {
+						return
+					}
+				}
+
+			case reflect.Bool:
+				if value_as_bool, err := strconv.ParseBool(value_as_string); err == nil {
+					setFunc(field, value_as_bool, "=")
+				} else {
+					return
+				}
+
+			case reflect.Float32, reflect.Float64:
+				if value_as_float, err := strconv.ParseFloat(value_as_string, 64); err == nil {
+					setFunc(field, value_as_float, "=")
+				} else {
+					return
+				}
+
+			default:
+				setFunc(field, value_as_string, "~*")
+			}
+		}
+	}
+}
+
 // Add a field and value into the where clause
-func (qb *QueryBuilder) SetWhere(field string, value any) {
-	if value == nil {
-		return
-	}
-
-	_, exists := qb.where[field]
-
-	if !exists {
-		qb.where[field] = qb.pos
-		qb.args = append(qb.args, value)
-		qb.pos++
-	} else {
-		qb.args[qb.values[field]-1] = value
-	}
-}
-func (qb *BlankQueryBuilder) SetWhere(field string, value any) {
-	if value == nil {
-		return
-	}
-
-	_, exists := qb.where[field]
-
-	if !exists {
-		qb.where[field] = qb.pos
-		qb.args = append(qb.args, value)
-		qb.pos++
-	} else {
-		qb.args[qb.values[field]-1] = value
-	}
+func (qb *QueryBuilder) SetWhere(field string, value any, fieldType reflect.Kind) {
+	setWhere(field, value, fieldType, qb.innerSetWhere)
 }
 
+
+func (qb *BlankQueryBuilder) SetWhere(field string, value any, fieldType reflect.Kind) {
+	setWhere(field, value, fieldType, qb.innerSetWhere)
+}
 
 // Build the insert query, saving all the values into the args key to be 
 // safely loaded into the sql.
@@ -197,11 +332,11 @@ func (qb *BlankQueryBuilder) BuildInsert(table string, mod any) string {
 		if db_field == "" || db_field == "-" {
 			continue
 		}
-		
+
 		db_columns = append(db_columns, db_field)
 
 		field := vals.Field(i)
-		
+
 		// Check if field is a pointer and not nil
 		if field.Kind() == reflect.Ptr && !field.IsNil() {
 			value = append(value, fmt.Sprintf("$%d", qb.pos))
@@ -227,7 +362,7 @@ func (qb *BlankQueryBuilder) BuildInsert(table string, mod any) string {
 	}
 
 	qb.query = fmt.Sprintf("INSERT INTO %s (%s) VALUES %s;", table, strings.Join(db_columns, ", "), fmt.Sprintf("(%s)",strings.Join(value, ", ")))
-	
+
 	return qb.query
 }
 
@@ -295,7 +430,6 @@ func (qb *BlankQueryBuilder) BuildMultiInsert(table string, models []any) string
 	}
 
 	qb.query = fmt.Sprintf("INSERT INTO %s (%s) VALUES %s;", table, strings.Join(c, ", "), fmt.Sprintf("%s",strings.Join(v, ", ")))
-	fmt.Print(qb.query)
 	return qb.query
 }
 
@@ -313,13 +447,7 @@ func (qb *QueryBuilder) BuildSelect(table string, select_fields []string) string
 		if reflect.TypeOf(qb.args[val-1]).Kind() == reflect.Slice {
 			w = append(w, fmt.Sprintf("%s IN $%d", key, val))
 		} else {
-			value := reflect.TypeOf(qb.args[val-1])
-			switch value.Kind() {
-			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Bool:
-				w = append(w, fmt.Sprintf("%s = $%d", key, val))
-			default:
-				w = append(w, fmt.Sprintf("%s ~* $%d", key, val))
-			}
+			w = append(w, fmt.Sprintf("%s %s $%d", key, qb.wheremod[key], val))
 		}
 	}
 
@@ -331,18 +459,19 @@ func (qb *BlankQueryBuilder) BuildUpdate(table string, r *http.Request, model in
 		return qb.query
 	}
 
-	// Read the url annd get the database columns that where is allowed on
+	// Read the url and get the database columns that where is allowed on
 	whereFields := r.URL.Query()
 	prim_keys := GetPrimaryKeys(model)
 
 	// Search for any of the main keys from the URL query for the where clause. Soft fail on no keys
 	whereExists := false
+
 	for _, key := range prim_keys {
 		f, _ := reflect.TypeOf(model).FieldByName(key)
 		whereval := whereFields.Get(f.Tag.Get("db"))
 
 		if whereval != "" {
-			qb.SetWhere(f.Tag.Get("db"), whereval)
+			qb.innerSetWhere(f.Tag.Get("db"), whereval, "=")
 			whereExists = true
 		}
 	}
@@ -380,7 +509,7 @@ func (qb *BlankQueryBuilder) BuildDelete(table string, model interface{}) string
 	w := make([]string, 0)
 
 	for key, val := range qb.where {
-		w = append(w, fmt.Sprintf("%s = $%d", key, val))
+		w = append(w, fmt.Sprintf("%s %s $%d", key, qb.wheremod[key], val))
 	}
 
 	qb.query = fmt.Sprintf("DELETE FROM %s WHERE %s;", table, strings.Join(w, " AND "))

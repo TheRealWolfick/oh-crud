@@ -78,7 +78,7 @@ func TestQueryBuilder(t *testing.T) {
 
   t.Run("Does a new query builder have updates?", func(t *testing.T) {if qb.HasUpdates() {t.Error("Expected there to be no updates")}})
 
-	qb.SetWhere("dbword", "primvalue")
+	qb.SetWhere("dbword", "primvalue", reflect.String)
 	qb.SetValue("dbsomething" ,*insertStruct.Something)
 	qb.SetValue("dbvalue", *insertStruct.Value)
 
@@ -253,7 +253,7 @@ func TestSetFromURL(t *testing.T) {
 		}
 		
 		args := qb.GetArgs()
-		expected := []any{"search", "25", "true"}
+		expected := []any{"search", int64(25), true}
 		
 		if !reflect.DeepEqual(args, expected) {
 			t.Errorf("Expected args: %v\nReceived: %v", expected, args)
@@ -352,7 +352,7 @@ func TestSetFromURL(t *testing.T) {
 		}
 		
 		args := qb.GetArgs()
-		expected := []any{"search", "100", "false", "text"}
+		expected := []any{"search", int64(100), false, "text"}
 		
 		if !reflect.DeepEqual(args, expected) {
 			t.Errorf("Expected all valid parameters: %v\nReceived: %v", expected, args)

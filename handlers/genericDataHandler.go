@@ -159,7 +159,6 @@ func handleGetResource[T interface{}](
 		// Handle the rows
 		defer rows.Close()
 		response, err := pgx.CollectRows(rows, pgx.RowToStructByName[T])
-		fmt.Println(qb.GetArgs()...)
 
 		// Return
 		w.Header().Set("Content-Type", "application/json")

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 	"reflect"
-	"strconv"
 
 	"lotusforge.au/api-server/models"
 )
@@ -118,7 +117,7 @@ func SetValueFromStruct(qb QueryBuildTool, v interface{}) {
 
 // Save the struct fields into the query builder where data
 func SetWhereFromStruct(qb QueryBuildTool, v interface{}) {
-	setFromStruct(qb, v, qb.SetWhere)
+	setFromStruct(qb, v, qb.SetWhereAbsolute)
 }
 
 func SetWhereFromURL[T any](qb QueryBuildTool, r *http.Request, model T) error {
@@ -152,8 +151,8 @@ func SetWhereFromURL[T any](qb QueryBuildTool, r *http.Request, model T) error {
 	
 	// Iterate through db fields and set where clauses
 	for _, field_name := range dbFields {
-		fieldValue := r.FormValue(GetDBTagFromField(model, field_name))
-		if fieldValue == "" {
+		field_value := r.FormValue(GetDBTagFromField(model, field_name))
+		if field_value == "" {
 			continue
 		}
 		
@@ -164,30 +163,7 @@ func SetWhereFromURL[T any](qb QueryBuildTool, r *http.Request, model T) error {
 			fieldType = fieldType.Elem()
 		}
 
-		switch fieldType.Kind() {
-		case reflect.Int, reflect.Int32, reflect.Int64:
-			if valuesAsInt, err := strconv.ParseInt(fieldValue, 10, 64); err == nil {
-				qb.SetWhere(GetDBTagFromField(model, field_name), valuesAsInt)
-			} else {
-				continue
-			}
-
-		case reflect.Bool:
-			if valueAsBool, err := strconv.ParseBool(fieldValue); err == nil {
-				qb.SetWhere(GetDBTagFromField(model, field_name), valueAsBool)
-			} else {
-				continue
-			}
-		
-		case reflect.Float32, reflect.Float64:
-			if valueAsFloat, err := strconv.ParseFloat(fieldValue, 64); err == nil {
-				qb.SetWhere(GetDBTagFromField(model, field_name), valueAsFloat)
-			} else {
-				continue
-			}
-		default:
-			qb.SetWhere(GetDBTagFromField(model, field_name), fieldValue)
-		}
+		qb.SetWhere(GetDBTagFromField(model, field_name), field_value, fieldType.Kind())
 	}
 
 	return nil
