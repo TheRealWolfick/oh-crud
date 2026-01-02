@@ -164,7 +164,6 @@ func SetWhereFromURL[T any](qb QueryBuildTool, r *http.Request, model T) error {
 			fieldType = fieldType.Elem()
 		}
 
-
 		switch fieldType.Kind() {
 		case reflect.Int, reflect.Int32, reflect.Int64:
 			if valuesAsInt, err := strconv.ParseInt(fieldValue, 10, 64); err == nil {
@@ -174,14 +173,14 @@ func SetWhereFromURL[T any](qb QueryBuildTool, r *http.Request, model T) error {
 			}
 
 		case reflect.Bool:
-			if valueAsBool, err := strconv.ParseBool(fieldValue); err != nil {
+			if valueAsBool, err := strconv.ParseBool(fieldValue); err == nil {
 				qb.SetWhere(GetDBTagFromField(model, field_name), valueAsBool)
 			} else {
 				continue
 			}
 		
 		case reflect.Float32, reflect.Float64:
-			if valueAsFloat, err := strconv.ParseFloat(fieldValue, 64); err != nil {
+			if valueAsFloat, err := strconv.ParseFloat(fieldValue, 64); err == nil {
 				qb.SetWhere(GetDBTagFromField(model, field_name), valueAsFloat)
 			} else {
 				continue

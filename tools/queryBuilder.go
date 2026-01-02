@@ -315,7 +315,7 @@ func (qb *QueryBuilder) BuildSelect(table string, select_fields []string) string
 		} else {
 			value := reflect.TypeOf(qb.args[val-1])
 			switch value.Kind() {
-			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Bool:
 				w = append(w, fmt.Sprintf("%s = $%d", key, val))
 			default:
 				w = append(w, fmt.Sprintf("%s ~* $%d", key, val))
