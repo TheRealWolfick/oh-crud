@@ -451,7 +451,7 @@ func (qb *QueryBuilder) BuildSelect(table string, select_fields []string) string
 		}
 	}
 
-	return fmt.Sprintf("SELECT %s FROM %s WHERE %s;", strings.Join(select_fields, ", "), table, strings.Join(w, ", "))
+	return fmt.Sprintf("SELECT %s FROM %s WHERE %s;", strings.Join(select_fields, ", "), table, strings.Join(w, " AND "))
 } 
 
 func (qb *BlankQueryBuilder) BuildUpdate(table string, r *http.Request, model interface{}) string {
