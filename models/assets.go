@@ -5,6 +5,7 @@ type Asset_Categories struct {
 	Asset_system      *string  `json:"asset_system,omitempty"     db:"asset_system"     req:""      pk:""      none:"DEFAULT" `
   Asset_subsystem   *string  `json:"asset_subsystem,omitempty"  db:"asset_subsystem"  req:""      pk:""      none:"DEFAULT" `
   Is_active         *bool    `json:"is_active,omitempty"        db:"is_active"        req:""      pk:""      none:"DEFAULT" `
+	Description       *string  `json:"description,omitempty"      db:"description"      req:""      pk:""      none:""        `
 }
 
 type Condition_Ratings struct {

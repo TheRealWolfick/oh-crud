@@ -148,7 +148,6 @@ func handleGetResource[T interface{}](
 
 		// Build the query
 		query := qb.BuildSelect(tableName, tools.GetDatabaseColumns(res_type))
-		fmt.Println(query)
 
 		// Get the rows
 		rows, err := db.Query(r.Context(), query, qb.GetArgs()...)
