@@ -53,7 +53,7 @@ func main() {
 	buildingHandler := handlers.NewGenericDataHandler[models.Building](logger, log_level, pool, "buildings", "building")
 	floorHandler := handlers.NewGenericDataHandler[models.Floors](logger, log_level, pool, "floors", "floor")
 	buildingFloorHandler := handlers.NewGenericDataHandler[models.Building_Floor](logger, log_level, pool, "building_floor_combo", "bfloor")
-	buildingFloorRoomHandler := handlers.NewGenericDataHandler[models.Building_Floor_Room](logger, log_level, pool, "buildings_floor_room_combo", "room")
+	buildingFloorRoomHandler := handlers.NewGenericDataHandler[models.Building_Floor_Room](logger, log_level, pool, "building_floor_room_combo", "room")
 	departmentsHandler := handlers.NewGenericDataHandler[models.Departments](logger, log_level, pool, "departments", "department")
 	conditionRatingsHandler := handlers.NewGenericDataHandler[models.Condition_Ratings](logger, log_level, pool, "condition_ratings", "condition/rating")
 	assetCategoriesHandler := handlers.NewGenericDataHandler[models.Asset_Categories](logger, log_level, pool, "asset_categories", "asset/category")
