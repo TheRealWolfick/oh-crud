@@ -311,12 +311,13 @@ func (qb *QueryBuilder) BuildSelect(table string, select_fields []string) string
 
 	for key, val := range qb.where {
 		if reflect.TypeOf(qb.args[val-1]).Kind() == reflect.Slice {
-				w = append(w, fmt.Sprintf("%s IN $%d", key, val))
+			w = append(w, fmt.Sprintf("%s IN $%d", key, val))
 		} else {
-			if reflect.TypeOf(qb.args[val-1]).Kind() == reflect.Int {
+			switch reflect.TypeOf(qb.args[val-1]).Kind() {
+			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 				w = append(w, fmt.Sprintf("%s = $%d", key, val))
-			} else {
-				w = append(w, fmt.Sprintf("%s = $%d", key, val))
+			default:
+				w = append(w, fmt.Sprintf("%s ~* $%d", key, val))
 			}
 		}
 	}
