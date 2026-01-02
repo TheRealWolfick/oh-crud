@@ -38,7 +38,7 @@ type Building_Floor_Room struct {
 	Building					*string  `json:"building" db:"building" req:"true"`
 	Floor							*string  `json:"floor" db:"floor" req:"true"`
 	Room							*string  `json:"room" db:"room" req:"true"`
-	Room_description  *string  `json:"Room_description,omitempty" db:"Room_description" none:"DEFAULT"`
+	Room_description  *string  `json:"room_description,omitempty" db:"room_description" none:"DEFAULT"`
 }
 
 type Departments struct {
