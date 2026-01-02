@@ -11,6 +11,7 @@ type BatchInsertResult struct {
 	SuccessCount int
 	FailedItems  []interface{}
 	Query 			 string
+	ErrorMsgs    []interface{}
 }
 
 type DBExecutor interface {

@@ -54,7 +54,7 @@ func RecursiveBatchInsert(
 
 	// If there's only one item and it failed, add it to failed items
 	if len(items) == 1 {
-		result.FailedItems = append(result.FailedItems, items[0])
+		result.FailedItems = append(result.FailedItems, map[string]any{"item": items[0], "error": err})
 		return result
 	}
 
