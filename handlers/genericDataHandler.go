@@ -57,7 +57,7 @@ func handleAddNewResource[T any](
 
 		// Validation and errors
 		if err != nil {
-			http.Error(w, "Error decoding body", http.StatusBadRequest)
+			http.Error(w, fmt.Sprintf("Error decoding body: %v", err), http.StatusBadRequest)
 			return
 		}
 		if tools.StructIsEmpty(&resource) {
