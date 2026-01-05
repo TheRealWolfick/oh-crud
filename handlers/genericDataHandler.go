@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -71,7 +72,8 @@ func handleAddNewResource[T any](
 			return
 		}
 
-		task_id, err := qm.QueueFunction(r.Context(), tools.SingleInsert(r.Context(), db, tableName, resource))
+		ctx_preserve := context.WithoutCancel(r.Context())
+		task_id, err := qm.QueueFunction(ctx_preserve, tools.SingleInsert(ctx_preserve, db, tableName, resource))
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Error creating create task\nError: %v", err), http.StatusInternalServerError)
 			return
@@ -115,7 +117,8 @@ func handleAddMultipleNewResources[T any](
 			return
 		}
 
-		task_id, err := qm.QueueFunction(r.Context(), tools.RecursiveBatchInsert(r.Context(), db, tableName, tools.ToAnySlice(valid_resources)))
+		ctx_preserve := context.WithoutCancel(r.Context())
+		task_id, err := qm.QueueFunction(ctx_preserve, tools.RecursiveBatchInsert(ctx_preserve, db, tableName, tools.ToAnySlice(valid_resources)))
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Error creating bulk create task\nError: %v", err), http.StatusInternalServerError)
 			return
@@ -204,7 +207,8 @@ func handleUpdateResource[T any](
 		query := qb.BuildUpdate(tableName, r, updated)
 
 		// Queue the query
-		task_id, err := qm.QueueExec(r.Context(), query, qb.GetArgs()...)
+		ctx_preserve := context.WithoutCancel(r.Context())
+		task_id, err := qm.QueueExec(ctx_preserve, query, qb.GetArgs()...)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Error creating update task\nError: %v", err), http.StatusInternalServerError)
 			return
@@ -253,7 +257,8 @@ func handleDeleteResource[T any](
 		query := qb.BuildDelete(tableName, resource_to_delete)
 
 		// Execute the query
-		task_id, err := qm.QueueExec(r.Context(), query, qb.GetArgs()...)
+		ctx_preserve := context.WithoutCancel(r.Context())
+		task_id, err := qm.QueueExec(ctx_preserve, query, qb.GetArgs()...)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Error creating delete task\nError: %v", err), http.StatusInternalServerError)
 			return
