@@ -18,12 +18,12 @@ type GenericDataHandler[T any] struct {
 }
 
 type DataHandler interface {
-	RegisterRoutes(mux *http.ServeMux, auth func(http.Handler) http.Handler)
-	HandleUpdate() http.HandlerFunc
-	HandleGet() http.HandlerFunc 
-	HandleAddNew() http.HandlerFunc 
-	HandleAddMultipleNew() http.HandlerFunc 
-	HandleDelete() http.HandlerFunc 
+	RegisterRoutes(mux *http.ServeMux, auth func(http.Handler) http.Handler, qm *tools.QueueManager)
+	HandleUpdate(qm *tools.QueueManager) http.HandlerFunc
+	HandleGet(qm *tools.QueueManager) http.HandlerFunc 
+	HandleAddNew(qm *tools.QueueManager) http.HandlerFunc 
+	HandleAddMultipleNew(qm *tools.QueueManager) http.HandlerFunc 
+	HandleDelete(qm *tools.QueueManager) http.HandlerFunc 
 }
 
 func NewGenericDataHandler[T any](logger *slog.Logger, log_level int, db *pgxpool.Pool, tableName string, endPoint string) *GenericDataHandler[T] {
@@ -38,18 +38,19 @@ func NewGenericDataHandler[T any](logger *slog.Logger, log_level int, db *pgxpoo
 	}
 }
 
-func (dh *GenericDataHandler[T]) RegisterRoutes(mux *http.ServeMux, auth func(http.Handler) http.Handler) {
-	mux.Handle(fmt.Sprintf("GET /%s", dh.EndPoint), auth(dh.HandleGet()))
-	mux.Handle(fmt.Sprintf("PUT /%s", dh.EndPoint), auth(dh.HandleUpdate()))
-	mux.Handle(fmt.Sprintf("POST /%s", dh.EndPoint), auth(dh.HandleAddNew()))
-	mux.Handle(fmt.Sprintf("POST /%s-group", dh.EndPoint), auth(dh.HandleAddMultipleNew()))
-	mux.Handle(fmt.Sprintf("DELETE /%s", dh.EndPoint), auth(dh.HandleDelete()))
+func (dh *GenericDataHandler[T]) RegisterRoutes(mux *http.ServeMux, auth func(http.Handler) http.Handler, qm *tools.QueueManager) {
+	mux.Handle(fmt.Sprintf("GET /%s", dh.EndPoint), auth(dh.HandleGet(qm)))
+	mux.Handle(fmt.Sprintf("PUT /%s", dh.EndPoint), auth(dh.HandleUpdate(qm)))
+	mux.Handle(fmt.Sprintf("POST /%s", dh.EndPoint), auth(dh.HandleAddNew(qm)))
+	mux.Handle(fmt.Sprintf("POST /%s-group", dh.EndPoint), auth(dh.HandleAddMultipleNew(qm)))
+	mux.Handle(fmt.Sprintf("DELETE /%s", dh.EndPoint), auth(dh.HandleDelete(qm)))
 }
 
 // Add a new resource via the default path
 func handleAddNewResource[T any](
 	db *pgxpool.Pool,
 	tableName string,
+	qm *tools.QueueManager,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var resource T
@@ -70,19 +71,17 @@ func handleAddNewResource[T any](
 			return
 		}
 
-		suc, res := tools.SingleInsert(r.Context(), db, tableName, resource)
-
-		// Validate Response
-		if !suc {
-			http.Error(w, fmt.Sprintf("Failed to insert resource into '%s'", res.Query), http.StatusInternalServerError)
+		task_id, err := qm.QueueFunction(r.Context(), tools.SingleInsert(r.Context(), db, tableName, resource))
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Error creating create task\nError: %v", err), http.StatusInternalServerError)
 			return
 		}
 
 		// Response
 		response := map[string]interface{}{
-			"action":        "INSERT",
-			"rows_received": 1,
-			"rows_affected": 1,
+			"task_id":        task_id,
+			"task_type": "CREATE",
+			"sucessful_submission": err == nil,
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
@@ -94,6 +93,7 @@ func handleAddNewResource[T any](
 func handleAddMultipleNewResources[T any](
 	db *pgxpool.Pool,
 	tableName string,
+	qm *tools.QueueManager,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var resources []T
@@ -115,15 +115,21 @@ func handleAddMultipleNewResources[T any](
 			return
 		}
 
-		result := tools.RecursiveBatchInsert(r.Context(), db, tableName, tools.ToAnySlice(valid_resources))
+		task_id, err := qm.QueueFunction(r.Context(), tools.RecursiveBatchInsert(r.Context(), db, tableName, tools.ToAnySlice(valid_resources)))
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Error creating bulk create task\nError: %v", err), http.StatusInternalServerError)
+			return
+		}
 
 		// Respond
 		response := map[string]interface{}{
-			"action":        "INSERT",
+			"process":       task_id,
+			"task_type": "CREATE_BULK",
+			"successful_submission": err == nil,
 			"rows_received": len(resources),
-			"rows_affected": result.SuccessCount,
+			"rows_valid":    len(valid_resources),
+			"rows_invalid":  len(invalid_resources),
 			"invalid":       invalid_resources,
-			"failed":        result.FailedItems,
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
@@ -134,6 +140,7 @@ func handleAddMultipleNewResources[T any](
 func handleGetResource[T interface{}](
 	db *pgxpool.Pool,
 	tableName string,
+	qm *tools.QueueManager,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var res_type T
@@ -170,6 +177,7 @@ func handleGetResource[T interface{}](
 func handleUpdateResource[T any](
 	db *pgxpool.Pool,
 	tableName string,
+	qm *tools.QueueManager,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var updated T
@@ -195,17 +203,18 @@ func handleUpdateResource[T any](
 		// Build the query
 		query := qb.BuildUpdate(tableName, r, updated)
 
-		// Execute the query
-		cmdtag, err := db.Exec(r.Context(), query, qb.GetArgs()...)
+		// Queue the query
+		task_id, err := qm.QueueExec(r.Context(), query, qb.GetArgs()...)
 		if err != nil {
-			http.Error(w, "Error executing query", http.StatusInternalServerError)
+			http.Error(w, fmt.Sprintf("Error creating update task\nError: %v", err), http.StatusInternalServerError)
 			return
 		}
 
 		// Build and return
 		response := map[string]interface{}{
-			"action":        "UPDATE",
-			"rows_affected": cmdtag.RowsAffected(),
+			"task_id":        task_id,
+			"task_type": "UPDATE",
+			"sucessful_submission": err == nil,
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
@@ -215,6 +224,7 @@ func handleUpdateResource[T any](
 func handleDeleteResource[T any](
 	db *pgxpool.Pool,
 	tableName string,
+	qm *tools.QueueManager,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var resource_to_delete *T
@@ -243,17 +253,17 @@ func handleDeleteResource[T any](
 		query := qb.BuildDelete(tableName, resource_to_delete)
 
 		// Execute the query
-		cmdtag, err := db.Exec(r.Context(), query, qb.GetArgs()...)
+		task_id, err := qm.QueueExec(r.Context(), query, qb.GetArgs()...)
 		if err != nil {
-
-			http.Error(w, "Error executing query", http.StatusInternalServerError)
+			http.Error(w, fmt.Sprintf("Error creating delete task\nError: %v", err), http.StatusInternalServerError)
 			return
 		}
 
 		// Build and return
 		response := map[string]interface{}{
-			"action":        "DELETE",
-			"rows_affected": cmdtag.RowsAffected(),
+			"task_id":        task_id,
+			"task_type": "DELETE",
+			"sucessful_submission": err == nil,
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
@@ -261,22 +271,22 @@ func handleDeleteResource[T any](
 }
 
 
-func (h *GenericDataHandler[T]) HandleUpdate() http.HandlerFunc {
-	return handleUpdateResource[T](h.db, h.TableName)
+func (h *GenericDataHandler[T]) HandleUpdate(qm *tools.QueueManager) http.HandlerFunc {
+	return handleUpdateResource[T](h.db, h.TableName, qm)
 }
 
-func (h *GenericDataHandler[T]) HandleGet() http.HandlerFunc {
-	return handleGetResource[T](h.db, h.TableName)
+func (h *GenericDataHandler[T]) HandleGet(qm *tools.QueueManager) http.HandlerFunc {
+	return handleGetResource[T](h.db, h.TableName, qm)
 }
 
-func (h *GenericDataHandler[T]) HandleAddNew() http.HandlerFunc {
-	return handleAddNewResource[T](h.db, h.TableName)
+func (h *GenericDataHandler[T]) HandleAddNew(qm *tools.QueueManager) http.HandlerFunc {
+	return handleAddNewResource[T](h.db, h.TableName, qm)
 }
 
-func (h *GenericDataHandler[T]) HandleAddMultipleNew() http.HandlerFunc {
-	return handleAddMultipleNewResources[T](h.db, h.TableName)
+func (h *GenericDataHandler[T]) HandleAddMultipleNew(qm *tools.QueueManager) http.HandlerFunc {
+	return handleAddMultipleNewResources[T](h.db, h.TableName, qm)
 }
 
-func (h *GenericDataHandler[T]) HandleDelete() http.HandlerFunc {
-	return handleDeleteResource[T](h.db, h.TableName)
+func (h *GenericDataHandler[T]) HandleDelete(qm *tools.QueueManager) http.HandlerFunc {
+	return handleDeleteResource[T](h.db, h.TableName, qm)
 }

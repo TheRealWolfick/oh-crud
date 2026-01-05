@@ -13,6 +13,7 @@ import (
 	"lotusforge.au/api-server/handlers"
 	"lotusforge.au/api-server/middleware"
 	"lotusforge.au/api-server/models"
+	"lotusforge.au/api-server/tools"
 )
 
 func main() {
@@ -46,6 +47,9 @@ func main() {
 	}
 	if log_level > 0 {logger.Info("Database connection made")}
 
+	// Create the queue
+	qm := tools.NewQueue(pool, 5, logger)
+
 	// Make the handlers
 	authMiddleware := middleware.RequireAuth(pool)
 	userHandler := handlers.NewUserHandler(logger, log_level, pool)
@@ -75,7 +79,7 @@ func main() {
 	
 	// Register the routes for each handler
 	for _, handler := range api_handlers {
-		handler.RegisterRoutes(mux, authMiddleware)
+		handler.RegisterRoutes(mux, authMiddleware, qm)
 	}
 
 	// Launch the server

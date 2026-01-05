@@ -1,10 +1,7 @@
 package tools
 
 import (
-	"fmt"
 	"reflect"
-	"slices"
-	"strconv"
 )
 
 func StructIsEmpty[T any](s *T) bool {
@@ -131,20 +128,20 @@ func GetFields[T any](model T, tag string, value string) []string {
         return nil
     }
 
-    reqFields := make([]string, 0)
+    requestedFields := make([]string, 0)
 
     for i := 0; i < val.NumField(); i++ {
         // Read tag
         tagVal := typ.Field(i).Tag.Get(tag)
 
         if value == "exists" && tagVal != "" && tagVal != "-" {
-            reqFields = append(reqFields, typ.Field(i).Name)
+            requestedFields = append(requestedFields, typ.Field(i).Name)
         } else if tagVal == value {
-            reqFields = append(reqFields, typ.Field(i).Name)
+            requestedFields = append(requestedFields, typ.Field(i).Name)
         }
     }
 
-    return reqFields
+    return requestedFields
 }
 
 // Get all field where the struct has the tag req:"true"
@@ -179,16 +176,14 @@ func StringSliceSubtract(a []string, b []string) []string {
 	new_slice := make([]string, 0, len(a))
 	var add bool
 
-	// For each value in A
 	for _, a_val := range a {
 		add = true
-
-		// if value is in B
-		if slices.Contains(b, a_val) {
-			add = false
+		for _, b_val := range b {
+			if a_val == b_val {
+				add = false
+				break
+			}
 		}
-
-		// Add it to the new slice if it wasn't in B
 		if add {
 			new_slice = append(new_slice, a_val)
 		}
@@ -197,64 +192,3 @@ func StringSliceSubtract(a []string, b []string) []string {
 	return  new_slice
 }
 
-
-// Check if a field of a specific model is absolute (mod must be '=')
-func IsAbsolute[T interface{}](model T, field string) bool {
-	fields := GetFields(model, "absolute", "true")
-
-	return slices.Contains(fields, field)
-}
-
-
-// Validates that a value is of the specified type. This is used when the value MUST be a specific type. Currently does not support the identification of modifiers
-func ValidateValue(typ reflect.Kind, val any) bool {
-	if val == nil || val == reflect.Struct {
-		return false
-	}
-
-	val_type := reflect.TypeOf(val)
-	val_to_check := reflect.ValueOf(val)
-
-	if val_type.Kind() == reflect.Ptr {
-		val_type = val_type.Elem()
-	}
-	if val_to_check.Kind() == reflect.Ptr {
-		val_to_check = val_to_check.Elem()
-	}
-
-	if val_type.Kind() == typ {
-		return true
-	}
-
-	// Determine the field type and extract mod based on that
-	if val_type.Kind() == reflect.String {
-		value_as_string := fmt.Sprintf("%s", val_to_check)
-
-		switch typ {
-		case reflect.Int, reflect.Int32, reflect.Int64:
-			if _, err := strconv.ParseInt(value_as_string, 10, 64); err == nil {
-				return true
-			} else {
-				return false
-			}
-
-		case reflect.Bool:
-			if _, err := strconv.ParseBool(value_as_string); err == nil {
-				return true
-			} else {
-				return false
-			}
-
-		case reflect.Float32, reflect.Float64:
-			if _, err := strconv.ParseFloat(value_as_string, 64); err == nil {
-				return true
-			} else {
-				return false
-			}
-
-		default:
-			return false
-		}
-	}
-	return false
-}

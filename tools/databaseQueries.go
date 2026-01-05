@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"reflect"
@@ -13,27 +14,32 @@ func SingleInsert(
 	ctx context.Context,
 	db models.DBExecutor,
 	tableName string,
-	item interface{},
-) (bool, models.BatchInsertResult) {
-	result := RecursiveBatchInsert(ctx, db, tableName, []interface{}{item})
-	
-	if result.SuccessCount == 1 {
-		return true, result
-	}
-	
-	// Return false with no error since the item is in FailedItems
-	return false, result
+	item any,
+) (func(context.Context, ...any) ([]byte, error)) {
+	return RecursiveBatchInsert(ctx, db, tableName, []any{item})
 }
+
 
 func RecursiveBatchInsert(
 	ctx context.Context,
 	db models.DBExecutor, // interface { Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error) }
 	tableName string,
-	items []interface{},
+	items []any,
+) (func(context.Context, ...any) ([]byte, error)) {
+	return func(context.Context, ...any) ([]byte, error) {
+		return json.Marshal(recursiveBatchInsertProcess(ctx, db, tableName, items))
+	}
+}	
+
+func recursiveBatchInsertProcess(
+	ctx context.Context,
+	db models.DBExecutor, // interface { Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error) }
+	tableName string,
+	items []any,
 ) models.BatchInsertResult {
 	result := models.BatchInsertResult{
 		SuccessCount: 0,
-		FailedItems:  make([]interface{}, 0),
+		FailedItems:  make([]any, 0),
 	}
 
 	if len(items) == 0 {
@@ -43,9 +49,9 @@ func RecursiveBatchInsert(
 	// Try to insert the batch
 	qb := NewBlankQueryBuilder()
 	query := qb.BuildMultiInsert(tableName, items)
-	
+
 	cmdTag, err := db.Exec(ctx, query, qb.GetArgs()...)
-	
+
 	if err == nil {
 		// Success - all items inserted
 		result.SuccessCount = int(cmdTag.RowsAffected())
@@ -56,7 +62,6 @@ func RecursiveBatchInsert(
 	if len(items) == 1 {
 		result.FailedItems = append(result.FailedItems, map[string]any{"item": items[0], "error": map[string]any{
 			"database": err,
-			"query": query,
 		}})
 		return result
 	}
@@ -67,12 +72,12 @@ func RecursiveBatchInsert(
 	rightItems := items[mid:]
 
 	// Process left half
-	leftResult := RecursiveBatchInsert(ctx, db, tableName, leftItems)
+	leftResult := recursiveBatchInsertProcess(ctx, db, tableName, leftItems)
 	result.SuccessCount += leftResult.SuccessCount
 	result.FailedItems = append(result.FailedItems, leftResult.FailedItems...)
 
 	// Process right half
-	rightResult := RecursiveBatchInsert(ctx, db, tableName, rightItems)
+	rightResult := recursiveBatchInsertProcess(ctx, db, tableName, rightItems)
 	result.SuccessCount += rightResult.SuccessCount
 	result.FailedItems = append(result.FailedItems, rightResult.FailedItems...)
 
@@ -82,20 +87,20 @@ func RecursiveBatchInsert(
 
 
 // Save the struct fields into the query builder values data
-func setFromStruct(qb QueryBuildTool, v interface{}, setFunc func(string, any)) {
+func setFromStruct(v any, setFunc func(string, any)) {
 	val := reflect.ValueOf(v)
 	if val.Kind() == reflect.Ptr {
 		val = val.Elem()
 	}
-	
+
 	// Get all database field tags
 	dbFields := GetDatabaseFields(v)
-	
+
 	// Iterate through db fields and set values
 	for _, field_name := range dbFields {
 
 		field := val.FieldByName(field_name)
-		
+
 		// Skip nil pointers
 		if field.Kind() == reflect.Ptr && field.IsNil() {
 			continue
@@ -108,19 +113,19 @@ func setFromStruct(qb QueryBuildTool, v interface{}, setFunc func(string, any)) 
 		} else {
 			actualValue = field.Interface()
 		}
-		
+
 		setFunc(GetDBTagFromField(v, field_name), actualValue)
 	}
 }
 
 // Save the struct fields into the query builder values data
 func SetValueFromStruct(qb QueryBuildTool, v interface{}) {
-	setFromStruct(qb, v, qb.SetValue)
+	setFromStruct(v, qb.SetValue)
 }
 
 // Save the struct fields into the query builder where data
 func SetWhereFromStruct(qb QueryBuildTool, v interface{}) {
-	setFromStruct(qb, v, qb.SetWhereAbsolute)
+	setFromStruct(v, qb.SetWhereAbsolute)
 }
 
 func SetWhereFromURL[T any](qb QueryBuildTool, r *http.Request, model T) error {
@@ -128,11 +133,11 @@ func SetWhereFromURL[T any](qb QueryBuildTool, r *http.Request, model T) error {
 	if err := r.ParseForm(); err != nil {
 		return err
 	}
-	
+
 	if len(r.URL.Query()) < 1 {
 		return nil
 	}
-	
+
 	val := reflect.ValueOf(model)
 	if val.Kind() == reflect.Ptr {
 		val = val.Elem()
@@ -143,22 +148,22 @@ func SetWhereFromURL[T any](qb QueryBuildTool, r *http.Request, model T) error {
 	if typ.Kind() == reflect.Ptr {
 		typ = typ.Elem()
 	}
-	
+
 	// Ensure a struct was passed in
 	if typ.Kind() != reflect.Struct {
 		return errors.New("Not a struct!")
 	}
-	
+
 	// Get all database fields
 	dbFields := GetDatabaseFields(model)
-	
+
 	// Iterate through db fields and set where clauses
 	for _, field_name := range dbFields {
 		field_value := r.FormValue(GetDBTagFromField(model, field_name))
 		if field_value == "" {
 			continue
 		}
-		
+
 		// Check to make sure it is valid
 		field, _ := typ.FieldByName(field_name)
 		fieldType := field.Type

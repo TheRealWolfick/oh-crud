@@ -30,3 +30,7 @@ type DBHandler interface {
 	DBExecutor
 	DBQueryer
 }
+
+type DBReportable interface {
+	ResultAsJSONString() string
+}
