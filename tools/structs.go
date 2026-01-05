@@ -1,7 +1,9 @@
 package tools
 
 import (
+	"fmt"
 	"reflect"
+	"strconv"
 )
 
 func StructIsEmpty[T any](s *T) bool {
@@ -159,7 +161,11 @@ func GetDatabaseFields[T any](model T) []string {
 	return GetFields(model, "db", "exists")
 }
 
-func GetDBTagFromField[T interface{}](model T, field string) string {
+func GetAbsolute[T any](model T) []string {
+	return GetFields(model, "absolute", "true")
+}
+
+func getTagFromField[T any](model T, field string, tag string) string {
 	mod := reflect.TypeOf(model)
 
 	if mod.Kind() == reflect.Ptr {
@@ -168,7 +174,20 @@ func GetDBTagFromField[T interface{}](model T, field string) string {
 
 	f, _ := mod.FieldByName(field)
 
-	return f.Tag.Get("db")
+	return f.Tag.Get(tag)
+}
+
+func GetDBTagFromField[T interface{}](model T, field string) string {
+	return getTagFromField(model, field, "db")
+}
+
+func getAbsoluteTagFromField[T interface{}](model T, field string) string {
+	return getTagFromField(model, field, "absolute")
+}
+
+func IsAbsolute[T any](model T, field string) bool {
+	absolute := getAbsoluteTagFromField(model, field)
+	return absolute == "true"
 }
 
 // Remove all the items in element b from element a
@@ -192,3 +211,34 @@ func StringSliceSubtract(a []string, b []string) []string {
 	return  new_slice
 }
 
+
+// Test whether the string B is of type A. Currently does not support mods
+func ValidateValue(A reflect.Kind, B any) bool {
+
+	if B == nil {
+		return false
+	}
+
+	if A == reflect.TypeOf(B).Kind() {
+		return  true
+	}
+
+	as_string := fmt.Sprintf("%v", B)
+	switch A {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		// test if int
+		_, err := strconv.ParseInt(as_string, 10, 64)
+		return err == nil
+
+	case reflect.Bool:
+		_, err := strconv.ParseBool(as_string)
+		return err == nil
+
+	case reflect.Float32, reflect.Float64:
+		_, err := strconv.ParseFloat(as_string, 64)
+		return err == nil
+
+	default:
+		return false
+	}
+}
