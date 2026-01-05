@@ -140,6 +140,7 @@ func (qm *QueueManager) createFunctionTask(ctx context.Context, function func(co
 		},
 	}
 	log, _ := json.Marshal(logData)
+	qm.tasks = append(qm.tasks, t)
 	
 	qm.mu.Unlock()
 	qm.logDatabaseEvent(ctx, "TASK_CREATE", log)
