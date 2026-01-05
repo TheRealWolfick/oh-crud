@@ -177,7 +177,7 @@ func (qm *QueueManager) reportWork(w *Worker, status string, res []byte) {
 			qm.mu.Unlock()
 		} else {
 			qm.mu.Unlock()
-			qm.logDatabaseEvent(w.TaskActioning.Ctx, "TASK_SUCCESS", log)
+			qm.logDatabaseEvent(w.TaskActioning.Ctx, "TASK_COMPLETE", log)
 		}
 	}
 }
