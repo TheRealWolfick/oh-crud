@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"reflect"
@@ -15,7 +14,7 @@ func SingleInsert(
 	db models.DBExecutor,
 	tableName string,
 	item any,
-) (func(context.Context, ...any) ([]byte, error)) {
+) (func(context.Context, ...any) (map[string]any, error)) {
 	return RecursiveBatchInsert(ctx, db, tableName, []any{item})
 }
 
@@ -25,9 +24,14 @@ func RecursiveBatchInsert(
 	db models.DBExecutor, // interface { Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error) }
 	tableName string,
 	items []any,
-) (func(context.Context, ...any) ([]byte, error)) {
-	return func(context.Context, ...any) ([]byte, error) {
-		return json.Marshal(recursiveBatchInsertProcess(ctx, db, tableName, items))
+) (func(context.Context, ...any) (map[string]any, error)) {
+	return func(context.Context, ...any) (map[string]any, error) {
+		result := recursiveBatchInsertProcess(ctx, db, tableName, items)
+		logData := map[string]any{
+			"success_count": result.SuccessCount,
+			"failed_items": result.FailedItems,
+		}
+		return logData, nil
 	}
 }	
 

@@ -3,8 +3,8 @@ package tools
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -19,9 +19,9 @@ type Task struct {
 	CompleteTime  time.Time  `json:"complete_time"`
 	Status        string     `json:"status"`
 	Success       bool       `json:"success"`
-	Response      []byte     `json:"response"`
+	Response      map[string]any     `json:"response"`
 	Ctx           context.Context  `json:"-"`
-	Function      func(context.Context, ...any) ([]byte, error) `json:"-"`
+	Function      func(context.Context, ...any) (map[string]any, error) `json:"-"`
 	Args          []any `json:"-"`
 	Lock          bool				`json:"lock"`
 }
@@ -46,18 +46,6 @@ func newWorker(id int) *Worker {
 	return &Worker{
 		ID: id,
 	}
-}
-
-
-// Print the completed task info string. This should only be used once the task is complete
-func (t *Task) taskCompleteInfoString() string {
-	return fmt.Sprintf(`{"task_id": %s, "status": %s, "start_time": %v, "complete_time": %v, "num_args": %v, "response": %v}`, t.TaskID, t.Status, t.StartTime, t.CompleteTime, len(t.Args), t.Response)
-}
-
-
-// Return a string of the tasks current status snapshot
-func (t *Task) taskStagedInfoString() string {
-	return fmt.Sprintf(`{"task_id": "%s", "task_type": "%s", "status": "%s", "start_time": "%v"}`, t.TaskID, t.TaskType, t.Status, t.StartTime)
 }
 
 
@@ -105,7 +93,15 @@ func (qm *QueueManager) createTask(ctx context.Context, sql string, args ...any)
 	qm.tasks = append(qm.tasks, t)
 	
 	// Write task creation to database
-	log, _ := json.Marshal(t.taskStagedInfoString())
+	logData := map[string]any {
+		"task": map[string]any {
+			"task_id":       t.TaskID,
+			"task_type":     t.TaskType,
+			"status":        t.Status,
+			"start_time":    t.StartTime,
+		},
+	}
+	log, _ := json.Marshal(logData)
 	
 	qm.mu.Unlock()
 	qm.logDatabaseEvent(ctx, "TASK_CREATE", log)
@@ -115,7 +111,7 @@ func (qm *QueueManager) createTask(ctx context.Context, sql string, args ...any)
 
 
 // Creates a new function task
-func (qm *QueueManager) createFunctionTask(ctx context.Context, function func(context.Context, ...any) ([]byte, error), args ...any) (*Task, error) {
+func (qm *QueueManager) createFunctionTask(ctx context.Context, function func(context.Context, ...any) (map[string]any, error), args ...any) (*Task, error) {
 	qm.mu.Lock()
 	task_id, err := Generate32CharString()
 
@@ -135,7 +131,15 @@ func (qm *QueueManager) createFunctionTask(ctx context.Context, function func(co
 	}
 	
 	// Write task creation to database
-	log, _ := json.Marshal(t.taskStagedInfoString())
+	logData := map[string]any {
+		"task": map[string]any {
+			"task_id":       t.TaskID,
+			"task_type":     t.TaskType,
+			"status":        t.Status,
+			"start_time":    t.StartTime,
+		},
+	}
+	log, _ := json.Marshal(logData)
 	
 	qm.mu.Unlock()
 	qm.logDatabaseEvent(ctx, "TASK_CREATE", log)
@@ -144,10 +148,22 @@ func (qm *QueueManager) createFunctionTask(ctx context.Context, function func(co
 }
 
 // Report on the work done
-func (qm *QueueManager) reportWork(w *Worker, status string, res []byte) {
+func (qm *QueueManager) reportWork(w *Worker, status string, res map[string]any) {
 	qm.mu.Lock()
 	w.TaskActioning.Response = res
 	w.TaskActioning.CompleteTime = time.Now()
+
+	logsData := map[string]interface{}{
+		"worker": w.ID,
+		"task": map[string]interface{}{
+			"task_id":       w.TaskActioning.TaskID,
+			"status":        w.TaskActioning.Status,
+			"start_time":    w.TaskActioning.StartTime,
+			"complete_time": w.TaskActioning.CompleteTime,
+			"num_args":      len(w.TaskActioning.Args),
+			"response":      w.TaskActioning.Response,
+		},
+	}
 
 	switch status {
 	case "error":
@@ -156,7 +172,7 @@ func (qm *QueueManager) reportWork(w *Worker, status string, res []byte) {
 		w.TaskActioning.Status = "error"
 
 		// Report task info
-		log, err := json.Marshal(fmt.Sprintf(`{"worker": %v, "task": "%s"}`, w.ID, w.TaskActioning.taskCompleteInfoString()))
+		log, err := json.Marshal(logsData)
 		if err != nil {
 			qm.logger.Error("Failed to report task failure", "worker", w.ID, "task_id", w.TaskActioning.TaskID, "error", w.TaskActioning.Response, "log_error", err)
 			qm.mu.Unlock()
@@ -171,7 +187,7 @@ func (qm *QueueManager) reportWork(w *Worker, status string, res []byte) {
 		w.TaskActioning.Status = "complete"
 
 		// Report task info
-		log, err := json.Marshal(fmt.Sprintf(`{"worker": %v, "task": "%s"}`, w.ID, w.TaskActioning.taskCompleteInfoString()))
+		log, err := json.Marshal(logsData)
 		if err != nil {
 			qm.logger.Error("Failed to report task success", "worker", w.ID, "task_id", w.TaskActioning.TaskID, "log_error", err)
 			qm.mu.Unlock()
@@ -227,9 +243,14 @@ func (qm *QueueManager) work(w *Worker) {
 
 		// Report work
 		if err != nil {
-			qm.reportWork(w, "error", []byte(err.Error()))
+			qm.reportWork(w, "error", map[string]any{"error": err.Error()})
 		} else {
-			qm.reportWork(w, "success", []byte(cmdtag.String()))
+			bef, _, _ := strings.Cut(cmdtag.String(), " ")
+			logData := map[string]any {
+				"action": bef,
+				"rows_affected": cmdtag.RowsAffected(),
+			}
+			qm.reportWork(w, "success", logData)
 		}
 
 	case "function":
@@ -238,7 +259,7 @@ func (qm *QueueManager) work(w *Worker) {
 
 		// Report work
 		if err != nil {
-			qm.reportWork(w, "error", []byte(err.Error()))
+			qm.reportWork(w, "error", map[string]any{"error": err.Error()})
 		} else {
 			qm.reportWork(w, "success", func_response)
 		}
@@ -292,7 +313,16 @@ func (qm *QueueManager) assignWorker(w *Worker, t *Task) {
 	t.Status = "processing"
 
 	// Report assignment
-	log, _ := json.Marshal(fmt.Sprintf(`{"task": %s, "worker": %v}`, t.taskStagedInfoString(), w.ID))
+	logData := map[string]any {
+		"worker": w.ID,
+		"task": map[string]any {
+			"task_id":       w.TaskActioning.TaskID,
+			"task_type":     w.TaskActioning.TaskType,
+			"status":        w.TaskActioning.Status,
+			"start_time":    w.TaskActioning.StartTime,
+		},
+	}
+	log, _ := json.Marshal(logData)
 	ctx := t.Ctx
 	qm.mu.Unlock() 
 	qm.logDatabaseEvent(ctx, "TASK_UPDATE", log)
@@ -343,7 +373,7 @@ func (qm *QueueManager) queue(t *Task) ( string, error ) {
 
 
 // Queue a function to be run asynchronously. A 32 character uuid will be returned that can be used to query the status of the task and also get the database response.
-func (qm *QueueManager) QueueFunction(ctx context.Context, function func(context.Context, ...any) ([]byte, error), args ...any) (string, error) {
+func (qm *QueueManager) QueueFunction(ctx context.Context, function func(context.Context, ...any) (map[string]any, error), args ...any) (string, error) {
 	t, err := qm.createFunctionTask(ctx, function, args...)
 	if err != nil {
 		return "", err
@@ -392,7 +422,7 @@ func (qm *QueueManager) getTaskPosUnsafe(identifer string) (int, bool) {
 func (qm *QueueManager) GetTaskStatus(identifier string) (string, bool) {
 	task_pos, exists := qm.getTaskPosUnsafe(identifier)
 	if exists {
-		return qm.tasks[task_pos].taskCompleteInfoString(), true
+		return qm.tasks[task_pos].Status, true
 	}
 	return "", false
 }
