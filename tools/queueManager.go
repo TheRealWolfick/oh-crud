@@ -212,17 +212,17 @@ func (qm *QueueManager) reportWork(w *Worker, status string, res map[string]any)
 func (qm *QueueManager) lookForTask() *Task {
 	qm.mu.Lock()
 	defer qm.mu.Unlock()
-	qm.logger.Debug("Looking for tasks...")
+	qm.logger.Info("Looking for tasks...")
 
 	// Look for more Work
 	if len(qm.tasks) < 1 {
-		qm.logger.Debug("Tasks list is empty")
+		qm.logger.Info("Tasks list is empty")
 		return nil
 	}
 	for _, task := range qm.tasks {
-		qm.logger.Debug("Checking...", "task", task.TaskID, "islocked", task.islocked())
+		qm.logger.Info("Checking...", "task", task.TaskID, "islocked", task.islocked())
 		if !task.islocked() {
-			qm.logger.Debug("Unlocked!")
+			qm.logger.Info("Unlocked!")
 			task.lock()
 			return task
 		}
@@ -237,7 +237,7 @@ func (qm *QueueManager) work(w *Worker) {
 
 	// Ensure work can be completed
 	if !w.islocked() || w.TaskActioning.Status != "processing" {
-		qm.logger.Debug("Error triggered in work where either worker wasn't locked or task was not set to status = processing", "worker", w, "task", w.TaskActioning)
+		qm.logger.Info("Error triggered in work where either worker wasn't locked or task was not set to status = processing", "worker", w, "task", w.TaskActioning)
 		qm.mu.Unlock()
 		return
 	}
@@ -288,7 +288,7 @@ func (qm *QueueManager) work(w *Worker) {
 
 	// If there was no new tasks
 	if t == nil {
-		qm.logger.Debug("No new task was returned / found. Freeing worker", "worker", w.ID)
+		qm.logger.Info("No new task was returned / found. Freeing worker", "worker", w.ID)
 		qm.mu.Lock()
 		qm.active_workers--
 		w.free()
@@ -296,7 +296,7 @@ func (qm *QueueManager) work(w *Worker) {
 		return
 	}
 
-	qm.logger.Debug("New task was found and assigning it to worker!", "task", t.TaskID, "task_status", t.Status, "worker", w.ID)
+	qm.logger.Info("New task was found and assigning it to worker!", "task", t.TaskID, "task_status", t.Status, "worker", w.ID)
 	qm.assignWorker(w, t)
 }
 
@@ -325,7 +325,7 @@ func (qm *QueueManager) assignWorker(w *Worker, t *Task) {
 	qm.mu.Lock()
 	// Assign task to worker
 	w.TaskActioning = t
-	qm.logger.Debug("Task assigned to worker", "time", time.Now(), "task", t.TaskID, "worker", w.ID)
+	qm.logger.Info("Task assigned to worker", "time", time.Now(), "task", t.TaskID, "worker", w.ID)
 
 	// Update task and QueueManager
 	t.Status = "processing"
@@ -372,18 +372,18 @@ func (qm *QueueManager) queue(t *Task) ( string, error ) {
 	if worker != nil {
 		if t != nil {
 			// Assign a worker to work on this task
-			qm.logger.Debug("Work assigned", "time", time.Now(), "task", t.TaskID)
+			qm.logger.Info("Work assigned", "time", time.Now(), "task", t.TaskID)
 			qm.mu.Unlock()
 			qm.assignWorker(worker, t)
 		} else {
 			// Free task for next available worker
-			qm.logger.Debug("No valid task", "time", time.Now())
+			qm.logger.Info("No valid task", "time", time.Now())
 			qm.mu.Unlock()
 		}
 	} else {
 		// Free task for next available worker
 		t.free()
-		qm.logger.Debug("No free worker, task freed for next worker", "time", time.Now(), "task", t.TaskID)
+		qm.logger.Info("No free worker, task freed for next worker", "time", time.Now(), "task", t.TaskID)
 		qm.mu.Unlock()
 	}
 
@@ -420,16 +420,16 @@ func (qm *QueueManager) Dequeue(worker *Worker) {
 	task_pos, found := qm.getTaskPosUnsafe(worker.TaskActioning.TaskID)
 
 	if found {
-		qm.logger.Debug("Task pos was found in dequeue. Worker task cleared", "task_pos", task_pos, "total tasks", len(qm.tasks))
+		qm.logger.Info("Task pos was found in dequeue. Worker task cleared", "task_pos", task_pos, "total tasks", len(qm.tasks))
 		worker.TaskActioning = nil
 		if task_pos == len(qm.tasks) - 1 {
 			qm.tasks = qm.tasks[:task_pos]
 		} else {
 			qm.tasks = append(qm.tasks[:task_pos], qm.tasks[task_pos + 1:]...)
 		}
-		qm.logger.Debug("Task removed from queue", "total tasks", len(qm.tasks))
+		qm.logger.Info("Task removed from queue", "total tasks", len(qm.tasks))
 	} else {
-		qm.logger.Debug("Task pos was not found in Dequeue")
+		qm.logger.Info("Task pos was not found in Dequeue")
 	}
 }
 
