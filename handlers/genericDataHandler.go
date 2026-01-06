@@ -71,12 +71,12 @@ func handleAddNewResource[T any](
 		}
 		if tools.StructIsEmpty(&resource) {
 			http.Error(w, "No valid json supplied", http.StatusBadRequest)
-			qm.Logger.Error("REQUEST_ERROR", "user", req_ip, "IP", req_ip, "req_id", req_id, "function", "Add New Resource", "error", "No valid json supplied")
+			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Add New Resource", "error", "No valid json supplied")
 			return
 		}
 		valid_resources, _ := tools.ValidateStruct(resource)
 		if len(valid_resources) < 1 {
-			qm.Logger.Error("REQUEST_ERROR", "user", req_id, "IP", req_ip, "req_id", req_id, "function", "Add New Resource", "error", "resource invalid", "resource", resource)
+			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Add New Resource", "error", "resource invalid", "resource", resource)
 			http.Error(w, "No valid domains", http.StatusBadRequest)
 			return
 		}
@@ -86,7 +86,7 @@ func handleAddNewResource[T any](
 		task_id, err := qm.QueueFunction(ctx_preserve, tools.SingleInsert(ctx_preserve, qm.Db, tableName, resource))
 
 		if err != nil {
-			qm.Logger.Error("TASK_ERROR", "user", req_id, "IP", req_ip, "req_id", req_id, "function", "Add New Resource", "error", "could not create task", "resource", resource, "error", err)
+			qm.Logger.Error("TASK_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Add New Resource", "error", "could not create task", "resource", resource, "error", err)
 			http.Error(w, fmt.Sprintf("Error creating create task\nError: %v", err), http.StatusInternalServerError)
 			return
 		}

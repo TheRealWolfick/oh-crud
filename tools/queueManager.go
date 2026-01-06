@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"lotusforge.au/api-server/middleware"
 	"lotusforge.au/api-server/models"
 )
 
@@ -134,7 +135,7 @@ func (qm *QueueManager) reportWork(w *Worker, status string, res map[string]any)
 		// Report task info
 		log, err := w.logTaskUnsafe()
 		if err != nil {
-			qm.Logger.Error("Failed to report task failure", "worker", w.ID, "task_id", w.TaskActioning.TaskID, "task_type", w.TaskActioning.TaskType, "error", w.TaskActioning.Response, "log_error", err, "user", w.TaskActioning.Ctx.Value("user").(models.User).Username)
+			qm.Logger.Error("Failed to report task failure", "worker", w.ID, "task_id", w.TaskActioning.TaskID, "task_type", w.TaskActioning.TaskType, "error", w.TaskActioning.Response, "log_error", err, "user", w.TaskActioning.Ctx.Value(middleware.Contextkey("user")).(*models.User).Username)
 			qm.mu.Unlock()
 		} else {
 			qm.mu.Unlock()
@@ -149,7 +150,7 @@ func (qm *QueueManager) reportWork(w *Worker, status string, res map[string]any)
 		// Report task info
 		log, err := w.logTaskUnsafe()
 		if err != nil {
-			qm.Logger.Error("Failed to report task success", "worker", w.ID, "task_id", w.TaskActioning.TaskID, "task_type", w.TaskActioning.TaskType, "error", w.TaskActioning.Response, "log_error", err, "user", w.TaskActioning.Ctx.Value("user").(models.User).Username)
+			qm.Logger.Error("Failed to report task success", "worker", w.ID, "task_id", w.TaskActioning.TaskID, "task_type", w.TaskActioning.TaskType, "error", w.TaskActioning.Response, "log_error", err, "user", w.TaskActioning.Ctx.Value(middleware.Contextkey("user")).(*models.User).Username)
 			qm.mu.Unlock()
 		} else {
 			qm.mu.Unlock()
@@ -292,9 +293,9 @@ func (qm *QueueManager) assignWorker(w *Worker, t *Task) {
 func (qm *QueueManager) logDatabaseEvent(ctx context.Context, event string, log []byte) {
 	go func() {
 		query := `INSERT INTO events (type, event_log, event_user) VALUES ($1, $2, $3)`
-		_, err := qm.Db.Exec(ctx, query, event, log, ctx.Value("user").(models.User).Username)
+		_, err := qm.Db.Exec(ctx, query, event, log, ctx.Value(middleware.Contextkey("user")).(*models.User).Username)
 		if err != nil && qm.Logger != nil {
-			qm.Logger.Error("Failed to log event", "error", err, "event", event, "user", ctx.Value("user").(models.User).Username)
+			qm.Logger.Error("Failed to log event", "error", err, "event", event, "user", ctx.Value(middleware.Contextkey("user")).(*models.User).Username)
 		}
 	}()
 }
