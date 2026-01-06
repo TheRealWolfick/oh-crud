@@ -6,9 +6,9 @@ import (
 	"lotusforge.au/api-server/models"
 )
 
-type contextkey string
+type Contextkey string
 
-const userContextKey contextkey = "user"
+const userContextKey Contextkey = "user"
 
 func SetUser(ctx context.Context, user *models.User) context.Context {
 	return context.WithValue(ctx, userContextKey, user)

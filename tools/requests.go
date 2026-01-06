@@ -3,10 +3,10 @@ package tools
 import "net/http"
 
 func GetIP(r *http.Request) string {
-	ip := r.RemoteAddr
+	ip := r.Header.Get("X-Forwarded-For")
 	
 	if ip == "" {
-		ip = r.Header.Get("X-Forwarded-For")
+		ip = r.RemoteAddr
 	}
 
 	return ip

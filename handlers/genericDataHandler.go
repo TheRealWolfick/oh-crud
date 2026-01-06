@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/jackc/pgx/v5"
+	"lotusforge.au/api-server/middleware"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/tools"
 )
@@ -49,13 +50,14 @@ func handleAddNewResource[T any](
 	tableName string,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		user_key := middleware.Contextkey("user")
 		req_ip := tools.GetIP(r)
 		req_id, err := tools.Generate32CharString()
-		req_username := r.Context().Value("user").(models.User).Username
+		req_username := r.Context().Value(user_key).(*models.User).Username
 		qm.Logger.Info("REQUEST_RECEIVED", "user", req_username, "IP", req_ip, "function", "Add New Resource", "table", tableName, "request_id", req_id)
 
 		// Response intialization
-		response := map[string]interface{}{"task_type": "CREATE"}
+		response := map[string]any{"task_type": "CREATE"}
 		w.Header().Set("Content-Type", "application/json")
 
 		var resource T
@@ -103,13 +105,14 @@ func handleAddMultipleNewResources[T any](
 	tableName string,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		user_key := middleware.Contextkey("user")
 		req_ip := tools.GetIP(r)
 		req_id, err := tools.Generate32CharString()
-		req_username := r.Context().Value("user").(models.User).Username
+		req_username := r.Context().Value(user_key).(*models.User).Username
 		qm.Logger.Info("REQUEST_RECEIVED", "user", req_username, "IP", req_ip, "function", "Add New Bulk Resource", "table", tableName, "request_id", req_id)
 
 		// Response intialization
-		response := map[string]interface{}{"task_type": "CREATE_BULK"}
+		response := map[string]any{"task_type": "CREATE_BULK"}
 		w.Header().Set("Content-Type", "application/json")
 
 		var resources []T
@@ -160,9 +163,10 @@ func handleGetResource[T interface{}](
 	tableName string,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		user_key := middleware.Contextkey("user")
 		req_ip := tools.GetIP(r)
 		req_id, err := tools.Generate32CharString()
-		req_username := r.Context().Value("user").(models.User).Username
+		req_username := r.Context().Value(user_key).(*models.User).Username
 		qm.Logger.Info("REQUEST_RECEIVED", "user", req_username, "IP", req_ip, "function", "Get Resource", "table", tableName, "request_id", req_id)
 
 		// Response intialization
@@ -205,13 +209,14 @@ func handleUpdateResource[T any](
 	tableName string,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		user_key := middleware.Contextkey("user")
 		req_ip := tools.GetIP(r)
 		req_id, err := tools.Generate32CharString()
-		req_username := r.Context().Value("user").(models.User).Username
+		req_username := r.Context().Value(user_key).(*models.User).Username
 		qm.Logger.Info("REQUEST_RECEIVED", "user", req_username, "IP", req_ip, "function", "Update Resource", "table", tableName, "request_id", req_id)
 
 		// Response intialization
-		response := map[string]interface{}{"task_type": "UPDATE"}
+		response := map[string]any{"task_type": "UPDATE"}
 		w.Header().Set("Content-Type", "application/json")
 
 		var updated T
@@ -261,13 +266,14 @@ func handleDeleteResource[T any](
 	tableName string,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		user_key := middleware.Contextkey("user")
 		req_ip := tools.GetIP(r)
 		req_id, err := tools.Generate32CharString()
-		req_username := r.Context().Value("user").(models.User).Username
+		req_username := r.Context().Value(user_key).(*models.User).Username
 		qm.Logger.Info("REQUEST_RECEIVED", "user", req_username, "IP", req_ip, "function", "Delete Resource", "table", tableName, "request_id", req_id)
 
 		// Response intialization
-		response := map[string]interface{}{"task_type": "DELETE"}
+		response := map[string]any{"task_type": "DELETE"}
 		w.Header().Set("Content-Type", "application/json")
 
 		var resource_to_delete *T
