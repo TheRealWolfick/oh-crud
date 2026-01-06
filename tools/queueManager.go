@@ -3,12 +3,14 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"lotusforge.au/api-server/models"
 )
 
 type Task struct {
@@ -23,7 +25,6 @@ type Task struct {
 	Ctx           context.Context  `json:"-"`
 	Function      func(context.Context, ...any) (map[string]any, error) `json:"-"`
 	Args          []any `json:"-"`
-	Lock          bool				`json:"lock"`
 }
 
 type QueueManager struct {
@@ -31,8 +32,8 @@ type QueueManager struct {
 	workers       []*Worker
 	workers_count int
 	active_workers int
-	db            *pgxpool.Pool
-	logger        *slog.Logger
+	Db            *pgxpool.Pool
+	Logger        *slog.Logger
 	mu            sync.Mutex
 }
 
@@ -60,19 +61,17 @@ func NewQueue(db *pgxpool.Pool, num_workers int, logger *slog.Logger) *QueueMana
 	// Return the queue
 	return &QueueManager{
 		tasks: []*Task{},
-		db: db,
+		Db: db,
 		workers: workers,
 		active_workers: 0,
 		workers_count: num_workers,
-		logger: logger,
+		Logger: logger,
 	}
 }
 
 
 // Creates a new task
 func (qm *QueueManager) createTask(ctx context.Context, sql string, args ...any) (*Task, error) {
-	qm.mu.Lock()
-
 	task_id, err := Generate32CharString()
 
 	if err != nil {
@@ -87,24 +86,10 @@ func (qm *QueueManager) createTask(ctx context.Context, sql string, args ...any)
 		Ctx: ctx,
 		Args: args,
 		Sql: sql,
-		Lock: true,
 	}
-	
-	qm.tasks = append(qm.tasks, t)
 	
 	// Write task creation to database
-	logData := map[string]any {
-		"task": map[string]any {
-			"task_id":       t.TaskID,
-			"task_type":     t.TaskType,
-			"status":        t.Status,
-			"start_time":    t.StartTime,
-		},
-	}
-	log, _ := json.Marshal(logData)
-	
-	qm.mu.Unlock()
-	qm.logDatabaseEvent(ctx, "TASK_CREATE", log)
+	qm.logDatabaseEvent(ctx, "TASK_CREATE", t.logMiniUnsafe())
 	
 	return t, nil
 }
@@ -112,7 +97,6 @@ func (qm *QueueManager) createTask(ctx context.Context, sql string, args ...any)
 
 // Creates a new function task
 func (qm *QueueManager) createFunctionTask(ctx context.Context, function func(context.Context, ...any) (map[string]any, error), args ...any) (*Task, error) {
-	qm.mu.Lock()
 	task_id, err := Generate32CharString()
 
 	if err != nil {
@@ -127,23 +111,10 @@ func (qm *QueueManager) createFunctionTask(ctx context.Context, function func(co
 		Ctx: ctx,
 		Args: args,
 		Function: function,
-		Lock: true,
 	}
 	
 	// Write task creation to database
-	logData := map[string]any {
-		"task": map[string]any {
-			"task_id":       t.TaskID,
-			"task_type":     t.TaskType,
-			"status":        t.Status,
-			"start_time":    t.StartTime,
-		},
-	}
-	log, _ := json.Marshal(logData)
-	qm.tasks = append(qm.tasks, t)
-	
-	qm.mu.Unlock()
-	qm.logDatabaseEvent(ctx, "TASK_CREATE", log)
+	qm.logDatabaseEvent(ctx, "TASK_CREATE", t.logMiniUnsafe())
 
 	return t, nil
 }
@@ -159,22 +130,11 @@ func (qm *QueueManager) reportWork(w *Worker, status string, res map[string]any)
 		// Task failed
 		// Update task status
 		w.TaskActioning.Status = "error"
-		logsData := map[string]interface{}{
-			"worker": w.ID,
-			"task": map[string]interface{}{
-				"task_id":       w.TaskActioning.TaskID,
-				"status":        w.TaskActioning.Status,
-				"start_time":    w.TaskActioning.StartTime,
-				"complete_time": w.TaskActioning.CompleteTime,
-				"num_args":      len(w.TaskActioning.Args),
-				"response":      w.TaskActioning.Response,
-			},
-		}
 
 		// Report task info
-		log, err := json.Marshal(logsData)
+		log, err := w.logTaskUnsafe()
 		if err != nil {
-			qm.logger.Error("Failed to report task failure", "worker", w.ID, "task_id", w.TaskActioning.TaskID, "error", w.TaskActioning.Response, "log_error", err)
+			qm.Logger.Error("Failed to report task failure", "worker", w.ID, "task_id", w.TaskActioning.TaskID, "task_type", w.TaskActioning.TaskType, "error", w.TaskActioning.Response, "log_error", err, "user", w.TaskActioning.Ctx.Value("user").(models.User).Username)
 			qm.mu.Unlock()
 		} else {
 			qm.mu.Unlock()
@@ -185,22 +145,11 @@ func (qm *QueueManager) reportWork(w *Worker, status string, res map[string]any)
 		// Task suceeded
 		// Update task status
 		w.TaskActioning.Status = "complete"
-		logsData := map[string]interface{}{
-			"worker": w.ID,
-			"task": map[string]interface{}{
-				"task_id":       w.TaskActioning.TaskID,
-				"status":        w.TaskActioning.Status,
-				"start_time":    w.TaskActioning.StartTime,
-				"complete_time": w.TaskActioning.CompleteTime,
-				"num_args":      len(w.TaskActioning.Args),
-				"response":      w.TaskActioning.Response,
-			},
-		}
 
 		// Report task info
-		log, err := json.Marshal(logsData)
+		log, err := w.logTaskUnsafe()
 		if err != nil {
-			qm.logger.Error("Failed to report task success", "worker", w.ID, "task_id", w.TaskActioning.TaskID, "log_error", err)
+			qm.Logger.Error("Failed to report task success", "worker", w.ID, "task_id", w.TaskActioning.TaskID, "task_type", w.TaskActioning.TaskType, "error", w.TaskActioning.Response, "log_error", err, "user", w.TaskActioning.Ctx.Value("user").(models.User).Username)
 			qm.mu.Unlock()
 		} else {
 			qm.mu.Unlock()
@@ -213,24 +162,28 @@ func (qm *QueueManager) reportWork(w *Worker, status string, res map[string]any)
 func (qm *QueueManager) lookForTask() *Task {
 	qm.mu.Lock()
 	defer qm.mu.Unlock()
-	qm.logger.Info("Looking for tasks...")
 
 	// Look for more Work
 	if len(qm.tasks) < 1 {
-		qm.logger.Info("Tasks list is empty")
+		// No tasks remaining
 		return nil
 	}
-	for _, task := range qm.tasks {
-		qm.logger.Info("Checking...", "task", task.TaskID, "islocked", task.islocked())
-		if !task.islocked() {
-			qm.logger.Info("Unlocked!")
-			task.lock()
-			return task
-		}
+
+	// Extract next task from queue
+	t := qm.tasks[0]
+
+	// Remove the extracted task
+	qm.tasks = qm.tasks[1:]
+
+	if len(qm.tasks) > 0 && cap(qm.tasks) > 64 && len(qm.tasks) < cap(qm.tasks)/4 {
+		newTasks := make([]*Task, len(qm.tasks))
+		copy(newTasks, qm.tasks)
+		qm.tasks = newTasks
 	}
-	// No outstanding tasks
-	return nil
+	
+	return t
 }
+
 
 // Do work
 func (qm *QueueManager) work(w *Worker) {
@@ -238,7 +191,6 @@ func (qm *QueueManager) work(w *Worker) {
 
 	// Ensure work can be completed
 	if !w.islocked() || w.TaskActioning.Status != "processing" {
-		qm.logger.Info("Error triggered in work where either worker wasn't locked or task was not set to status = processing", "worker", w, "task", w.TaskActioning)
 		qm.mu.Unlock()
 		return
 	}
@@ -255,7 +207,7 @@ func (qm *QueueManager) work(w *Worker) {
 	switch task_type {
 	case "exec":
 		// SQL exec
-		cmdtag, err := qm.db.Exec(ctx, sql, args...)
+		cmdtag, err := qm.Db.Exec(ctx, sql, args...)
 
 		// Report work
 		if err != nil {
@@ -281,15 +233,11 @@ func (qm *QueueManager) work(w *Worker) {
 		}
 	}
 
-	// Remove completed item from queue
-	qm.Dequeue(w)
-
 	// Look for more work
 	t := qm.lookForTask()
 
 	// If there was no new tasks
 	if t == nil {
-		qm.logger.Info("No new task was returned / found. Freeing worker", "worker", w.ID)
 		qm.mu.Lock()
 		qm.active_workers--
 		w.free()
@@ -297,7 +245,7 @@ func (qm *QueueManager) work(w *Worker) {
 		return
 	}
 
-	qm.logger.Info("New task was found and assigning it to worker!", "task", t.TaskID, "task_status", t.Status, "worker", w.ID)
+	// There was a new task
 	qm.assignWorker(w, t)
 }
 
@@ -324,27 +272,16 @@ func (qm *QueueManager) getFreeWorker() (w *Worker) {
 // Assign a worker to a task. The worker stores a reference to the task, and the context for the request
 func (qm *QueueManager) assignWorker(w *Worker, t *Task) {
 	qm.mu.Lock()
+	// Clear the worker's task field to ensure any existing tasks are cleared for the garbage collector
+	w.TaskActioning = nil
 	// Assign task to worker
 	w.TaskActioning = t
-	qm.logger.Info("Task assigned to worker", "time", time.Now(), "task", t.TaskID, "worker", w.ID)
 
 	// Update task and QueueManager
 	t.Status = "processing"
 
 	// Report assignment
-	logData := map[string]any {
-		"worker": w.ID,
-		"task": map[string]any {
-			"task_id":       w.TaskActioning.TaskID,
-			"task_type":     w.TaskActioning.TaskType,
-			"status":        w.TaskActioning.Status,
-			"start_time":    w.TaskActioning.StartTime,
-		},
-	}
-	log, _ := json.Marshal(logData)
-	ctx := t.Ctx
 	qm.mu.Unlock() 
-	qm.logDatabaseEvent(ctx, "TASK_UPDATE", log)
 
 	// Commence work
 	go qm.work(w)
@@ -354,10 +291,10 @@ func (qm *QueueManager) assignWorker(w *Worker, t *Task) {
 // Log a database event into the database
 func (qm *QueueManager) logDatabaseEvent(ctx context.Context, event string, log []byte) {
 	go func() {
-		query := `INSERT INTO events (type, event_log) VALUES ($1, $2)`
-		_, err := qm.db.Exec(ctx, query, event, log)
-		if err != nil && qm.logger != nil {
-			qm.logger.Error("Failed to log event", "error", err, "event", event)
+		query := `INSERT INTO events (type, event_log, event_user) VALUES ($1, $2, $3)`
+		_, err := qm.Db.Exec(ctx, query, event, log, ctx.Value("user").(models.User).Username)
+		if err != nil && qm.Logger != nil {
+			qm.Logger.Error("Failed to log event", "error", err, "event", event, "user", ctx.Value("user").(models.User).Username)
 		}
 	}()
 }
@@ -373,18 +310,17 @@ func (qm *QueueManager) queue(t *Task) ( string, error ) {
 	if worker != nil {
 		if t != nil {
 			// Assign a worker to work on this task
-			qm.logger.Info("Work assigned", "time", time.Now(), "task", t.TaskID)
 			qm.mu.Unlock()
 			qm.assignWorker(worker, t)
 		} else {
-			// Free task for next available worker
-			qm.logger.Info("No valid task", "time", time.Now())
+			// No task was supplied
+			qm.Logger.Error("Queue was called without a valid task")
 			qm.mu.Unlock()
+			return "", errors.New("No valid task was supplied to queue")
 		}
 	} else {
-		// Free task for next available worker
-		t.free()
-		qm.logger.Info("No free worker, task freed for next worker", "time", time.Now(), "task", t.TaskID)
+		// add task to queue for next available worker
+		qm.tasks = append(qm.tasks, t)
 		qm.mu.Unlock()
 	}
 
@@ -413,28 +349,7 @@ func (qm *QueueManager) QueueExec(ctx context.Context, sql string, args ...any) 
 }
 
 
-// Remove a task from the queue
-func (qm *QueueManager) Dequeue(worker *Worker) {
-	qm.mu.Lock()
-	defer qm.mu.Unlock()
-
-	task_pos, found := qm.getTaskPosUnsafe(worker.TaskActioning.TaskID)
-
-	if found {
-		qm.logger.Info("Task pos was found in dequeue. Worker task cleared", "task_pos", task_pos, "total tasks", len(qm.tasks))
-		worker.TaskActioning = nil
-		if task_pos == len(qm.tasks) - 1 {
-			qm.tasks = qm.tasks[:task_pos]
-		} else {
-			qm.tasks = append(qm.tasks[:task_pos], qm.tasks[task_pos + 1:]...)
-		}
-		qm.logger.Info("Task removed from queue", "total tasks", len(qm.tasks))
-	} else {
-		qm.logger.Info("Task pos was not found in Dequeue")
-	}
-}
-
-
+// Get the position in the queue of a task
 func (qm *QueueManager) getTaskPosUnsafe(identifer string) (int, bool) {
 	for index, item := range qm.tasks {
 		if item.TaskID == identifer {
@@ -452,25 +367,7 @@ func (qm *QueueManager) GetTaskStatus(identifier string) (string, bool) {
 	return "", false
 }
 
-// Lock a task to prevent concurrent workers being assigned
-func (t *Task) lock() {
-	t.Lock = true
-}
 
-// Free a task for the next available worker
-func (t *Task) free() {
-	t.Lock = false
-}
-
-// Check if a task is locked
-func (t *Task) islocked() bool {
-	return t.Lock == true
-}
-
-// Free the worker to be used again
-func (w *Worker) free() {
-	w.Lock = false
-}
 
 // Lock the worker so it cannot be overwritten with a new task before completing the current one
 func (w *Worker) lock() {
@@ -482,3 +379,43 @@ func (w *Worker) islocked() bool {
 	return w.Lock
 }
 
+// Free the worker to be used again
+func (w *Worker) free() {
+	// clear the outstanding task for the garbage collector
+	w.TaskActioning = nil
+	w.Lock = false
+}
+
+// Return the basic log information of the task. Intended for when the task is incomplete.
+// Returns the task_id, task_type, status, and start_time
+func (t *Task) logMiniUnsafe() []byte {
+	logData := map[string]any {
+		"task": map[string]any {
+			"task_id":       t.TaskID,
+			"task_type":     t.TaskType,
+			"status":        t.Status,
+			"start_time":    t.StartTime,
+		},
+	}
+	log, _ := json.Marshal(logData)
+	return log
+}
+
+
+// Return the full completed log information of the task
+func (w *Worker) logTaskUnsafe() ([]byte, error) {
+		logsData := map[string]interface{}{
+			"worker": w.ID,
+			"task": map[string]interface{}{
+				"task_id":       w.TaskActioning.TaskID,
+				"task_type":     w.TaskActioning.TaskType,
+				"status":        w.TaskActioning.Status,
+				"start_time":    w.TaskActioning.StartTime,
+				"complete_time": w.TaskActioning.CompleteTime,
+				"num_args":      len(w.TaskActioning.Args),
+				"response":      w.TaskActioning.Response,
+			},
+		}
+		// Report task info
+		return json.Marshal(logsData)
+}

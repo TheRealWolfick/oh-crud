@@ -27,8 +27,11 @@ func RecursiveBatchInsert(
 ) (func(context.Context, ...any) (map[string]any, error)) {
 	return func(context.Context, ...any) (map[string]any, error) {
 		result := recursiveBatchInsertProcess(ctx, db, tableName, items)
+		failed_count := len(result.FailedItems)
 		logData := map[string]any{
+			"total_count": result.SuccessCount + failed_count,
 			"success_count": result.SuccessCount,
+			"failed_count": failed_count,
 			"failed_items": result.FailedItems,
 		}
 		return logData, nil
@@ -64,9 +67,14 @@ func recursiveBatchInsertProcess(
 
 	// If there's only one item and it failed, add it to failed items
 	if len(items) == 1 {
-		result.FailedItems = append(result.FailedItems, map[string]any{"item": items[0], "error": map[string]any{
-			"database": err,
-		}})
+		result.FailedItems = append(result.FailedItems, map[string]any{
+			"item": items[0], 
+			"rectified": false,
+			"date_rectified": nil,
+			"error": map[string]any{
+				"database": err,
+			},
+		})
 		return result
 	}
 
