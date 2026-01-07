@@ -3,8 +3,10 @@ package tools
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"reflect"
+	"strings"
 
 	"lotusforge.au/api-server/models"
 )
@@ -54,7 +56,7 @@ func recursiveBatchInsertProcess(
 	}
 
 	// Try to insert the batch
-	qb := NewBlankQueryBuilder()
+	qb := NewQueryBuilder()
 	query := qb.BuildMultiInsert(tableName, items)
 
 	cmdTag, err := db.Exec(ctx, query, qb.GetArgs()...)
@@ -131,16 +133,16 @@ func setFromStruct(v any, setFunc func(string, any)) {
 }
 
 // Save the struct fields into the query builder values data
-func SetValueFromStruct(qb QueryBuildTool, v interface{}) {
+func SetValueFromStruct(qb *QueryBuilder, v interface{}) {
 	setFromStruct(v, qb.SetValue)
 }
 
 // Save the struct fields into the query builder where data
-func SetWhereFromStruct(qb QueryBuildTool, v interface{}) {
+func SetWhereFromStruct(qb *QueryBuilder, v interface{}) {
 	setFromStruct(v, qb.SetWhereAbsolute)
 }
 
-func SetWhereFromURL[T any](qb QueryBuildTool, r *http.Request, model T) error {
+func SetWhereFromURL[T any](qb *QueryBuilder, r *http.Request, model T) error {
 	// Parse the form
 	if err := r.ParseForm(); err != nil {
 		return err
@@ -190,6 +192,39 @@ func SetWhereFromURL[T any](qb QueryBuildTool, r *http.Request, model T) error {
 			qb.SetWhereAbsolute(GetDBTagFromField(model, field_name), field_value)
 		} else {
 			qb.SetWhere(GetDBTagFromField(model, field_name), field_value, fieldType.Kind())
+		}
+	}
+
+	// Iterate over url params, identify and add any jsonb queries
+	for key, val := range r.URL.Query() {
+		if strings.Contains(key, ".") {
+			q := strings.Split(key, ".")
+			
+			// Ensure q[0] is a valid db field
+			if db_field := GetDBTagFromField(model, q[0]); db_field == "" {
+				continue
+			}
+
+			// Add potentially valid json fields
+			valid_json_fields := []string{q[0]}
+			for _, json_field := range q[1:] {
+				if len(json_field) > 0 && len(val) > 0 {
+					// Save the json field into qb values (to disallow potential sql injection)
+					field_pos := qb.SaveArbitraryValue(json_field)
+					valid_json_fields = append(valid_json_fields, fmt.Sprintf("$v", field_pos))
+
+				}
+			}
+
+			// Concatenate the json fields
+			valid_json := strings.Join(valid_json_fields[:len(valid_json_fields)-1], "->")
+			valid_json = fmt.Sprintf("%s->>%s", valid_json, valid_json_fields[len(valid_json_fields)-1])
+
+			// Convert the value into its potential type
+			processed_vals := ConvertURLValToAny(val)
+
+			// Save the custom where field
+			qb.SetWhereAbsolute(valid_json, processed_vals)
 		}
 	}
 

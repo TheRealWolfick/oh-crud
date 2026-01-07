@@ -81,7 +81,7 @@ func (h *userHandler) UpdateUserInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user.Username = &requester.Username
-	qb := tools.NewBlankQueryBuilder()
+	qb := tools.NewQueryBuilder()
 
 	// Get current user info
 	var user_cur models.UserCreateUpdate

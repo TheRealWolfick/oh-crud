@@ -172,7 +172,11 @@ func getTagFromField[T any](model T, field string, tag string) string {
 		mod = mod.Elem()
 	}
 
-	f, _ := mod.FieldByName(field)
+	f, found := mod.FieldByName(field)
+
+	if !found {
+		return ""
+	}
 
 	return f.Tag.Get(tag)
 }

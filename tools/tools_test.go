@@ -71,7 +71,7 @@ func TestGettingFieldsFromStructs(t *testing.T) {
 
 
 func TestQueryBuilder(t *testing.T) {
-	qb := NewBlankQueryBuilder()
+	qb := NewQueryBuilder()
 	insertStruct := &testingStruct{}
 	insertData := `{"value": 50, "something": "some text"}`
 	json.Unmarshal([]byte(insertData), &insertStruct)
@@ -103,8 +103,8 @@ func TestQueryBuilder(t *testing.T) {
 	var new1 testingStruct
 	var newInvalidGroup []testingStruct
 	var newValidGroup []testingStruct
-	qb_singleValid := NewBlankQueryBuilder()
-	qb_groupValid := NewBlankQueryBuilder()
+	qb_singleValid := NewQueryBuilder()
+	qb_groupValid := NewQueryBuilder()
 	
 	// Read the data into the variables
 	json.Unmarshal([]byte(new1json), &new1)
@@ -155,7 +155,7 @@ func TestQueryBuilder(t *testing.T) {
 
 func TestSetValueFromStruct(t *testing.T) {
 	t.Run("Set values from struct with non-nil pointer fields", func(t *testing.T) {
-		qb := NewBlankQueryBuilder()
+		qb := NewQueryBuilder()
 		word := "test"
 		value := 42
 		isTrue := true
@@ -179,7 +179,7 @@ func TestSetValueFromStruct(t *testing.T) {
 	})
 	
 	t.Run("Skip nil pointer fields", func(t *testing.T) {
-		qb := NewBlankQueryBuilder()
+		qb := NewQueryBuilder()
 		value := 42
 		
 		testStruct := &testingStruct{
@@ -200,7 +200,7 @@ func TestSetValueFromStruct(t *testing.T) {
 	})
 	
 	t.Run("Skip fields without db tag", func(t *testing.T) {
-		qb := NewBlankQueryBuilder()
+		qb := NewQueryBuilder()
 		word := "test"
 		value := 42
 		notdbval := "should be skipped"
@@ -223,7 +223,7 @@ func TestSetValueFromStruct(t *testing.T) {
 	
 	
 	t.Run("Handle empty struct", func(t *testing.T) {
-		qb := NewBlankQueryBuilder()
+		qb := NewQueryBuilder()
 		
 		testStruct := &testingStruct{}
 		
@@ -241,7 +241,7 @@ func TestSetValueFromStruct(t *testing.T) {
 
 func TestSetFromURL(t *testing.T) {
 	t.Run("Set where clauses from valid URL parameters", func(t *testing.T) {
-		qb := NewBlankQueryBuilder()
+		qb := NewQueryBuilder()
 		
 		req, _ := http.NewRequest("GET", "/?dbword=search&dbvalue=25&dbistrue=true", nil)
 		
@@ -261,7 +261,7 @@ func TestSetFromURL(t *testing.T) {
 	})
 	
 	t.Run("Skip invalid integer values", func(t *testing.T) {
-		qb := NewBlankQueryBuilder()
+		qb := NewQueryBuilder()
 		
 		req, _ := http.NewRequest("GET", "/?dbword=search&dbvalue=notanumber", nil)
 		
@@ -281,7 +281,7 @@ func TestSetFromURL(t *testing.T) {
 	})
 	
 	t.Run("Skip invalid boolean values", func(t *testing.T) {
-		qb := NewBlankQueryBuilder()
+		qb := NewQueryBuilder()
 		
 		req, _ := http.NewRequest("GET", "/?dbword=test&dbistrue=notabool", nil)
 		
@@ -301,7 +301,7 @@ func TestSetFromURL(t *testing.T) {
 	})
 	
 	t.Run("Handle empty query parameters", func(t *testing.T) {
-		qb := NewBlankQueryBuilder()
+		qb := NewQueryBuilder()
 		
 		req, _ := http.NewRequest("GET", "/", nil)
 		
@@ -320,7 +320,7 @@ func TestSetFromURL(t *testing.T) {
 	})
 	
 	t.Run("Skip fields without db tag", func(t *testing.T) {
-		qb := NewBlankQueryBuilder()
+		qb := NewQueryBuilder()
 		
 		req, _ := http.NewRequest("GET", "/?dbword=test&notdbval=shouldskip", nil)
 		
@@ -340,7 +340,7 @@ func TestSetFromURL(t *testing.T) {
 	})
 	
 	t.Run("Handle multiple valid parameters", func(t *testing.T) {
-		qb := NewBlankQueryBuilder()
+		qb := NewQueryBuilder()
 		
 		req, _ := http.NewRequest("GET", "/?dbword=search&dbvalue=100&dbistrue=false&dbsomething=text", nil)
 		
@@ -360,7 +360,7 @@ func TestSetFromURL(t *testing.T) {
 	})
 	
 	t.Run("Skip empty parameter values", func(t *testing.T) {
-		qb := NewBlankQueryBuilder()
+		qb := NewQueryBuilder()
 		
 		req, _ := http.NewRequest("GET", "/?dbword=search&dbvalue=&dbsomething=text", nil)
 		

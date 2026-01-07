@@ -28,12 +28,12 @@ type DataHandler interface {
 	HandleDelete() http.HandlerFunc 
 }
 
-func NewGenericDataHandler[T any](qm *tools.QueueManager, tableName string, endPoint string, defWhere map[string]any) *GenericDataHandler[T] {
+func NewGenericDataHandler[T any](qm *tools.QueueManager, tableName string, endPoint string, defaultWhere map[string]any) *GenericDataHandler[T] {
 	return &GenericDataHandler[T]{
 		Qm: qm,
 		TableName: tableName,
 		EndPoint: endPoint,
-		DefWhere: defWhere,
+		DefWhere: defaultWhere,
 	}
 }
 
@@ -178,15 +178,15 @@ func handleGetResource[T interface{}](
 		var res_type T
 
 		// Create new query builder 
-		qb := tools.NewBlankQueryBuilder()
+		qb := tools.NewQueryBuilder()
 
 		// Load where vals
+		for _, key := range defaultWhere {
+			qb.SetWhereAbsolute(key.(string), defaultWhere[key.(string)])
+		}
 		if err := tools.SetWhereFromURL(qb, r, res_type); err != nil {
 			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Get Resource", "error", err)
 			http.Error(w, "Error in parsing where clauses", http.StatusBadRequest)
-		}
-		for _, key := range defaultWhere {
-			qb.SetWhereAbsolute(key.(string), defaultWhere[key.(string)])
 		}
 
 		// Build the query
@@ -242,7 +242,7 @@ func handleUpdateResource[T any](
 		}
 
 		// Create new query builder
-		qb := tools.NewBlankQueryBuilder()
+		qb := tools.NewQueryBuilder()
 
 		// Set values from the struct
 		tools.SetValueFromStruct(qb, updated)
@@ -307,7 +307,7 @@ func handleDeleteResource[T any](
 		}
 
 		// Create query builder
-		qb := tools.NewBlankQueryBuilder()
+		qb := tools.NewQueryBuilder()
 		query := qb.BuildDelete(tableName, resource_to_delete)
 
 		// Execute the query

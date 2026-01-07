@@ -14,61 +14,26 @@ type QueryBuilder struct {
 	args   []any
 	pos    uint
 	wheremod map[string]string
-}
-
-type BlankQueryBuilder struct {
-	QueryBuilder
 	query  string
 }
 
-type QueryBuildTool interface {
-	GetArgs() []any
-	GetArgsAsString() string
-	SetValue(field string, value any)
-	SetWhere(field string, value any, fieldType reflect.Kind)
-	SetWhereAbsolute(field string, value any)
-}
 
 type SetCallback interface {
 	Set(field string, value any)
 }
 
 
-// Create new new QueryBuilder and insert the primary key to be
-// used in any update statement
-func NewQueryBuilder(pk string, val any) *QueryBuilder {
-	return &QueryBuilder{
-		values: make(map[string]uint),
-		where: map[string]uint{pk: 1},
-		args: []any{val},
-		pos: 2,
-	}
-}
-
-
 // Create a new blank query builder without a primary key where value.
 // Primarily used when there won't be a WHERE clause in the SQL (INSERT)
-func NewBlankQueryBuilder() *BlankQueryBuilder {
-	return &BlankQueryBuilder{
-		QueryBuilder: QueryBuilder{
-			values: make(map[string]uint),
-			where: make(map[string]uint),
-			args: []any{},
-			pos: 1,
-			wheremod: make(map[string]string),
-		},
+func NewQueryBuilder() *QueryBuilder {
+	return &QueryBuilder{
+		values: make(map[string]uint),
+		where: make(map[string]uint),
+		args: []any{},
+		pos: 1,
+		wheremod: make(map[string]string),
 		query: "",
 	}
-}
-
-
-// Return whether there are fields to be updated in QueryBuilder.
-// To be used to only push updates to the database where necessary.
-func (qb *QueryBuilder) HasUpdates() bool {
-	if len(qb.values) > 0 {
-		return true
-	}
-	return false
 }
 
 
@@ -78,29 +43,8 @@ func (qb *QueryBuilder) GetArgs() []any {
 }
 
 
-// Receive the args from the query builder
-func (qb *BlankQueryBuilder) GetArgs() []any {
-	return qb.args
-}
-
-
 // Return all the args as a string (debugging)
 func (qb *QueryBuilder) GetArgsAsString() string {
-	args_string := []string{}
-	for _, v := range qb.args {
-		val := reflect.ValueOf(v)
-		if val.Kind() == reflect.Ptr {
-			args_string = append(args_string, fmt.Sprintf("%v", val.Elem()))
-		} else {
-			args_string = append(args_string, fmt.Sprintf("%v", val))
-		}
-	}
-	return strings.Join(args_string, ", ")
-}
-
-
-// Return all the args as a string (debugging)
-func (qb *BlankQueryBuilder) GetArgsAsString() string {
 	args_string := []string{}
 	for _, v := range qb.args {
 		val := reflect.ValueOf(v)
@@ -132,43 +76,22 @@ func (qb *QueryBuilder) SetValue(field string, value any) {
 		qb.args[qb.values[field]-1] = value
 	}
 }
-func (qb *BlankQueryBuilder) SetValue(field string, value any) {
+
+
+// Inner function for saving an arbitrary value and returning its position
+func (qb *QueryBuilder) innerSaveValue(value any) int {
 	if value == nil {
-		return
+		return -1
 	}
 
-	// Check to make sure it isn't already in the updates
-	_, exists := qb.values[field]
- 
-	if !exists {
-		qb.values[field] = qb.pos
-		qb.args = append(qb.args, value)
-		qb.pos++	
-	} else {
-		qb.args[qb.values[field]-1] = value
-	}
+	qb.args = append(qb.args, value)
+	qb.pos++
+	return int(qb.pos)
 }
 
-
-// Inner function for setting the where value with the mod to apply to the query. Can only be called by internal functions
-func (qb *BlankQueryBuilder) innerSetWhere(field string, value any, mod string) {
-	if value == nil {
-		return
-	}
-
-	_, exists := qb.where[field]
-
-	if !exists {
-		qb.where[field] = qb.pos
-		qb.wheremod[field] = mod
-		qb.args = append(qb.args, value)
-		qb.pos++
-	} else {
-		qb.args[qb.values[field]-1] = value
-		qb.wheremod[field] = mod
-	}
+func (qb *QueryBuilder) SaveArbitraryValue(value any) int {
+	return qb.innerSaveValue(value)
 }
-
 
 // Inner function for setting the where value with the mod to apply to the query. Can only be called by internal functions
 func (qb *QueryBuilder) innerSetWhere(field string, value any, mod string) {
@@ -190,28 +113,9 @@ func (qb *QueryBuilder) innerSetWhere(field string, value any, mod string) {
 }
 
 
+
 // Wrapper for directly interfacing with the innerSetWhere function
 func (qb *QueryBuilder) SetWhereAbsolute(field string, value any) {
-	if value == nil {
-		return
-	}
-
-	_, exists := qb.where[field]
-
-	if !exists {
-		qb.where[field] = qb.pos
-		qb.wheremod[field] = "="
-		qb.args = append(qb.args, value)
-		qb.pos++
-	} else {
-		qb.args[qb.values[field]-1] = value
-		qb.wheremod[field] = "="
-	}
-}
-
-
-// Wrapper for directly interfacing with the innerSetWhere function
-func (qb *BlankQueryBuilder) SetWhereAbsolute(field string, value any) {
 	if value == nil {
 		return
 	}
@@ -294,19 +198,18 @@ func setWhere(field string, value any, fieldType reflect.Kind, setFunc func(stri
 	}
 }
 
+
+
 // Add a field and value into the where clause
 func (qb *QueryBuilder) SetWhere(field string, value any, fieldType reflect.Kind) {
 	setWhere(field, value, fieldType, qb.innerSetWhere)
 }
 
 
-func (qb *BlankQueryBuilder) SetWhere(field string, value any, fieldType reflect.Kind) {
-	setWhere(field, value, fieldType, qb.innerSetWhere)
-}
 
 // Build the insert query, saving all the values into the args key to be 
 // safely loaded into the sql.
-func (qb *BlankQueryBuilder) BuildInsert(table string, mod any) string {
+func (qb *QueryBuilder) BuildInsert(table string, mod any) string {
 	// Early return
 	if qb.query != "" {
 		return qb.query
@@ -370,7 +273,7 @@ func (qb *BlankQueryBuilder) BuildInsert(table string, mod any) string {
 // Build a query to insert multiple entries. The slice of models must have all the keys as pointers and cannot omit fields. Instead,
 // the json tag none:"<string>" should be used to specify a default value (DEFAULT and NULL accepted as strings).
 // Default values are not inserted as arguements, but inserted into the query directly.
-func (qb *BlankQueryBuilder) BuildMultiInsert(table string, models []any) string {
+func (qb *QueryBuilder) BuildMultiInsert(table string, models []any) string {
 
 	// Early return
 	if qb.query != "" {
@@ -454,7 +357,9 @@ func (qb *QueryBuilder) BuildSelect(table string, select_fields []string) string
 	return fmt.Sprintf("SELECT %s FROM %s WHERE %s;", strings.Join(select_fields, ", "), table, strings.Join(w, " AND "))
 } 
 
-func (qb *BlankQueryBuilder) BuildUpdate(table string, r *http.Request, model interface{}) string {
+
+// Build the query to update a single field in the database
+func (qb *QueryBuilder) BuildUpdate(table string, r *http.Request, model interface{}) string {
 	if qb.query != "" {
 		return qb.query
 	}
@@ -497,7 +402,8 @@ func (qb *BlankQueryBuilder) BuildUpdate(table string, r *http.Request, model in
 }
 
 
-func (qb *BlankQueryBuilder) BuildDelete(table string, model interface{}) string {
+// Build the query to delete a resource from the database
+func (qb *QueryBuilder) BuildDelete(table string, model interface{}) string {
 	if qb.query != "" {
 		return qb.query
 	}
@@ -514,4 +420,8 @@ func (qb *BlankQueryBuilder) BuildDelete(table string, model interface{}) string
 
 	qb.query = fmt.Sprintf("DELETE FROM %s WHERE %s;", table, strings.Join(w, " AND "))
 	return qb.query
+}
+
+func (qb *QueryBuilder) HasUpdates() bool {
+	return len(qb.values) > 0
 }
