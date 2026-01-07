@@ -16,6 +16,7 @@ type GenericDataHandler[T any] struct {
 	Qm          *tools.QueueManager
 	TableName 	string
 	EndPoint    string
+	DefWhere    map[string]any
 }
 
 type DataHandler interface {
@@ -27,11 +28,12 @@ type DataHandler interface {
 	HandleDelete() http.HandlerFunc 
 }
 
-func NewGenericDataHandler[T any](qm *tools.QueueManager, tableName string, endPoint string) *GenericDataHandler[T] {
+func NewGenericDataHandler[T any](qm *tools.QueueManager, tableName string, endPoint string, defWhere map[string]any) *GenericDataHandler[T] {
 	return &GenericDataHandler[T]{
 		Qm: qm,
 		TableName: tableName,
 		EndPoint: endPoint,
+		DefWhere: defWhere,
 	}
 }
 
@@ -161,6 +163,7 @@ func handleAddMultipleNewResources[T any](
 func handleGetResource[T interface{}](
 	qm *tools.QueueManager,
 	tableName string,
+	defaultWhere map[string]any,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user_key := middleware.Contextkey("user")
@@ -181,6 +184,9 @@ func handleGetResource[T interface{}](
 		if err := tools.SetWhereFromURL(qb, r, res_type); err != nil {
 			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Get Resource", "error", err)
 			http.Error(w, "Error in parsing where clauses", http.StatusBadRequest)
+		}
+		for _, key := range defaultWhere {
+			qb.SetWhereAbsolute(key.(string), defaultWhere[key.(string)])
 		}
 
 		// Build the query
@@ -327,7 +333,7 @@ func (h *GenericDataHandler[T]) HandleUpdate() http.HandlerFunc {
 }
 
 func (h *GenericDataHandler[T]) HandleGet() http.HandlerFunc {
-	return handleGetResource[T](h.Qm, h.TableName)
+	return handleGetResource[T](h.Qm, h.TableName, h.DefWhere)
 }
 
 func (h *GenericDataHandler[T]) HandleAddNew() http.HandlerFunc {
