@@ -5,7 +5,9 @@ import (
 	"errors"
 	"net/http"
 	"reflect"
+	"strings"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"lotusforge.au/api-server/models"
 )
 
@@ -67,15 +69,17 @@ func recursiveBatchInsertProcess(
 
 	// If there's only one item and it failed, add it to failed items
 	if len(items) == 1 {
-		result.FailedItems = append(result.FailedItems, map[string]any{
-			"item": items[0], 
-			"rectified": false,
-			"date_rectified": nil,
-			"error": map[string]any{
-				"database": err,
-			},
-		})
-		return result
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) {
+			result.FailedItems = append(result.FailedItems, map[string]any{
+				"item": items[0], 
+				"rectified": strings.Contains(pgErr.Message, "duplicate key value violates"),
+				"date_rectified": nil,
+				"error": pgErr,
+			})
+
+			return result
+		}
 	}
 
 	// Split the slice in half and try each half recursively

@@ -13,6 +13,27 @@ type BatchInsertResult struct {
 	Query 			 string
 }
 
+type ExecError struct {
+	Code int
+	File string
+	Hint string
+	Line int
+	Where string
+	Detail string
+	Message string
+	Routine string
+	Position int
+	Severity string
+	TableName string
+	ColumnName string
+	SchemaName string
+	DataTypeName string
+	InternalQuery string
+	ConstraintName string
+	InternalPosition int
+	SeverityUnlocalized string
+}
+
 type DBExecutor interface {
 	Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error)
 }
@@ -34,3 +55,4 @@ type DBHandler interface {
 type DBReportable interface {
 	ResultAsJSONString() string
 }
+
