@@ -169,11 +169,19 @@ func SetWhereFromURL[T any](qb *QueryBuilder, r *http.Request, model T) error {
 	}
 
 	// Get all database fields
-	dbFields := GetDatabaseFields(model)
+	structFields := GetDatabaseFields(model)
 
 	// Iterate through db fields and set where clauses
-	for _, field_name := range dbFields {
+	for _, field_name := range structFields {
+		db_field := GetDBTagFromField(model, field_name)
+		if db_field == "" || db_field == "-" {
+			continue
+		}
+
 		field_value := r.FormValue(GetDBTagFromField(model, field_name))
+		customWhere := GetCustomWhereFromField(model, field_name)
+
+		fmt.Print(field_name, field_value)
 		if field_value == "" {
 			continue
 		}
@@ -189,9 +197,17 @@ func SetWhereFromURL[T any](qb *QueryBuilder, r *http.Request, model T) error {
 			if ValidateValue(fieldType.Kind(), field_value) == false {
 				continue
 			}
-			qb.SetWhereAbsolute(GetDBTagFromField(model, field_name), field_value)
+			if customWhere != "" {
+				qb.SetWhereAbsolute(customWhere, field_value)
+			} else {
+				qb.SetWhereAbsolute(GetDBTagFromField(model, field_name), field_value)
+			}
 		} else {
-			qb.SetWhere(GetDBTagFromField(model, field_name), field_value, fieldType.Kind())
+			if customWhere != "" {
+				qb.SetWhere(customWhere, field_value, fieldType.Kind())
+			} else {
+				qb.SetWhere(GetDBTagFromField(model, field_name), field_value, fieldType.Kind())
+			}
 		}
 	}
 
@@ -199,7 +215,7 @@ func SetWhereFromURL[T any](qb *QueryBuilder, r *http.Request, model T) error {
 	for key, val := range r.URL.Query() {
 		if strings.Contains(key, ".") {
 			q := strings.Split(key, ".")
-			
+
 			// Ensure q[0] is a valid db field
 			if db_field := GetDBTagFromField(model, q[0]); db_field == "" {
 				continue
@@ -211,7 +227,7 @@ func SetWhereFromURL[T any](qb *QueryBuilder, r *http.Request, model T) error {
 				if len(json_field) > 0 && len(val) > 0 {
 					// Save the json field into qb values (to disallow potential sql injection)
 					field_pos := qb.SaveArbitraryValue(json_field)
-					valid_json_fields = append(valid_json_fields, fmt.Sprintf("$v", field_pos))
+					valid_json_fields = append(valid_json_fields, fmt.Sprintf("%v", field_pos))
 
 				}
 			}

@@ -178,7 +178,7 @@ func handleAddMultipleNewResources[T any](
 func handleGetResource[T interface{}](
 	qm *tools.QueueManager,
 	tableName string,
-	defaultSelect []string,
+	overwriteSelect []string,
 	defaultWhere map[string]any,
 	customWith string,
 ) http.HandlerFunc {
@@ -209,10 +209,10 @@ func handleGetResource[T interface{}](
 		}
 
 		// Build the query
-		if defaultSelect == nil {
+		if overwriteSelect == nil {
 			query = qb.BuildSelect(tableName, tools.GetDatabaseColumns(res_type))
 		} else {
-			query = qb.BuildSelect(tableName, defaultSelect)
+			query = qb.BuildSelect(tableName, overwriteSelect)
 		}
 		if customWith != "" {
 			query = fmt.Sprintf("%s %s", customWith, query)

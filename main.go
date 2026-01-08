@@ -67,7 +67,7 @@ func main() {
 	conditionRatingsHandler := handlers.NewDataHandler[models.Condition_Ratings](qm, "condition_ratings", "condition/rating", allow_all, nil, nil, "")
 	assetCategoriesHandler := handlers.NewDataHandler[models.Asset_Categories](qm, "asset_categories", "asset/category", allow_all, nil, nil, "")
 	assetDataHandler := handlers.NewDataHandler[models.Asset_Data](qm, "asset_data", "asset/data", allow_all, nil, nil, "")
-	unresolvedAssetDataHandler := handlers.NewDataHandler[models.Asset_Data](qm, "items, jsonb_array_elements(items.failed_items)", "asset/unresolved", get_only, map[string]any{"value->>'rectified'": "false"}, models.UnresolvedAssets_CustomSelect(), "WITH items AS (SELECT DISTINCT event_log->'task'->'response'->'failed_items' as failed_items FROM events)")
+	unresolvedAssetDataHandler := handlers.NewDataHandler[models.Unresolved_Assets](qm, "items, jsonb_array_elements(items.failed_items)", "asset/unresolved", get_only, map[string]any{"value->>'rectified'": "false"}, models.UnresolvedAssets_CustomSelect(), "WITH items AS (SELECT DISTINCT event_log->'task'->'response'->'failed_items' as failed_items FROM events)")
 
 	// Group handlers
 	api_handlers := []handlers.DataHandlerInterface{

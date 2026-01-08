@@ -185,6 +185,10 @@ func GetDBTagFromField[T interface{}](model T, field string) string {
 	return getTagFromField(model, field, "db")
 }
 
+func GetCustomWhereFromField[T any](model T, field string) string {
+	return getTagFromField(model, field, "customwhere")
+}
+
 func getAbsoluteTagFromField[T interface{}](model T, field string) string {
 	return getTagFromField(model, field, "absolute")
 }
