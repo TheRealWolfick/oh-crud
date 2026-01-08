@@ -390,7 +390,7 @@ func (h *DataHandler[T]) HandleAddNew() http.HandlerFunc {
 }
 
 func (h *DataHandler[T]) HandleAddMultipleNew() http.HandlerFunc {
-	if h.Allowed["ALL"] || h.Allowed["POST"] {
+	if h.Allowed["ALL"] || h.Allowed["POST-GROUP"] {
 		return handleAddMultipleNewResources[T](h.Qm, h.TableName)
 	}
 	return handleNotAllowed[T](h.Allowed)
