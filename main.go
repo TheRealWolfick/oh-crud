@@ -53,24 +53,26 @@ func main() {
 	// Define datahandler end point types
 	allow_all := map[string]bool{"ALL": true}
 	disallow_delete := map[string]bool{"GET": true, "PUT": true, "POST": true, "POST-GROUP": true, "DELETE": false}
+	get_only := map[string]bool{"GET": true}
 
 	// Make the handlers
 	authMiddleware := middleware.RequireAuth(pool)
 	userHandler := handlers.NewUserHandler(logger, log_level, pool)
-	domainHandler := handlers.NewGenericDataHandler[models.Domain](qm, "domains", "domain", allow_all, nil, nil)
-	buildingHandler := handlers.NewGenericDataHandler[models.Building](qm, "buildings", "building", allow_all, nil, nil)
-	floorHandler := handlers.NewGenericDataHandler[models.Floors](qm, "floors", "floor", allow_all, nil, nil)
-	buildingFloorHandler := handlers.NewGenericDataHandler[models.Building_Floor](qm, "building_floor_combo", "bfloor", allow_all, nil, nil)
-	buildingFloorRoomHandler := handlers.NewGenericDataHandler[models.Building_Floor_Room](qm, "building_floor_room_combo", "room", allow_all, nil, nil)
-	departmentsHandler := handlers.NewGenericDataHandler[models.Departments](qm, "departments", "department", allow_all, nil, nil)
-	conditionRatingsHandler := handlers.NewGenericDataHandler[models.Condition_Ratings](qm, "condition_ratings", "condition/rating", allow_all, nil, nil)
-	assetCategoriesHandler := handlers.NewGenericDataHandler[models.Asset_Categories](qm, "asset_categories", "asset/category", allow_all, nil, nil)
-	assetDataHandler := handlers.NewGenericDataHandler[models.Asset_Data](qm, "asset_data", "asset/data", allow_all, nil, nil)
+	domainHandler := handlers.NewDataHandler[models.Domain](qm, "domains", "domain", allow_all, nil, nil, "")
+	buildingHandler := handlers.NewDataHandler[models.Building](qm, "buildings", "building", allow_all, nil, nil, "")
+	floorHandler := handlers.NewDataHandler[models.Floors](qm, "floors", "floor", disallow_delete, nil, nil, "")
+	buildingFloorHandler := handlers.NewDataHandler[models.Building_Floor](qm, "building_floor_combo", "bfloor", allow_all, nil, nil, "")
+	buildingFloorRoomHandler := handlers.NewDataHandler[models.Building_Floor_Room](qm, "building_floor_room_combo", "room", allow_all, nil, nil, "")
+	departmentsHandler := handlers.NewDataHandler[models.Departments](qm, "departments", "department", allow_all, nil, nil, "")
+	conditionRatingsHandler := handlers.NewDataHandler[models.Condition_Ratings](qm, "condition_ratings", "condition/rating", allow_all, nil, nil, "")
+	assetCategoriesHandler := handlers.NewDataHandler[models.Asset_Categories](qm, "asset_categories", "asset/category", allow_all, nil, nil, "")
+	assetDataHandler := handlers.NewDataHandler[models.Asset_Data](qm, "asset_data", "asset/data", allow_all, nil, nil, "")
+	unresolvedAssetDataHandler := handlers.NewDataHandler[models.Asset_Data](qm, "items, jsonb_array_elements(items.failed_items)", "asset/unresolved", get_only, map[string]any{"value->>'rectified'": "false"}, models.UnresolvedAssets_CustomSelect(), "WITH items AS (SELECT DISTINCT event_log->'task'->'response'->'failed_items' as failed_items FROM events)")
 
 	// Group handlers
 	api_handlers := []handlers.DataHandlerInterface{
 		domainHandler, buildingHandler, floorHandler, buildingFloorHandler, buildingFloorRoomHandler, departmentsHandler, 
-		conditionRatingsHandler, assetCategoriesHandler, assetDataHandler,
+		conditionRatingsHandler, assetCategoriesHandler, assetDataHandler, unresolvedAssetDataHandler,
 	}
 
 	// Setup the server

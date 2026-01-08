@@ -1,5 +1,7 @@
 package models
 
+import "time"
+
 type Asset_Categories struct {
   Cat_code          *string  `json:"cat_code"                   db:"cat_code"         req:"true"  pk:"true"                 `
 	Asset_system      *string  `json:"asset_system,omitempty"     db:"asset_system"     req:""      pk:""      none:"DEFAULT" `
@@ -16,7 +18,7 @@ type Condition_Ratings struct {
 
 type Asset_Data struct {
 	Asset_id                 *int      `json:"asset_id,omitempty"                db:"asset_id"                req:""      pk:"true"  none:"DEFAULT" `
-  Added_date               *string   `json:"added_date,omitempty"              db:"added_date"              req:""      pk:""      none:"DEFAULT" `
+  Added_date               *time.Time   `json:"added_date,omitempty"              db:"added_date"              req:""      pk:""      none:"DEFAULT" `
   Additional_details       *string   `json:"additional_details,omitempty"      db:"additional_details"      req:""      pk:""      none:""        `
 	Asset_category           *string   `json:"asset_category"                    db:"asset_category"          req:"true"  pk:""                     `
   Asset_no                 *string   `json:"asset_no"                          db:"asset_no"                req:""      pk:"true"  none:"DEFAULT" `
@@ -27,13 +29,13 @@ type Asset_Data struct {
   Department               *string   `json:"department,omitempty"              db:"department"              req:"true"  pk:""                     `
   Description              *string   `json:"description,omitempty"             db:"description"             req:"true"  pk:""                     `
   Disposal_cost            *float64  `json:"disposal_cost,omitempty"           db:"disposal_cost"           req:""      pk:""      none:"DEFAULT" `
-  Disposal_date            *string   `json:"disposal_date,omitempty"           db:"disposal_date"           req:""      pk:""      none:"NULL"    `
+  Disposal_date            *time.Time   `json:"disposal_date,omitempty"           db:"disposal_date"           req:""      pk:""      none:"NULL"    `
 	Disposal_reason          *string   `json:"disposal_reason,omitempty"         db:"disposal_reason"         req:""      pk:""      none:""`
   Domain                   *string   `json:"domain"                            db:"domain"                  req:"true"  pk:""                     `
 	Finance_group_code       *string   `json:"finance_group_code,omitempty"      db:"finance_group_code"      req:""      pk:""      none:"DEFAULT" `
 	Floor                    *string   `json:"floor"                             db:"floor"                   req:"true"  pk:""                      absolute:"true" `
   GL_asset_reference       *string   `json:"GL_asset_reference,omitempty"      db:"gl_asset_reference"      req:""      pk:""      none:"DEFAULT" `
-  Install_date             *string   `json:"install_date,omitempty"            db:"install_date"            req:""      pk:""      none:"NULL"    `
+  Install_date             *time.Time   `json:"install_date,omitempty"            db:"install_date"            req:""      pk:""      none:"NULL"    `
   Installation_cost        *float64  `json:"installation_cost,omitempty"       db:"installation_cost"       req:""      pk:""      none:"DEFAULT" `
   Invoice_no               *string   `json:"invoice_no,omitempty"              db:"invoice_no"              req:""      pk:""      none:"DEFAULT" `
 	Is_virtual_asset         *bool     `json:"is_virtual_asset,omitempty"        db:"is_virtual_asset"        req:""      pk:""      none:"DEFAULT" `
@@ -46,7 +48,7 @@ type Asset_Data struct {
   Model                    *string   `json:"model,omitempty"                   db:"model"                   req:""      pk:""      none:"DEFAULT" `
   Owning_cost_center       *string   `json:"owning_cost_center,omitempty"      db:"owning_cost_center"      req:""      pk:""      none:"DEFAULT" `
   Purchase_cost            *float64  `json:"purchase_cost,omitempty"           db:"purchase_cost"           req:""      pk:""      none:"DEFAULT" `
-  Purchase_date            *string   `json:"purchase_date,omitempty"           db:"purchase_date"           req:""      pk:""      none:"NULL"    `
+  Purchase_date            *time.Time   `json:"purchase_date,omitempty"           db:"purchase_date"           req:""      pk:""      none:"NULL"    `
   Purchase_order_no        *string   `json:"purchase_order_no,omitempty"       db:"purchase_order_no"       req:""      pk:""      none:"DEFAULT" `
   Purchasing_cost_center   *string   `json:"purchasing_cost_center,omitempty"  db:"purchasing_cost_center"  req:""      pk:""      none:"DEFAULT" `
   RFID_tag_ID              *string   `json:"RFID_tag_ID,omitempty"             db:"rfid_tag_id"             req:""      pk:""      none:"DEFAULT" `
@@ -62,5 +64,58 @@ type Asset_Data struct {
   Warranty_period          *int      `json:"warranty_period,omitempty"         db:"warranty_period"         req:""      pk:""      none:"12"      `
   Working_life             *int      `json:"working_life,omitempty"            db:"working_life"            req:""      pk:""      none:"NULL"    `
   Ownership_status         *string   `json:"ownership_status,omitempty"        db:"ownership_status"        req:""      pk:""      none:"DEFAULT" `
-  Altered_date             *string   `json:"altered_date,omitempty"            db:"altered_date"            req:""      pk:""      none:"DEFAULT" `
+  Altered_date             *time.Time   `json:"altered_date,omitempty"            db:"altered_date"            req:""      pk:""      none:"DEFAULT" `
+}
+
+func UnresolvedAssets_CustomSelect() []string {
+	return []string{
+		"DISTINCT value->'item'->>'asset_id' AS asset_id",
+		"(value->'item'->>'added_date')::timestamp AS added_date",
+		"value->'item'->>'additional_details' AS additional_details",
+		"value->'item'->>'asset_category' AS asset_category",
+		"value->'item'->>'asset_no' AS asset_no",
+		"value->'item'->>'asset_status' AS asset_status",
+		"value->'item'->>'building' AS building",
+		"value->'item'->>'condition_rating' AS condition_rating",
+		"value->'item'->>'contact_ID' AS contact_ID",
+		"value->'item'->>'department' AS department",
+		"value->'item'->>'description' AS description",
+		"(value->'item'->>'disposal_cost')::numeric AS disposal_cost",
+		"(value->'item'->>'disposal_date')::timestamp AS disposal_date",
+		"value->'item'->>'disposal_reason' AS disposal_reason",
+		"value->'item'->>'domain' AS domain",
+		"value->'item'->>'finance_group_code' AS finance_group_code",
+		"value->'item'->>'floor' AS floor",
+		"value->'item'->>'GL_asset_reference' AS GL_asset_reference",
+		"(value->'item'->>'install_date')::timestamp AS install_date",
+		"(value->'item'->>'installation_cost')::numeric AS installation_cost",
+		"value->'item'->>'invoice_no' AS invoice_no",
+		"(value->'item'->>'is_virtual_asset')::boolean AS is_virtual_asset",
+		"value->'item'->>'label_location' AS label_location",
+		"value->'item'->>'latitude' AS latitude",
+		"value->'item'->>'location' AS location",
+		"value->'item'->>'longitude' AS longitude",
+		"value->'item'->>'make' AS make",
+		"value->'item'->>'manufacturer' AS manufacturer",
+		"value->'item'->>'model' AS model",
+		"value->'item'->>'owning_cost_center' AS owning_cost_center",
+		"(value->'item'->>'purchase_cost')::numeric AS purchase_cost",
+		"(value->'item'->>'purchase_date')::timestamp AS purchase_date",
+		"value->'item'->>'purchase_order_no' AS purchase_order_no",
+		"value->'item'->>'purchasing_cost_center' AS purchasing_cost_center",
+		"value->'item'->>'RFID_tag_ID' AS RFID_tag_ID",
+		"value->'item'->>'room' AS room",
+		"value->'item'->>'serial' AS serial",
+		"value->'item'->>'service_agent' AS service_agent",
+		"value->'item'->>'spare_parts' AS spare_parts",
+		"value->'item'->>'spare_parts_bin_no' AS spare_parts_bin_no",
+		"value->'item'->>'spare_parts_held' AS spare_parts_held",
+		"value->'item'->>'supplier_code' AS supplier_code",
+		"value->'item'->>'tech_manual_reference' AS tech_manual_reference",
+		"value->'item'->>'user_defined_fields' AS user_defined_fields",
+		"(value->'item'->>'warranty_period')::numeric AS warranty_period",
+		"(value->'item'->>'working_life')::numeric AS working_life",
+		"value->'item'->>'ownership_status' AS ownership_status",
+		"value->'item'->>'altered_date' AS altered_date",
+	}
 }

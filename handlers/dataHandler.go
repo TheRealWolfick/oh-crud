@@ -19,6 +19,7 @@ type DataHandler[T any] struct {
 	EndPoint          string
 	DefaultWhere    	map[string]any
 	SelectOverwrite   []string
+	CustomWith        string
 	Allowed 					map[string]bool
 }
 
@@ -37,13 +38,14 @@ type DataHandlerInterface interface {
 
 
 // Create a new data handler which allows all API requests
-func NewGenericDataHandler[T any](qm *tools.QueueManager, tableName string, endPoint string, allows map[string]bool, defaultWhere map[string]any, overwriteSelect []string) *DataHandler[T] {
+func NewDataHandler[T any](qm *tools.QueueManager, tableName string, endPoint string, allows map[string]bool, defaultWhere map[string]any, overwriteSelect []string, customWith string) *DataHandler[T] {
 	return &DataHandler[T]{
 		Qm: qm,
 		TableName: tableName,
 		EndPoint: endPoint,
 		DefaultWhere: defaultWhere,
 		SelectOverwrite: overwriteSelect,
+		CustomWith: customWith,
 		Allowed: allows,
 	}
 }
@@ -178,6 +180,7 @@ func handleGetResource[T interface{}](
 	tableName string,
 	defaultSelect []string,
 	defaultWhere map[string]any,
+	customWith string,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user_key := middleware.Contextkey("user")
@@ -196,12 +199,13 @@ func handleGetResource[T interface{}](
 		qb := tools.NewQueryBuilder()
 
 		// Load where vals
-		for _, key := range defaultWhere {
-			qb.SetWhereAbsolute(key.(string), defaultWhere[key.(string)])
+		for key, _ := range defaultWhere {
+			qb.SetWhereAbsolute(key, defaultWhere[key])
 		}
 		if err := tools.SetWhereFromURL(qb, r, res_type); err != nil {
 			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Get Resource", "error", err)
 			http.Error(w, "Error in parsing where clauses", http.StatusBadRequest)
+			return
 		}
 
 		// Build the query
@@ -210,6 +214,9 @@ func handleGetResource[T interface{}](
 		} else {
 			query = qb.BuildSelect(tableName, defaultSelect)
 		}
+		if customWith != "" {
+			query = fmt.Sprintf("%s %s", customWith, query)
+		}
 
 		// Get the rows
 		rows, err := qm.Db.Query(r.Context(), query, qb.GetArgs()...)
@@ -217,11 +224,18 @@ func handleGetResource[T interface{}](
 		if err != nil {
 			qm.Logger.Error("GET_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Get Resource", "error", err)
 			http.Error(w, fmt.Sprintf("Error with the query:\n%v", err), http.StatusInternalServerError)
+			return
 		}
 
 		// Handle the rows
 		defer rows.Close()
 		response, err := pgx.CollectRows(rows, pgx.RowToStructByName[T])
+
+		// Handle error
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 
 		// Return
 		json.NewEncoder(w).Encode(response)
@@ -377,7 +391,7 @@ func (h *DataHandler[T]) HandleUpdate() http.HandlerFunc {
 
 func (h *DataHandler[T]) HandleGet() http.HandlerFunc {
 	if h.Allowed["ALL"] || h.Allowed["GET"] {
-		return handleGetResource[T](h.Qm, h.TableName, h.SelectOverwrite, h.DefaultWhere)
+		return handleGetResource[T](h.Qm, h.TableName, h.SelectOverwrite, h.DefaultWhere, h.CustomWith)
 	}
 	return handleNotAllowed[T](h.Allowed)
 }
