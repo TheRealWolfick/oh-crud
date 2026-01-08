@@ -17,6 +17,7 @@ type GenericDataHandler[T any] struct {
 	TableName 	string
 	EndPoint    string
 	DefWhere    map[string]any
+	DefSelect   []string
 }
 
 type DataHandler interface {
@@ -28,12 +29,13 @@ type DataHandler interface {
 	HandleDelete() http.HandlerFunc 
 }
 
-func NewGenericDataHandler[T any](qm *tools.QueueManager, tableName string, endPoint string, defaultWhere map[string]any) *GenericDataHandler[T] {
+func NewGenericDataHandler[T any](qm *tools.QueueManager, tableName string, endPoint string, defaultWhere map[string]any, defaultSelect []string) *GenericDataHandler[T] {
 	return &GenericDataHandler[T]{
 		Qm: qm,
 		TableName: tableName,
 		EndPoint: endPoint,
 		DefWhere: defaultWhere,
+		DefSelect: defaultSelect,
 	}
 }
 
@@ -163,6 +165,7 @@ func handleAddMultipleNewResources[T any](
 func handleGetResource[T interface{}](
 	qm *tools.QueueManager,
 	tableName string,
+	defaultSelect []string,
 	defaultWhere map[string]any,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -176,6 +179,7 @@ func handleGetResource[T interface{}](
 		w.Header().Set("Content-Type", "application/json")
 
 		var res_type T
+		var query string
 
 		// Create new query builder 
 		qb := tools.NewQueryBuilder()
@@ -190,7 +194,11 @@ func handleGetResource[T interface{}](
 		}
 
 		// Build the query
-		query := qb.BuildSelect(tableName, tools.GetDatabaseColumns(res_type))
+		if defaultSelect == nil {
+			query = qb.BuildSelect(tableName, tools.GetDatabaseColumns(res_type))
+		} else {
+			query = qb.BuildSelect(tableName, defaultSelect)
+		}
 
 		// Get the rows
 		rows, err := qm.Db.Query(r.Context(), query, qb.GetArgs()...)
@@ -333,7 +341,7 @@ func (h *GenericDataHandler[T]) HandleUpdate() http.HandlerFunc {
 }
 
 func (h *GenericDataHandler[T]) HandleGet() http.HandlerFunc {
-	return handleGetResource[T](h.Qm, h.TableName, h.DefWhere)
+	return handleGetResource[T](h.Qm, h.TableName, h.DefSelect, h.DefWhere)
 }
 
 func (h *GenericDataHandler[T]) HandleAddNew() http.HandlerFunc {

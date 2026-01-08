@@ -53,15 +53,15 @@ func main() {
 	// Make the handlers
 	authMiddleware := middleware.RequireAuth(pool)
 	userHandler := handlers.NewUserHandler(logger, log_level, pool)
-	domainHandler := handlers.NewGenericDataHandler[models.Domain](qm, "domains", "domain", nil)
-	buildingHandler := handlers.NewGenericDataHandler[models.Building](qm, "buildings", "building", nil)
-	floorHandler := handlers.NewGenericDataHandler[models.Floors](qm, "floors", "floor", nil)
-	buildingFloorHandler := handlers.NewGenericDataHandler[models.Building_Floor](qm, "building_floor_combo", "bfloor", nil)
-	buildingFloorRoomHandler := handlers.NewGenericDataHandler[models.Building_Floor_Room](qm, "building_floor_room_combo", "room", nil)
-	departmentsHandler := handlers.NewGenericDataHandler[models.Departments](qm, "departments", "department", nil)
-	conditionRatingsHandler := handlers.NewGenericDataHandler[models.Condition_Ratings](qm, "condition_ratings", "condition/rating", nil)
-	assetCategoriesHandler := handlers.NewGenericDataHandler[models.Asset_Categories](qm, "asset_categories", "asset/category", nil)
-	assetDataHandler := handlers.NewGenericDataHandler[models.Asset_Data](qm, "asset_data", "asset/data", nil)
+	domainHandler := handlers.NewGenericDataHandler[models.Domain](qm, "domains", "domain", nil, nil)
+	buildingHandler := handlers.NewGenericDataHandler[models.Building](qm, "buildings", "building", nil, nil)
+	floorHandler := handlers.NewGenericDataHandler[models.Floors](qm, "floors", "floor", nil, nil)
+	buildingFloorHandler := handlers.NewGenericDataHandler[models.Building_Floor](qm, "building_floor_combo", "bfloor", nil, nil)
+	buildingFloorRoomHandler := handlers.NewGenericDataHandler[models.Building_Floor_Room](qm, "building_floor_room_combo", "room", nil, nil)
+	departmentsHandler := handlers.NewGenericDataHandler[models.Departments](qm, "departments", "department", nil, nil)
+	conditionRatingsHandler := handlers.NewGenericDataHandler[models.Condition_Ratings](qm, "condition_ratings", "condition/rating", nil, nil)
+	assetCategoriesHandler := handlers.NewGenericDataHandler[models.Asset_Categories](qm, "asset_categories", "asset/category", nil, nil)
+	assetDataHandler := handlers.NewGenericDataHandler[models.Asset_Data](qm, "asset_data", "asset/data", nil, nil)
 
 	// Group handlers
 	api_handlers := []handlers.DataHandler{
