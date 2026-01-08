@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"lotusforge.au/api-server/middleware"
@@ -12,15 +13,20 @@ import (
 	"lotusforge.au/api-server/tools"
 )
 
-type GenericDataHandler[T any] struct {
-	Qm          *tools.QueueManager
-	TableName 	string
-	EndPoint    string
-	DefWhere    map[string]any
-	DefSelect   []string
+type DataHandler[T any] struct {
+	Qm                *tools.QueueManager
+	TableName 	      string
+	EndPoint          string
+	DefaultWhere    	map[string]any
+	SelectOverwrite   []string
+	Allowed 					map[string]bool
 }
 
-type DataHandler interface {
+type GetOnlyDataHandler[T any] struct {
+	DataHandler[T]
+}
+
+type DataHandlerInterface interface {
 	RegisterRoutes(mux *http.ServeMux, auth func(http.Handler) http.Handler, qm *tools.QueueManager)
 	HandleUpdate() http.HandlerFunc
 	HandleGet() http.HandlerFunc 
@@ -29,17 +35,22 @@ type DataHandler interface {
 	HandleDelete() http.HandlerFunc 
 }
 
-func NewGenericDataHandler[T any](qm *tools.QueueManager, tableName string, endPoint string, defaultWhere map[string]any, defaultSelect []string) *GenericDataHandler[T] {
-	return &GenericDataHandler[T]{
+
+// Create a new data handler which allows all API requests
+func NewGenericDataHandler[T any](qm *tools.QueueManager, tableName string, endPoint string, allows map[string]bool, defaultWhere map[string]any, overwriteSelect []string) *DataHandler[T] {
+	return &DataHandler[T]{
 		Qm: qm,
 		TableName: tableName,
 		EndPoint: endPoint,
-		DefWhere: defaultWhere,
-		DefSelect: defaultSelect,
+		DefaultWhere: defaultWhere,
+		SelectOverwrite: overwriteSelect,
+		Allowed: allows,
 	}
 }
 
-func (dh *GenericDataHandler[T]) RegisterRoutes(mux *http.ServeMux, auth func(http.Handler) http.Handler, qm *tools.QueueManager) {
+// Create a new data handler which allows only GET requests
+
+func (dh *DataHandler[T]) RegisterRoutes(mux *http.ServeMux, auth func(http.Handler) http.Handler, qm *tools.QueueManager) {
 	mux.Handle(fmt.Sprintf("GET /%s", dh.EndPoint), auth(dh.HandleGet()))
 	mux.Handle(fmt.Sprintf("PUT /%s", dh.EndPoint), auth(dh.HandleUpdate()))
 	mux.Handle(fmt.Sprintf("POST /%s", dh.EndPoint), auth(dh.HandleAddNew()))
@@ -336,22 +347,58 @@ func handleDeleteResource[T any](
 }
 
 
-func (h *GenericDataHandler[T]) HandleUpdate() http.HandlerFunc {
-	return handleUpdateResource[T](h.Qm, h.TableName)
+// Handle a disallowed endPoint
+func handleNotAllowed[T any](
+	allowed map[string]bool,
+) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var allowed_methods []string
+		for key, allow := range allowed {
+			if allow {
+				allowed_methods = append(allowed_methods, key)
+			}
+		}
+		if len(allowed_methods) > 0 {
+			w.Header().Set("Allow", strings.Join(allowed_methods, ", "))
+		} else {
+			w.Header().Set("Allow", "-")
+		}
+		http.Error(w, "Not allowed", http.StatusMethodNotAllowed)
+	}
 }
 
-func (h *GenericDataHandler[T]) HandleGet() http.HandlerFunc {
-	return handleGetResource[T](h.Qm, h.TableName, h.DefSelect, h.DefWhere)
+
+func (h *DataHandler[T]) HandleUpdate() http.HandlerFunc {
+	if h.Allowed["ALL"] || h.Allowed["PUT"] {
+		return handleUpdateResource[T](h.Qm, h.TableName)
+	}
+	return handleNotAllowed[T](h.Allowed)
 }
 
-func (h *GenericDataHandler[T]) HandleAddNew() http.HandlerFunc {
-	return handleAddNewResource[T](h.Qm, h.TableName)
+func (h *DataHandler[T]) HandleGet() http.HandlerFunc {
+	if h.Allowed["ALL"] || h.Allowed["GET"] {
+		return handleGetResource[T](h.Qm, h.TableName, h.SelectOverwrite, h.DefaultWhere)
+	}
+	return handleNotAllowed[T](h.Allowed)
 }
 
-func (h *GenericDataHandler[T]) HandleAddMultipleNew() http.HandlerFunc {
-	return handleAddMultipleNewResources[T](h.Qm, h.TableName)
+func (h *DataHandler[T]) HandleAddNew() http.HandlerFunc {
+	if h.Allowed["ALL"] || h.Allowed["POST"] {
+		return handleAddNewResource[T](h.Qm, h.TableName)
+	}
+	return handleNotAllowed[T](h.Allowed)
 }
 
-func (h *GenericDataHandler[T]) HandleDelete() http.HandlerFunc {
-	return handleDeleteResource[T](h.Qm, h.TableName)
+func (h *DataHandler[T]) HandleAddMultipleNew() http.HandlerFunc {
+	if h.Allowed["ALL"] || h.Allowed["POST"] {
+		return handleAddMultipleNewResources[T](h.Qm, h.TableName)
+	}
+	return handleNotAllowed[T](h.Allowed)
+}
+
+func (h *DataHandler[T]) HandleDelete() http.HandlerFunc {
+	if h.Allowed["ALL"] || h.Allowed["DELETE"] {
+		return handleDeleteResource[T](h.Qm, h.TableName)
+	}
+	return handleNotAllowed[T](h.Allowed)
 }
