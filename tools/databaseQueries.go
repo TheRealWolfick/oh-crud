@@ -3,10 +3,8 @@ package tools
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"reflect"
-	"strings"
 
 	"lotusforge.au/api-server/models"
 )
@@ -181,7 +179,6 @@ func SetWhereFromURL[T any](qb *QueryBuilder, r *http.Request, model T) error {
 		field_value := r.FormValue(GetDBTagFromField(model, field_name))
 		customWhere := GetCustomWhereFromField(model, field_name)
 
-		fmt.Print(field_name, field_value)
 		if field_value == "" {
 			continue
 		}
@@ -211,7 +208,9 @@ func SetWhereFromURL[T any](qb *QueryBuilder, r *http.Request, model T) error {
 		}
 	}
 
-	// Iterate over url params, identify and add any jsonb queries
+	// Made obsolete due to modification in dbfield params
+	/*
+	// Iterate over url params.
 	for key, val := range r.URL.Query() {
 		if strings.Contains(key, ".") {
 			q := strings.Split(key, ".")
@@ -243,6 +242,7 @@ func SetWhereFromURL[T any](qb *QueryBuilder, r *http.Request, model T) error {
 			qb.SetWhereAbsolute(valid_json, processed_vals)
 		}
 	}
+	*/
 
 	return nil
 }

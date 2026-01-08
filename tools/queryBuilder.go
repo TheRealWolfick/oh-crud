@@ -86,7 +86,7 @@ func (qb *QueryBuilder) innerSaveValue(value any) int {
 
 	qb.args = append(qb.args, value)
 	qb.pos++
-	return int(qb.pos)
+	return int(qb.pos-1)
 }
 
 func (qb *QueryBuilder) SaveArbitraryValue(value any) int {
