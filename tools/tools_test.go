@@ -452,3 +452,71 @@ func TestValidation(t *testing.T) {
 
 	})
 }
+
+
+func TestDiffs(t *testing.T) {
+	str1 := "struct"
+	str2 := "struct"
+	str3 := "struct"
+	val1 := 50
+	val2 := 40
+	val3 := 50
+	tru1 := true
+	tru2 := false
+	tru3 := true
+	som1 := "Full struct"
+	som3 := "Different full struct"
+
+	struct1 := &testingStruct{
+		Word: &str1,
+		Value: &val1,
+		IsTrue: &tru1,
+		Something: &som1,
+	}
+	struct2 := &testingStruct{
+		Word: &str2,
+		Value: &val2,
+		IsTrue: &tru2,
+	}
+	struct3 := &testingStruct{
+		Word: &str3,
+		Value: &val3,
+		IsTrue: &tru3,
+		Something: &som3,
+	}
+
+	t.Run("Test diff structs 1", func(t *testing.T) {
+		expected := `{
+              "comparator": "struct",
+              "supplied": {
+                "value": 50,
+                "istrue": true,
+                "something": "Full struct"
+              },
+              "stored": {
+                "value": 40,
+                "istrue": false
+              }
+            }`
+		diffs := DiffStruct(struct1, struct2, "Word")
+		if DereferencedString(diffs) != expected {
+			t.Errorf("Returned: %v", DereferencedString(diffs))
+		}
+	})
+
+	t.Run("test diff structs 2", func(t *testing.T) {
+		expected := `{
+              "comparator": "struct",
+              "supplied": {
+                "something": "Full struct"
+              },
+              "stored": {
+                "something": "Different full struct"
+              }
+            }`
+		diffs := DiffStruct(struct1, struct3, "Word")
+		if DereferencedString(diffs) != expected {
+			t.Errorf("Returned: %v", DereferencedString(diffs))
+		}
+	})
+}

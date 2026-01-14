@@ -21,7 +21,7 @@ type Asset_Data struct {
   Added_date               *time.Time   `json:"added_date,omitempty"              db:"added_date"              req:""      pk:""      none:"DEFAULT" `
   Additional_details       *string   `json:"additional_details,omitempty"      db:"additional_details"      req:""      pk:""      none:""        `
 	Asset_category           *string   `json:"asset_category"                    db:"asset_category"          req:"true"  pk:""                     `
-  Asset_no                 *string   `json:"asset_no"                          db:"asset_no"                req:""      pk:"true"  none:"DEFAULT" `
+	Asset_no                 *string   `json:"asset_no"                          db:"asset_no"                req:""      pk:"true"  none:"DEFAULT"  diff:"true"`
   Asset_status             *string   `json:"asset_status,omitempty"            db:"asset_status"            req:""      pk:""      none:"DEFAULT" `
   Building                 *string   `json:"building,omitempty"                db:"building"                req:"true"  pk:""                     `
   Condition_rating         *int      `json:"condition_rating,omitempty"        db:"condition_rating"        req:""      pk:""      none:"NULL"    `
@@ -119,6 +119,7 @@ type Unresolved_Assets struct {
 	Error                    *string    `json:"error,omitempty"          db:"error"          req:""   pk:""   none:"" customwhere:"value->'error'->'database'->>'Detail'"`
 	Error_message            *string    `json:"error_message,omitempty"  db:"error_message"  req:""   pk:""   none:"" customwhere:"value->'error'->'database'->>'Message'"`
 }
+
 
 func UnresolvedAssets_CustomSelect() []string {
 	return []string{

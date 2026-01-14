@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
+
+	"lotusforge.au/api-server/models"
 )
 
 func StructIsEmpty[T any](s *T) bool {
@@ -115,54 +117,68 @@ func ToAnySlice[T any](slice []T) []any {
 	return result
 }
 
-func GetFields[T any](model T, tag string, value string) []string {
-    typ := reflect.TypeOf(model)
-    val := reflect.ValueOf(model)
-    
-    // Handle pointers
-    if typ.Kind() == reflect.Ptr {
-        typ = typ.Elem()
-        val = val.Elem()
-    }
-    
-    // Now check if it's a struct
-    if typ.Kind() != reflect.Struct {
-        return nil
-    }
+func getFields[T any](model T, tag string, value string) []string {
+	typ := reflect.TypeOf(model)
+	val := reflect.ValueOf(model)
 
-    requestedFields := make([]string, 0)
+	// Handle pointers
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+		val = val.Elem()
+	}
 
-    for i := 0; i < val.NumField(); i++ {
-        // Read tag
-        tagVal := typ.Field(i).Tag.Get(tag)
+	// Now check if it's a struct
+	if typ.Kind() != reflect.Struct {
+		return nil
+	}
 
-        if value == "exists" && tagVal != "" && tagVal != "-" {
-            requestedFields = append(requestedFields, typ.Field(i).Name)
-        } else if tagVal == value {
-            requestedFields = append(requestedFields, typ.Field(i).Name)
-        }
-    }
+	requestedFields := make([]string, 0)
 
-    return requestedFields
+	for i := 0; i < val.NumField(); i++ {
+		// Read tag
+		tagVal := typ.Field(i).Tag.Get(tag)
+
+		if value == "all" {
+			requestedFields = append(requestedFields, typ.Field(i).Name)
+		} else if value == "exists" && tagVal != "" && tagVal != "-" {
+			requestedFields = append(requestedFields, typ.Field(i).Name)
+		} else if tagVal == value {
+			requestedFields = append(requestedFields, typ.Field(i).Name)
+		}
+	}
+
+	return requestedFields
 }
 
 // Get all field where the struct has the tag req:"true"
 func GetRequiredFields[T any](model T) []string {
-	return GetFields(model, "req", "true")
+	return getFields(model, "req", "true")
 }
 
 // Get all the fields which have a "pk" tag
 func GetPrimaryKeys[T any](model T) []string {
-	return GetFields(model, "pk", "true")
+	return getFields(model, "pk", "true")
 }
 
 // Get all the fields with a db tag
 func GetDatabaseFields[T any](model T) []string {
-	return GetFields(model, "db", "exists")
+	return getFields(model, "db", "exists")
 }
 
 func GetAbsolute[T any](model T) []string {
-	return GetFields(model, "absolute", "true")
+	return getFields(model, "absolute", "true")
+}
+
+func GetAllFieldNames[T any](model T) []string {
+	return getFields(model, "ignore", "all")
+}
+
+func GetDiffFieldName[T any](model T) string {
+	diff_fields := getFields(model, "diff", "true")
+	if len(diff_fields) > 0 {
+		return diff_fields[0]
+	}
+	return ""
 }
 
 func getTagFromField[T any](model T, field string, tag string) string {
@@ -197,6 +213,7 @@ func IsAbsolute[T any](model T, field string) bool {
 	absolute := getAbsoluteTagFromField(model, field)
 	return absolute == "true"
 }
+
 
 // Remove all the items in element b from element a
 func StringSliceSubtract(a []string, b []string) []string {
@@ -249,4 +266,78 @@ func ValidateValue(A reflect.Kind, B any) bool {
 	default:
 		return false
 	}
+}
+
+func DiffStruct[T any](supplied *T, stored *T, comparatorField string) *models.Item_Diff[T] {
+
+	// reflect on the data
+	val_supplied := reflect.ValueOf(supplied)
+	val_stored := reflect.ValueOf(stored)
+
+	// dereference the data
+	if val_supplied.Kind() == reflect.Ptr {
+		val_supplied = val_supplied.Elem()
+	}
+	if val_stored.Kind() == reflect.Ptr {
+		val_stored = val_stored.Elem()
+	}
+
+	// Check to ensure the comparator is matching in both fields and not a nil value
+	supplied_comparator := val_supplied.FieldByName(comparatorField)
+	stored_comparator := val_stored.FieldByName(comparatorField)
+	
+	// Dereference if pointer
+	if supplied_comparator.Kind() == reflect.Ptr {
+		if supplied_comparator.IsNil() {
+			return nil
+		}
+		supplied_comparator = supplied_comparator.Elem()
+	}
+	if stored_comparator.Kind() == reflect.Ptr {
+		if stored_comparator.IsNil() {
+			return nil
+		}
+		stored_comparator = stored_comparator.Elem()
+	}
+	
+	// Check if comparators match
+	if !reflect.DeepEqual(supplied_comparator.Interface(), stored_comparator.Interface()) {
+		return nil
+	}
+	
+	// Check if comparator is zero value
+	if supplied_comparator.IsZero() {
+		return nil
+	}
+	
+	comparator_value := fmt.Sprintf("%v", supplied_comparator.Interface())
+
+	// Create the structure to save the diffs into
+	var supplied_return T
+	var stored_return T
+	diffs_to_return := &models.Item_Diff[T]{
+		Comparator: &comparator_value,
+		Supplied:   &supplied_return,
+		Stored:     &stored_return,
+	}
+
+	// Get reflect values for the return structs
+	val_supplied_return := reflect.ValueOf(&supplied_return).Elem()
+	val_stored_return := reflect.ValueOf(&stored_return).Elem()
+
+	// Get all the fields from the supplied struct
+	struct_fields := GetAllFieldNames(supplied)
+
+	for _, field := range struct_fields {
+		supplied_val := val_supplied.FieldByName(field)
+		stored_val := val_stored.FieldByName(field)
+		
+		// Compare the actual values
+		if !reflect.DeepEqual(supplied_val.Interface(), stored_val.Interface()) {
+			val_supplied_return.FieldByName(field).Set(supplied_val)
+			val_stored_return.FieldByName(field).Set(stored_val)
+		}
+	}
+
+	return diffs_to_return
 }
