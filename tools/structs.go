@@ -3,6 +3,8 @@ package tools
 import (
 	"fmt"
 	"reflect"
+	"slices"
+	"sort"
 	"strconv"
 
 	"lotusforge.au/api-server/models"
@@ -340,4 +342,73 @@ func DiffStruct[T any](supplied *T, stored *T, comparatorField string) *models.I
 	}
 
 	return diffs_to_return
+}
+
+func MergeStructsWithRemainder[T any](left []*T, right []*T) ([]*T, []*T, []*models.Item_Diff[T]) {
+	if len(left) < 1 || len(right) < 1 {
+		return nil, nil, nil
+	}
+
+	comparator_field := GetDiffFieldName(left[0])
+	
+	if comparator_field == "" {
+		return nil, nil, nil
+	}
+
+	left_only := make([]*T, 0)
+	matches := make([]*models.Item_Diff[T], 0)
+
+	// Sort left and right data for optimizing search
+	SortSliceOfStructs(left, comparator_field)
+	SortSliceOfStructs(right, comparator_field)
+
+	// Do the merge
+	for _, item := range left {
+		// Read the comparator
+		comparator_prep := reflect.ValueOf(item)
+		if comparator_prep.Kind() == reflect.Ptr {comparator_prep = comparator_prep.Elem()}
+		comparator_prep = comparator_prep.FieldByName(comparator_field)
+		if comparator_prep.Kind() == reflect.Ptr {comparator_prep = comparator_prep.Elem()}
+		comparator := comparator_prep.Interface().(string)
+		
+		// Check if comparator is in right slice
+		right_index, found := BinarySearch(comparator, right, comparator_field)
+
+		if !found {
+			left_only = append(left_only, item)
+			continue
+		}
+
+		// It was found
+		matches = append(matches, DiffStruct(item, right[right_index], comparator_field))
+
+		// Remove item from right
+		right = slices.Concat(right[:right_index], right[right_index+1:])
+	}
+	fmt.Println(DereferencedString(left_only))
+
+	return left_only, right, matches
+}
+
+
+func SortSliceOfStructs[T any](arr []*T, field_name string) {
+	sort.Slice(arr, func(i, j int) bool {
+		i_val := reflect.ValueOf(arr[i])
+		j_val := reflect.ValueOf(arr[j])
+
+		if i_val.Kind() == reflect.Ptr {
+			i_val = i_val.Elem()
+			j_val = j_val.Elem()
+		}
+
+		i_field := i_val.FieldByName(field_name)
+		j_field := j_val.FieldByName(field_name)
+
+		if i_field.Kind() == reflect.Ptr {
+			i_field = i_field.Elem()
+			j_field = j_field.Elem()
+		}
+
+		return i_field.Interface().(string) < j_field.Interface().(string)
+	})
 }
