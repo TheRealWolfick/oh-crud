@@ -214,20 +214,21 @@ func (qb *QueryBuilder) BuildInsert(table string, mod any) string {
 	if qb.query != "" {
 		return qb.query
 	}
-	if reflect.TypeOf(mod).Kind() != reflect.Struct {
-		return ""
-	}
-
-	//
-	db_columns := make([]string, 0)
-	value := make([]string, 0)
-
+	
 	t := reflect.TypeOf(mod)
 	vals := reflect.ValueOf(mod)
+	
+	if vals.Kind() == reflect.Ptr {
+		t = t.Elem()
+		vals = vals.Elem()
+	}
 
-	if t.Kind() != reflect.Struct {
+	if vals.Kind() != reflect.Struct {
 		return ""
 	}
+
+	db_columns := make([]string, 0)
+	value := make([]string, 0)
 
 	for i := 0; i < t.NumField(); i++ {
 		// Test to ensure it has a db field

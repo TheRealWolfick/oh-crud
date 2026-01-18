@@ -26,7 +26,16 @@ func StartTask(ctx context.Context) context.Context {
 }
 
 func GetTask(ctx context.Context) (string, bool) {
-	task := ctx.Value(taskContextKey).(string)
-	if len(task) == 32 {return task, true}
+	val := ctx.Value(taskContextKey)
+	if val == nil {
+		return "", false
+	}
+	task, ok := val.(string)
+	if !ok {
+		return "", false
+	}
+	if len(task) == 32 {
+		return task, true
+	}
 	return task, false
 }

@@ -272,7 +272,6 @@ func ValidateValue(A reflect.Kind, B any) bool {
 
 
 func DiffStruct[T any](supplied T, stored T, comparatorField string) models.Item_Diff[T] {
-
 	// reflect on the data
 	val_supplied := reflect.ValueOf(supplied)
 	val_stored := reflect.ValueOf(stored)
@@ -308,7 +307,6 @@ func DiffStruct[T any](supplied T, stored T, comparatorField string) models.Item
 	comparator_value := fmt.Sprintf("%v", supplied_comparator.Interface())
 
 	// Create new instances based on the actual struct type (not T)
-	// val_supplied is already dereferenced to the struct level
 	supplied_return_val := reflect.New(val_supplied.Type())
 	stored_return_val := reflect.New(val_stored.Type())
 
@@ -316,12 +314,31 @@ func DiffStruct[T any](supplied T, stored T, comparatorField string) models.Item
 	val_supplied_return := supplied_return_val.Elem()
 	val_stored_return := stored_return_val.Elem()
 
+	// Track if we found any actual differences
+	hasDifferences := false
+
 	// Get all the fields from the supplied struct
 	struct_fields := GetAllFieldNames(supplied)
 
 	for _, field := range struct_fields {
+		// Skip fields marked to exclude from diffs
+		fieldType := reflect.TypeOf(supplied)
+		if fieldType.Kind() == reflect.Ptr {
+			fieldType = fieldType.Elem()
+		}
+		structField, found := fieldType.FieldByName(field)
+		if found && structField.Tag.Get("exclude_diff") == "true" {
+			continue
+		}
 		supplied_field := val_supplied.FieldByName(field)
 		stored_field := val_stored.FieldByName(field)
+		
+		// Always include the comparator field
+		if field == comparatorField {
+			val_supplied_return.FieldByName(field).Set(supplied_field)
+			val_stored_return.FieldByName(field).Set(stored_field)
+			continue
+		}
 		
 		// For comparison, dereference if needed
 		supplied_compare := supplied_field
@@ -334,12 +351,27 @@ func DiffStruct[T any](supplied T, stored T, comparatorField string) models.Item
 		}
 		
 		// Compare the actual values
+		// Only add to diff if they're different AND at least one is non-zero
 		if !reflect.DeepEqual(supplied_compare.Interface(), stored_compare.Interface()) {
-			val_supplied_return.FieldByName(field).Set(supplied_field)
-			val_stored_return.FieldByName(field).Set(stored_field)
+			// Check if at least one value is non-zero/non-nil
+			supplied_has_value := supplied_field.Kind() != reflect.Ptr || !supplied_field.IsNil()
+			stored_has_value := stored_field.Kind() != reflect.Ptr || !stored_field.IsNil()
+			
+			if supplied_has_value || stored_has_value {
+				val_supplied_return.FieldByName(field).Set(supplied_field)
+				val_stored_return.FieldByName(field).Set(stored_field)
+				hasDifferences = true
+			}
 		}
 	}
 	
+	// If no actual differences found (besides comparator), return empty diff
+	if !hasDifferences {
+		return models.Item_Diff[T]{}
+	}
+	
+	if supplied_return_val.Kind() == reflect.Ptr {supplied_return_val = supplied_return_val.Elem()}
+	if stored_return_val.Kind() == reflect.Ptr {stored_return_val = stored_return_val.Elem()}
 	sup := supplied_return_val.Interface().(T)
 	sto := stored_return_val.Interface().(T)
 	

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/md5"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -102,6 +103,90 @@ func recursiveBatchInsertProcess(
 	return result
 }
 
+func createDiff[T any](
+	ctx context.Context,
+	db models.DBExecQuery,
+	tableName string,
+	supplied []T,
+) (map[string]any, error) {
+
+	// Read data into stored - select all fields to match struct
+	query := fmt.Sprintf("SELECT * FROM %s;", tableName)
+	rows, err := db.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("error reading rows in createDiff: %w", err)
+	}
+	stored, err := pgx.CollectRows(rows, pgx.RowToStructByName[T])
+	if err != nil {
+		return nil, fmt.Errorf("error collecting rows in createDiff: %w", err)
+	}
+
+	// Split the data between left, right, and diffs
+	diff_struct := DiffStructSlices(supplied, stored)
+
+	// Check if diff_struct is nil or empty
+	if diff_struct == nil {
+		fmt.Println("[createDiff] ERROR: diff_struct is nil - no valid comparator or empty slices")
+		return map[string]any{
+			"table": tableName,
+			"rows_affected": 0,
+			"error": "no differences found or invalid comparator",
+		}, fmt.Errorf("no valid diff created")
+	}
+
+	// Check if there are any actual differences
+	totalDiffs := len(diff_struct.Diffs) + len(diff_struct.MissingFromSupplied) + len(diff_struct.MissingFromStored)
+
+	if totalDiffs == 0 {
+		return map[string]any{
+			"action": "diff",
+			"on_table": tableName,
+			"rows_affected": 0,
+			"message": "no differences found between supplied and stored data",
+		}, nil
+	}
+
+	// Build checksum and add additional features
+	h := md5.New()
+	user, userOk := middleware.GetUser(ctx)
+	if !userOk {
+		user = &models.User{}
+	}
+	task, taskOk := middleware.GetTask(ctx)
+	if !taskOk {
+		task = ""
+	}
+
+	tempjson := DereferencedString(diff_struct)
+	h.Write([]byte(tempjson))
+	checksum := fmt.Sprintf("%x", h.Sum(nil))
+	
+	diff_struct.Checksum = &checksum
+	diff_struct.UserGenerated = &user.Username
+	diff_struct.TaskID = &task
+	diff_struct.DiffType = &tableName
+
+	// Create query building
+	qb := NewQueryBuilder()
+	query = qb.BuildInsert("diffs", diff_struct)
+
+	// Save the diff into the database
+	cmdtag, err := db.Exec(ctx, query, qb.GetArgs()...)
+
+	// Create return map
+	ret_map := map[string]any{
+		"table": tableName,
+		"rows_affected": cmdtag.RowsAffected(),
+	}
+	
+	if err != nil {
+		ret_map["error"] = err.Error()
+		return ret_map, err
+	}
+
+	return ret_map, nil
+}
+
 func CreateDiff[T any](
 	ctx context.Context,
 	db models.DBExecQuery,
@@ -113,6 +198,7 @@ func CreateDiff[T any](
 	}
 }
 
+/*
 func createDiff[T any](
 	ctx context.Context,
 	db models.DBExecQuery,
@@ -121,19 +207,45 @@ func createDiff[T any](
 ) (map[string]any, error) {
 
 	// Read data into stored
-	rows, err := db.Query(ctx, "SELECT * FROM $1;", tableName)
-	if err != nil {errors.New("Error reading rows in createDiff")}
+	rows, err := db.Query(ctx, fmt.Sprintf("SELECT * FROM %s;", tableName))
+	if err != nil {
+		return nil, fmt.Errorf("error reading rows in createDiff: %w", err)
+	}
 	stored, err := pgx.CollectRows(rows, pgx.RowToStructByName[T])
+	if err != nil {
+		return nil, fmt.Errorf("error collecting rows in createDiff: %w", err)
+	}
 
 	// Split the data between left, right, and diffs
+	fmt.Println(tableName)
+	fmt.Println(len(supplied))
+	fmt.Println(len(stored))
 	diff_struct := DiffStructSlices(supplied, stored)
+
+	// Check if diff_struct is nil or empty
+	if diff_struct == nil {
+		return map[string]any{
+			"table": tableName,
+			"rows_affected": 0,
+			"error": "no differences found or invalid comparator",
+		}, fmt.Errorf("no valid diff created")
+	}
 
 	// Build checksum and add additional features
 	h := md5.New()
-	user, _ := middleware.GetUser(ctx)
-	task, _ := middleware.GetTask(ctx)
+	user, userOk := middleware.GetUser(ctx)
+	if !userOk {
+		user = &models.User{}
+	}
+	task, taskOk := middleware.GetTask(ctx)
+	if !taskOk {
+		task = ""
+	}
+
 	tempjson := DereferencedString(diff_struct)
-	checksum := string(h.Sum([]byte(tempjson)))
+	h.Write([]byte(tempjson))
+	checksum := fmt.Sprintf("%x", h.Sum(nil))
+	
 	diff_struct.Checksum = &checksum
 	diff_struct.UserGenerated = &user.Username
 	diff_struct.TaskID = &task
@@ -143,15 +255,24 @@ func createDiff[T any](
 	qb := NewQueryBuilder()
 	query := qb.BuildInsert("diffs", diff_struct)
 
+	// Debug: print the query and args
+	fmt.Printf("Query: %s\n", query)
+	fmt.Printf("Args: %v\n", qb.GetArgs())
+
 	// Save the diff into the database
-	cmdtag, error := db.Exec(ctx, query, qb.GetArgs()...)
+	cmdtag, err := db.Exec(ctx, query, qb.GetArgs()...)
 
 	// Create return map
 	ret_map := map[string]any{
 		"table": tableName,
 		"rows_affected": cmdtag.RowsAffected(),
-		"error": error,
+	}
+	
+	if err != nil {
+		ret_map["error"] = err.Error()
+		return ret_map, err
 	}
 
 	return ret_map, nil
 }
+*/
