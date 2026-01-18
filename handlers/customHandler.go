@@ -12,7 +12,7 @@ import (
 )
 
 // Add a new resource via the default path
-func HandleCreateDiff[T any](
+func handleCreateDiff[T any](
 	qm *tools.QueueManager,
 	tableName string,
 ) http.HandlerFunc {

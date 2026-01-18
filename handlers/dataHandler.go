@@ -425,7 +425,7 @@ func (h *DataHandler[T]) HandleDelete() http.HandlerFunc {
 
 func (h *DataHandler[T]) HandleCreateDiff() http.HandlerFunc {
 	if h.Allowed["POST"] {
-		return HandleCreateDiff[T](h.Qm, h.TableName)
+		return handleCreateDiff[T](h.Qm, h.TableName)
 	}
 	return handleNotAllowed[T](h.Allowed)
 }
