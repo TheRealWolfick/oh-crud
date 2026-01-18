@@ -29,6 +29,7 @@ type GetOnlyDataHandler[T any] struct {
 
 type DataHandlerInterface interface {
 	RegisterRoutes(mux *http.ServeMux, auth func(http.Handler) http.Handler, qm *tools.QueueManager)
+	RegisterDiffRoutes(mux *http.ServeMux, auth func(http.Handler) http.Handler, qm *tools.QueueManager)
 	HandleUpdate() http.HandlerFunc
 	HandleGet() http.HandlerFunc 
 	HandleAddNew() http.HandlerFunc 
@@ -50,13 +51,18 @@ func NewDataHandler[T any](qm *tools.QueueManager, tableName string, endPoint st
 	}
 }
 
-// Create a new data handler which allows only GET requests
-
 func (dh *DataHandler[T]) RegisterRoutes(mux *http.ServeMux, auth func(http.Handler) http.Handler, qm *tools.QueueManager) {
 	mux.Handle(fmt.Sprintf("GET /%s", dh.EndPoint), auth(dh.HandleGet()))
 	mux.Handle(fmt.Sprintf("PUT /%s", dh.EndPoint), auth(dh.HandleUpdate()))
 	mux.Handle(fmt.Sprintf("POST /%s", dh.EndPoint), auth(dh.HandleAddNew()))
 	mux.Handle(fmt.Sprintf("POST /%s-group", dh.EndPoint), auth(dh.HandleAddMultipleNew()))
+	mux.Handle(fmt.Sprintf("DELETE /%s", dh.EndPoint), auth(dh.HandleDelete()))
+}
+
+
+func (dh *DataHandler[T]) RegisterDiffRoutes(mux *http.ServeMux, auth func(http.Handler) http.Handler, qm *tools.QueueManager) {
+	mux.Handle(fmt.Sprintf("GET /%s", dh.EndPoint), auth(dh.HandleGet()))
+	mux.Handle(fmt.Sprintf("POST /%s", dh.EndPoint), auth(dh.HandleCreateDiff()))
 	mux.Handle(fmt.Sprintf("DELETE /%s", dh.EndPoint), auth(dh.HandleDelete()))
 }
 
@@ -413,6 +419,13 @@ func (h *DataHandler[T]) HandleAddMultipleNew() http.HandlerFunc {
 func (h *DataHandler[T]) HandleDelete() http.HandlerFunc {
 	if h.Allowed["ALL"] || h.Allowed["DELETE"] {
 		return handleDeleteResource[T](h.Qm, h.TableName)
+	}
+	return handleNotAllowed[T](h.Allowed)
+}
+
+func (h *DataHandler[T]) HandleCreateDiff() http.HandlerFunc {
+	if h.Allowed["POST"] {
+		return HandleCreateDiff[T](h.Qm, h.TableName)
 	}
 	return handleNotAllowed[T](h.Allowed)
 }

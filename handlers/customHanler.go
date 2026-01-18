@@ -21,13 +21,13 @@ func HandleCreateDiff[T any](
 		req_ip := tools.GetIP(r)
 		req_id, err := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
-		qm.Logger.Info("REQUEST_RECEIVED", "user", req_username, "IP", req_ip, "function", "Add New Resource", "table", tableName, "request_id", req_id)
+		qm.Logger.Info("REQUEST_RECEIVED", "user", req_username, "IP", req_ip, "function", "Create Diff", "table", tableName, "request_id", req_id)
 
 		// Response intialization
 		response := map[string]any{"task_type": "CREATE"}
 		w.Header().Set("Content-Type", "application/json")
 
-		var resource T
+		var resource []T
 		err = json.NewDecoder(r.Body).Decode(&resource)
 
 		// Validation and errors
@@ -50,7 +50,7 @@ func HandleCreateDiff[T any](
 
 		// Extract context and queue action
 		ctx_preserve := context.WithoutCancel(r.Context())
-		task_id, err := qm.QueueFunction(ctx_preserve, tools.SingleInsert(ctx_preserve, qm.Db, tableName, resource))
+		task_id, err := qm.QueueFunction(ctx_preserve, tools.CreateDiff(ctx_preserve, qm.Db, tableName, resource))
 
 		if err != nil {
 			qm.Logger.Error("TASK_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Add New Resource", "error", "could not create task", "resource", resource, "error", err)

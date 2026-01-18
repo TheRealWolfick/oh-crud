@@ -54,6 +54,7 @@ func main() {
 	allow_all := map[string]bool{"ALL": true}
 	disallow_delete := map[string]bool{"GET": true, "PUT": true, "POST": true, "POST-GROUP": true, "DELETE": false}
 	get_only := map[string]bool{"GET": true}
+	get_post := map[string]bool{"GET": true, "POST": true}
 
 	// Make the handlers
 	authMiddleware := middleware.RequireAuth(pool)
@@ -69,10 +70,15 @@ func main() {
 	assetDataHandler := handlers.NewDataHandler[models.Asset_Data](qm, "asset_data", "asset/data", allow_all, nil, nil, "")
 	unresolvedAssetDataHandler := handlers.NewDataHandler[models.Unresolved_Assets](qm, "items, jsonb_array_elements(items.failed_items)", "asset/unresolved", get_only, map[string]any{"value->>'rectified'": "false"}, models.UnresolvedAssets_CustomSelect(), "WITH items AS (SELECT DISTINCT event_log->'task'->'response'->'failed_items' as failed_items FROM events)")
 
+	assetDiffHandler := handlers.NewDataHandler[models.Asset_Data](qm, "assets", "asset/diff", get_post, nil, nil, "")
+
 	// Group handlers
 	api_handlers := []handlers.DataHandlerInterface{
 		domainHandler, buildingHandler, floorHandler, buildingFloorHandler, buildingFloorRoomHandler, departmentsHandler, 
 		conditionRatingsHandler, assetCategoriesHandler, assetDataHandler, unresolvedAssetDataHandler,
+	}
+	diff_handlers := []handlers.DataHandlerInterface{
+		assetDiffHandler,
 	}
 
 	// Setup the server
@@ -86,6 +92,9 @@ func main() {
 	// Register the routes for each handler
 	for _, handler := range api_handlers {
 		handler.RegisterRoutes(mux, authMiddleware, qm)
+	}
+	for _, handler := range diff_handlers {
+		handler.RegisterDiffRoutes(mux, authMiddleware, qm)
 	}
 
 	// Launch the server

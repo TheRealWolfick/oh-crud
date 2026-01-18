@@ -102,13 +102,15 @@ func recursiveBatchInsertProcess(
 	return result
 }
 
-func CreateDiff(
+func CreateDiff[T any](
 	ctx context.Context,
-	db models.DBExecutor,
+	db models.DBExecQuery,
 	tableName string,
-	item any,
+	supplied []T,
 ) (func(context.Context, ...any) (map[string]any, error)) {
-	return RecursiveBatchInsert(ctx, db, tableName, []any{item})
+	return func(ctx context.Context, a ...any) (map[string]any, error) {
+		return createDiff(ctx, db, tableName, supplied)
+	}
 }
 
 func createDiff[T any](
