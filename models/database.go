@@ -35,11 +35,17 @@ type ExecError struct {
 }
 
 type DBExecutor interface {
-	Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error)
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 }
 
 type DBQueryer interface {
-	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
+type DBExecQuery interface {
+	DBExecutor
+	DBQueryer
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 }
 
 // CommandTag interface to abstract the database command tag
@@ -50,6 +56,7 @@ type CommandTag interface {
 type DBHandler interface {
 	DBExecutor
 	DBQueryer
+	DBExecQuery
 }
 
 type DBReportable interface {

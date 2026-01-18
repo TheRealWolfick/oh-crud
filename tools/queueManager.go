@@ -73,10 +73,11 @@ func NewQueue(db *pgxpool.Pool, num_workers int, logger *slog.Logger) *QueueMana
 
 // Creates a new task
 func (qm *QueueManager) createTask(ctx context.Context, sql string, args ...any) (*Task, error) {
-	task_id, err := Generate32CharString()
+	task_id, ok := middleware.GetTask(ctx)
 
-	if err != nil {
-		return nil, err
+	if !ok {
+		task, _ := Generate32CharString()
+		task_id = task
 	}
 
 	t := &Task{
@@ -98,10 +99,11 @@ func (qm *QueueManager) createTask(ctx context.Context, sql string, args ...any)
 
 // Creates a new function task
 func (qm *QueueManager) createFunctionTask(ctx context.Context, function func(context.Context, ...any) (map[string]any, error), args ...any) (*Task, error) {
-	task_id, err := Generate32CharString()
+	task_id, ok := middleware.GetTask(ctx)
 
-	if err != nil {
-		return nil, err
+	if !ok {
+		task, _ := Generate32CharString()
+		task_id = task
 	}
 
 	t := &Task{

@@ -4,13 +4,13 @@ import (
 	"reflect"
 )
 
-func BinarySearch[T any](key any, slice []*T, key_field string) (int, bool) {
+func BinarySearch[T any](key any, slice []T, key_field string) (int, bool) {
 	pos, found := binarySearch(key, slice, key_field)
 	if found {return pos, found}
 	return -1, found
 }
 
-func binarySearch[T any](key any, slice []*T, key_field string) (int, bool) {
+func binarySearch[T any](key any, slice []T, key_field string) (int, bool) {
 	slice_length := len(slice)
 	if slice_length == 0 {return -1, false}
 

@@ -57,7 +57,7 @@ func TestBinarySearch(t *testing.T) {
 	})
 
 	t.Run("Test merge function", func(t *testing.T) {
-		l_only, r_only, diffs := MergeStructsWithRemainder(left, right)
-		t.Errorf("Left:\n%s\nRight:\n%s\nDiffs:\n%s", DereferencedString(l_only), DereferencedString(r_only), DereferencedString(diffs))
+		diffs := DiffStructSlices(left, right)
+		t.Errorf("Diffs:\n%s", DereferencedString(diffs))
 	})
 }

@@ -270,19 +270,16 @@ func ValidateValue(A reflect.Kind, B any) bool {
 	}
 }
 
-func DiffStruct[T any](supplied *T, stored *T, comparatorField string) *models.Item_Diff[T] {
+
+func DiffStruct[T any](supplied T, stored T, comparatorField string) models.Item_Diff[T] {
 
 	// reflect on the data
 	val_supplied := reflect.ValueOf(supplied)
 	val_stored := reflect.ValueOf(stored)
 
 	// dereference the data
-	if val_supplied.Kind() == reflect.Ptr {
-		val_supplied = val_supplied.Elem()
-	}
-	if val_stored.Kind() == reflect.Ptr {
-		val_stored = val_stored.Elem()
-	}
+	if val_supplied.Kind() == reflect.Ptr {val_supplied = val_supplied.Elem()}
+	if val_stored.Kind() == reflect.Ptr {val_stored = val_stored.Elem()}
 
 	// Check to ensure the comparator is matching in both fields and not a nil value
 	supplied_comparator := val_supplied.FieldByName(comparatorField)
@@ -290,73 +287,85 @@ func DiffStruct[T any](supplied *T, stored *T, comparatorField string) *models.I
 	
 	// Dereference if pointer
 	if supplied_comparator.Kind() == reflect.Ptr {
-		if supplied_comparator.IsNil() {
-			return nil
-		}
+		if supplied_comparator.IsNil() {return models.Item_Diff[T]{}}
 		supplied_comparator = supplied_comparator.Elem()
 	}
 	if stored_comparator.Kind() == reflect.Ptr {
-		if stored_comparator.IsNil() {
-			return nil
-		}
+		if stored_comparator.IsNil() {return models.Item_Diff[T]{}}
 		stored_comparator = stored_comparator.Elem()
 	}
 	
 	// Check if comparators match
 	if !reflect.DeepEqual(supplied_comparator.Interface(), stored_comparator.Interface()) {
-		return nil
+		return models.Item_Diff[T]{}
 	}
 	
 	// Check if comparator is zero value
 	if supplied_comparator.IsZero() {
-		return nil
+		return models.Item_Diff[T]{}
 	}
 	
 	comparator_value := fmt.Sprintf("%v", supplied_comparator.Interface())
 
-	// Create the structure to save the diffs into
-	var supplied_return T
-	var stored_return T
-	diffs_to_return := &models.Item_Diff[T]{
-		Comparator: &comparator_value,
-		Supplied:   &supplied_return,
-		Stored:     &stored_return,
-	}
+	// Create new instances based on the actual struct type (not T)
+	// val_supplied is already dereferenced to the struct level
+	supplied_return_val := reflect.New(val_supplied.Type())
+	stored_return_val := reflect.New(val_stored.Type())
 
-	// Get reflect values for the return structs
-	val_supplied_return := reflect.ValueOf(&supplied_return).Elem()
-	val_stored_return := reflect.ValueOf(&stored_return).Elem()
+	// Get the structs themselves (not pointers)
+	val_supplied_return := supplied_return_val.Elem()
+	val_stored_return := stored_return_val.Elem()
 
 	// Get all the fields from the supplied struct
 	struct_fields := GetAllFieldNames(supplied)
 
 	for _, field := range struct_fields {
-		supplied_val := val_supplied.FieldByName(field)
-		stored_val := val_stored.FieldByName(field)
+		supplied_field := val_supplied.FieldByName(field)
+		stored_field := val_stored.FieldByName(field)
+		
+		// For comparison, dereference if needed
+		supplied_compare := supplied_field
+		stored_compare := stored_field
+		if supplied_compare.Kind() == reflect.Ptr && !supplied_compare.IsNil() {
+			supplied_compare = supplied_compare.Elem()
+		}
+		if stored_compare.Kind() == reflect.Ptr && !stored_compare.IsNil() {
+			stored_compare = stored_compare.Elem()
+		}
 		
 		// Compare the actual values
-		if !reflect.DeepEqual(supplied_val.Interface(), stored_val.Interface()) {
-			val_supplied_return.FieldByName(field).Set(supplied_val)
-			val_stored_return.FieldByName(field).Set(stored_val)
+		if !reflect.DeepEqual(supplied_compare.Interface(), stored_compare.Interface()) {
+			val_supplied_return.FieldByName(field).Set(supplied_field)
+			val_stored_return.FieldByName(field).Set(stored_field)
 		}
 	}
+	
+	sup := supplied_return_val.Interface().(T)
+	sto := stored_return_val.Interface().(T)
+	
+	diffs_to_return := &models.Item_Diff[T]{
+		Comparator: &comparator_value,
+		Supplied:   &sup,
+		Stored:     &sto,
+	}
 
-	return diffs_to_return
+	return *diffs_to_return
 }
 
-func MergeStructsWithRemainder[T any](left []*T, right []*T) ([]*T, []*T, []*models.Item_Diff[T]) {
+
+func DiffStructSlices[T any](left []T, right []T) *models.Diff[T] {
 	if len(left) < 1 || len(right) < 1 {
-		return nil, nil, nil
+		return nil
 	}
 
 	comparator_field := GetDiffFieldName(left[0])
 	
 	if comparator_field == "" {
-		return nil, nil, nil
+		return nil
 	}
 
-	left_only := make([]*T, 0)
-	matches := make([]*models.Item_Diff[T], 0)
+	left_only := make([]T, 0)
+	matches := make([]models.Item_Diff[T], 0)
 
 	// Sort left and right data for optimizing search
 	SortSliceOfStructs(left, comparator_field)
@@ -385,13 +394,17 @@ func MergeStructsWithRemainder[T any](left []*T, right []*T) ([]*T, []*T, []*mod
 		// Remove item from right
 		right = slices.Concat(right[:right_index], right[right_index+1:])
 	}
-	fmt.Println(DereferencedString(left_only))
 
-	return left_only, right, matches
+	return &models.Diff[T]{
+		DiffType: &comparator_field,
+		MissingFromSupplied: left_only,
+		MissingFromStored: right,
+		Diffs: matches,
+	}
 }
 
 
-func SortSliceOfStructs[T any](arr []*T, field_name string) {
+func SortSliceOfStructs[T any](arr []T, field_name string) {
 	sort.Slice(arr, func(i, j int) bool {
 		i_val := reflect.ValueOf(arr[i])
 		j_val := reflect.ValueOf(arr[j])
