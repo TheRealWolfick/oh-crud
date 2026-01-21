@@ -277,42 +277,60 @@ func DiffStruct[T any](supplied T, stored T, comparatorField string) models.Item
 	val_stored := reflect.ValueOf(stored)
 
 	// dereference the data
-	if val_supplied.Kind() == reflect.Ptr {val_supplied = val_supplied.Elem()}
-	if val_stored.Kind() == reflect.Ptr {val_stored = val_stored.Elem()}
+	if val_supplied.Kind() == reflect.Ptr {
+		val_supplied = val_supplied.Elem()
+	}
+	if val_stored.Kind() == reflect.Ptr {
+		val_stored = val_stored.Elem()
+	}
+
+	// Validate that we have struct types after dereferencing
+	if val_supplied.Kind() != reflect.Struct || val_stored.Kind() != reflect.Struct {
+		return models.Item_Diff[T]{}
+	}
 
 	// Check to ensure the comparator is matching in both fields and not a nil value
 	supplied_comparator := val_supplied.FieldByName(comparatorField)
 	stored_comparator := val_stored.FieldByName(comparatorField)
-	
+
+	// Validate that comparator field exists
+	if !supplied_comparator.IsValid() || !stored_comparator.IsValid() {
+		return models.Item_Diff[T]{}
+	}
+
 	// Dereference if pointer
 	if supplied_comparator.Kind() == reflect.Ptr {
-		if supplied_comparator.IsNil() {return models.Item_Diff[T]{}}
+		if supplied_comparator.IsNil() {
+			return models.Item_Diff[T]{}
+		}
 		supplied_comparator = supplied_comparator.Elem()
 	}
 	if stored_comparator.Kind() == reflect.Ptr {
-		if stored_comparator.IsNil() {return models.Item_Diff[T]{}}
+		if stored_comparator.IsNil() {
+			return models.Item_Diff[T]{}
+		}
 		stored_comparator = stored_comparator.Elem()
 	}
-	
+
 	// Check if comparators match
 	if !reflect.DeepEqual(supplied_comparator.Interface(), stored_comparator.Interface()) {
 		return models.Item_Diff[T]{}
 	}
-	
+
 	// Check if comparator is zero value
 	if supplied_comparator.IsZero() {
 		return models.Item_Diff[T]{}
 	}
-	
+
 	comparator_value := fmt.Sprintf("%v", supplied_comparator.Interface())
 
-	// Create new instances based on the actual struct type (not T)
-	supplied_return_val := reflect.New(val_supplied.Type())
-	stored_return_val := reflect.New(val_stored.Type())
+	// Determine if T is a pointer type
+	tType := reflect.TypeOf((*T)(nil)).Elem()
+	isPointerType := tType.Kind() == reflect.Ptr
 
-	// Get the structs themselves (not pointers)
-	val_supplied_return := supplied_return_val.Elem()
-	val_stored_return := stored_return_val.Elem()
+	// Create new instances based on the actual struct type
+	supplied_return_val := reflect.New(val_supplied.Type()).Elem()
+	stored_return_val := reflect.New(val_stored.Type()).Elem()
 
 	// Track if we found any actual differences
 	hasDifferences := false
@@ -330,16 +348,26 @@ func DiffStruct[T any](supplied T, stored T, comparatorField string) models.Item
 		if found && structField.Tag.Get("exclude_diff") == "true" {
 			continue
 		}
+
 		supplied_field := val_supplied.FieldByName(field)
 		stored_field := val_stored.FieldByName(field)
-		
-		// Always include the comparator field
-		if field == comparatorField {
-			val_supplied_return.FieldByName(field).Set(supplied_field)
-			val_stored_return.FieldByName(field).Set(stored_field)
+
+		// Validate fields exist
+		if !supplied_field.IsValid() || !stored_field.IsValid() {
 			continue
 		}
-		
+
+		// Always include the comparator field
+		if field == comparatorField {
+			if supplied_return_val.FieldByName(field).CanSet() {
+				supplied_return_val.FieldByName(field).Set(supplied_field)
+			}
+			if stored_return_val.FieldByName(field).CanSet() {
+				stored_return_val.FieldByName(field).Set(stored_field)
+			}
+			continue
+		}
+
 		// For comparison, dereference if needed
 		supplied_compare := supplied_field
 		stored_compare := stored_field
@@ -349,32 +377,50 @@ func DiffStruct[T any](supplied T, stored T, comparatorField string) models.Item
 		if stored_compare.Kind() == reflect.Ptr && !stored_compare.IsNil() {
 			stored_compare = stored_compare.Elem()
 		}
-		
+
 		// Compare the actual values
 		// Only add to diff if they're different AND at least one is non-zero
 		if !reflect.DeepEqual(supplied_compare.Interface(), stored_compare.Interface()) {
 			// Check if at least one value is non-zero/non-nil
 			supplied_has_value := supplied_field.Kind() != reflect.Ptr || !supplied_field.IsNil()
 			stored_has_value := stored_field.Kind() != reflect.Ptr || !stored_field.IsNil()
-			
+
 			if supplied_has_value || stored_has_value {
-				val_supplied_return.FieldByName(field).Set(supplied_field)
-				val_stored_return.FieldByName(field).Set(stored_field)
+				supField := supplied_return_val.FieldByName(field)
+				stoField := stored_return_val.FieldByName(field)
+				if supField.CanSet() {
+					supField.Set(supplied_field)
+				}
+				if stoField.CanSet() {
+					stoField.Set(stored_field)
+				}
 				hasDifferences = true
 			}
 		}
 	}
-	
+
 	// If no actual differences found (besides comparator), return empty diff
 	if !hasDifferences {
 		return models.Item_Diff[T]{}
 	}
-	
-	if supplied_return_val.Kind() == reflect.Ptr {supplied_return_val = supplied_return_val.Elem()}
-	if stored_return_val.Kind() == reflect.Ptr {stored_return_val = stored_return_val.Elem()}
-	sup := supplied_return_val.Interface().(T)
-	sto := stored_return_val.Interface().(T)
-	
+
+	// Convert back to T, handling both pointer and non-pointer cases
+	var sup, sto T
+	if isPointerType {
+		// T is a pointer type, so we need to get the address
+		supPtr := reflect.New(val_supplied.Type())
+		supPtr.Elem().Set(supplied_return_val)
+		sup = supPtr.Interface().(T)
+
+		stoPtr := reflect.New(val_stored.Type())
+		stoPtr.Elem().Set(stored_return_val)
+		sto = stoPtr.Interface().(T)
+	} else {
+		// T is not a pointer type, use the value directly
+		sup = supplied_return_val.Interface().(T)
+		sto = stored_return_val.Interface().(T)
+	}
+
 	diffs_to_return := &models.Item_Diff[T]{
 		Comparator: &comparator_value,
 		Supplied:   &sup,
