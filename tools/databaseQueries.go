@@ -29,9 +29,10 @@ func CreateDiff[T any](
 	db models.DBExecQuery,
 	tableName string,
 	supplied []T,
+	note string,
 ) (func(context.Context, ...any) (map[string]any, error)) {
 	return func(ctx context.Context, a ...any) (map[string]any, error) {
-		return createDiff(ctx, db, tableName, supplied)
+		return createDiff(ctx, db, tableName, supplied, note)
 	}
 }
 
@@ -132,6 +133,7 @@ func createDiff[T any](
 	db models.DBExecQuery,
 	tableName string,
 	supplied []T,
+	note string,
 ) (map[string]any, error) {
 
 	// Read data into stored - select all fields to match struct
@@ -150,7 +152,6 @@ func createDiff[T any](
 
 	// Check if diff_struct is nil or empty
 	if diff_struct == nil {
-		fmt.Println("[createDiff] ERROR: diff_struct is nil - no valid comparator or empty slices")
 		return map[string]any{
 			"table": tableName,
 			"rows_affected": 0,
@@ -189,6 +190,7 @@ func createDiff[T any](
 	diff_struct.UserGenerated = &user.Username
 	diff_struct.TaskID = &task
 	diff_struct.DiffType = &tableName
+	diff_struct.Note = &note
 
 	// Create query building
 	qb := NewQueryBuilder()

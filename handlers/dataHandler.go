@@ -79,6 +79,7 @@ func handleAddNewResource[T any](
 		req_ip := tools.GetIP(r)
 		req_id, err := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
+		note := r.Header.Get("X-User-Note")
 		qm.Logger.Info("REQUEST_RECEIVED", "user", req_username, "IP", req_ip, "function", "Add New Resource", "table", tableName, "request_id", req_id)
 
 		// Response intialization
@@ -108,7 +109,7 @@ func handleAddNewResource[T any](
 
 		// Extract context and queue action
 		ctx_preserve := context.WithoutCancel(r.Context())
-		task_id, err := qm.QueueFunction(ctx_preserve, tools.SingleInsert(ctx_preserve, qm.Db, tableName, resource))
+		task_id, err := qm.QueueFunction(ctx_preserve, tools.SingleInsert(ctx_preserve, qm.Db, tableName, resource), note)
 
 		if err != nil {
 			qm.Logger.Error("TASK_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Add New Resource", "error", "could not create task", "resource", resource, "error", err)
@@ -134,6 +135,7 @@ func handleAddMultipleNewResources[T any](
 		req_ip := tools.GetIP(r)
 		req_id, err := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
+		note := r.Header.Get("X-User-Note")
 		qm.Logger.Info("REQUEST_RECEIVED", "user", req_username, "IP", req_ip, "function", "Add New Bulk Resource", "table", tableName, "request_id", req_id)
 
 		// Response intialization
@@ -163,7 +165,7 @@ func handleAddMultipleNewResources[T any](
 		}
 
 		ctx_preserve := context.WithoutCancel(r.Context())
-		task_id, err := qm.QueueFunction(ctx_preserve, tools.RecursiveBatchInsert(ctx_preserve, qm.Db, tableName, tools.ToAnySlice(valid_resources)))
+		task_id, err := qm.QueueFunction(ctx_preserve, tools.RecursiveBatchInsert(ctx_preserve, qm.Db, tableName, tools.ToAnySlice(valid_resources)), note)
 		if err != nil {
 			qm.Logger.Error("TASK_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Add New Bulk Resource", "error", err)
 			http.Error(w, fmt.Sprintf("Error creating bulk create task\nError: %v", err), http.StatusInternalServerError)
@@ -260,6 +262,7 @@ func handleUpdateResource[T any](
 		req_ip := tools.GetIP(r)
 		req_id, err := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
+		note := r.Header.Get("X-User-Note")
 		qm.Logger.Info("REQUEST_RECEIVED", "user", req_username, "IP", req_ip, "function", "Update Resource", "table", tableName, "request_id", req_id)
 
 		// Response intialization
@@ -293,7 +296,7 @@ func handleUpdateResource[T any](
 
 		// Queue the query
 		ctx_preserve := context.WithoutCancel(r.Context())
-		task_id, err := qm.QueueExec(ctx_preserve, query, qb.GetArgs()...)
+		task_id, err := qm.QueueExec(ctx_preserve, query, note, qb.GetArgs()...)
 		if err != nil {
 			qm.Logger.Error("TASK_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Update Resource", "error", err)
 			http.Error(w, fmt.Sprintf("Error creating update task\nError: %v", err), http.StatusInternalServerError)
@@ -317,6 +320,7 @@ func handleMultiUpdate[T any](
 		req_ip := tools.GetIP(r)
 		req_id, err := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
+		note := r.Header.Get("X-User-Note")
 		qm.Logger.Info("REQUEST_RECEIVED", "user", req_username, "IP", req_ip, "function", "Multi Update Resource", "table", tableName, "request_id", req_id)
 
 		// Response intialization
@@ -341,7 +345,7 @@ func handleMultiUpdate[T any](
 
 		// Queue the query
 		ctx_preserve := context.WithoutCancel(r.Context())
-		task_id, err := qm.QueueFunction(ctx_preserve, tools.MultiUpdate(ctx_preserve, qm.Db, tableName, updated))
+		task_id, err := qm.QueueFunction(ctx_preserve, tools.MultiUpdate(ctx_preserve, qm.Db, tableName, updated), note)
 		if err != nil {
 			qm.Logger.Error("TASK_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Multi Update Resource", "error", err)
 			http.Error(w, fmt.Sprintf("Error creating update task\nError: %v", err), http.StatusInternalServerError)
@@ -367,6 +371,7 @@ func handleDeleteResource[T any](
 		req_ip := tools.GetIP(r)
 		req_id, err := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
+		note := r.Header.Get("X-User-Note")
 		qm.Logger.Info("REQUEST_RECEIVED", "user", req_username, "IP", req_ip, "function", "Delete Resource", "table", tableName, "request_id", req_id)
 
 		// Response intialization
@@ -403,7 +408,7 @@ func handleDeleteResource[T any](
 
 		// Execute the query
 		ctx_preserve := context.WithoutCancel(r.Context())
-		task_id, err := qm.QueueExec(ctx_preserve, query, qb.GetArgs()...)
+		task_id, err := qm.QueueExec(ctx_preserve, query, note, qb.GetArgs()...)
 		if err != nil {
 			qm.Logger.Error("TASK_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Delete Resource", "error", err)
 			http.Error(w, fmt.Sprintf("Error creating delete task\nError: %v", err), http.StatusInternalServerError)

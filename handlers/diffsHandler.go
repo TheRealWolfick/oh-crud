@@ -22,6 +22,7 @@ func handleCreateDiff[T any](
 		req_ip := tools.GetIP(r)
 		req_id, err := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
+		note := r.Header.Get("X-User-Note")
 		qm.Logger.Info("REQUEST_RECEIVED", "user", req_username, "IP", req_ip, "function", "Create Diff", "table", tableName, "request_id", req_id)
 
 		// Response intialization
@@ -53,7 +54,7 @@ func handleCreateDiff[T any](
 
 		// Extract context and queue action
 		ctx_preserve := context.WithoutCancel(middleware.StartTask(r.Context()))
-		task_id, err := qm.QueueFunction(ctx_preserve, tools.CreateDiff(ctx_preserve, qm.Db, tableName, resources))
+		task_id, err := qm.QueueFunction(ctx_preserve, tools.CreateDiff(ctx_preserve, qm.Db, tableName, resources, note), note)
 
 		if err != nil {
 			qm.Logger.Error("TASK_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Create Diff", "error", "could not create task", "resource", resources, "error", err)

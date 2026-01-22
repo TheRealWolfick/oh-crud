@@ -24,6 +24,7 @@ type Task struct {
 	Success       bool       `json:"success"`
 	Response      map[string]any     `json:"response"`
 	Ctx           context.Context  `json:"-"`
+	Note         string           `json:"note"`
 	Function      func(context.Context, ...any) (map[string]any, error) `json:"-"`
 	Args          []any `json:"-"`
 }
@@ -72,7 +73,7 @@ func NewQueue(db *pgxpool.Pool, num_workers int, logger *slog.Logger) *QueueMana
 
 
 // Creates a new task
-func (qm *QueueManager) createTask(ctx context.Context, sql string, args ...any) (*Task, error) {
+func (qm *QueueManager) createTask(ctx context.Context, sql string, note string, args ...any) (*Task, error) {
 	task_id, ok := middleware.GetTask(ctx)
 
 	if !ok {
@@ -87,6 +88,7 @@ func (qm *QueueManager) createTask(ctx context.Context, sql string, args ...any)
 		Status: "queued",
 		Ctx: ctx,
 		Args: args,
+		Note: note,
 		Sql: sql,
 	}
 	
@@ -98,7 +100,7 @@ func (qm *QueueManager) createTask(ctx context.Context, sql string, args ...any)
 
 
 // Creates a new function task
-func (qm *QueueManager) createFunctionTask(ctx context.Context, function func(context.Context, ...any) (map[string]any, error), args ...any) (*Task, error) {
+func (qm *QueueManager) createFunctionTask(ctx context.Context, function func(context.Context, ...any) (map[string]any, error), note string, args ...any) (*Task, error) {
 	task_id, ok := middleware.GetTask(ctx)
 
 	if !ok {
@@ -112,6 +114,7 @@ func (qm *QueueManager) createFunctionTask(ctx context.Context, function func(co
 		StartTime: time.Now(),
 		Status: "queued",
 		Ctx: ctx,
+		Note: note,
 		Args: args,
 		Function: function,
 	}
@@ -333,8 +336,8 @@ func (qm *QueueManager) queue(t *Task) ( string, error ) {
 
 
 // Queue a function to be run asynchronously. A 32 character uuid will be returned that can be used to query the status of the task and also get the database response.
-func (qm *QueueManager) QueueFunction(ctx context.Context, function func(context.Context, ...any) (map[string]any, error), args ...any) (string, error) {
-	t, err := qm.createFunctionTask(ctx, function, args...)
+func (qm *QueueManager) QueueFunction(ctx context.Context, function func(context.Context, ...any) (map[string]any, error), note string, args ...any) (string, error) {
+	t, err := qm.createFunctionTask(ctx, function, note, args...)
 	if err != nil {
 		return "", err
 	}
@@ -343,8 +346,8 @@ func (qm *QueueManager) QueueFunction(ctx context.Context, function func(context
 
 
 // Queue a db.exec command to be run asyncronously. A 32 character uuid will be returned that can be used to query the status of the task and also get the database response.
-func (qm *QueueManager) QueueExec(ctx context.Context, sql string, args ...any) (string, error) {
-	t, err := qm.createTask(ctx, sql, args...)
+func (qm *QueueManager) QueueExec(ctx context.Context, sql string, note string, args ...any) (string, error) {
+	t, err := qm.createTask(ctx, sql, note, args...)
 	if err != nil {
 		return "", err
 	}
@@ -398,6 +401,7 @@ func (t *Task) logMiniUnsafe() []byte {
 			"task_type":     t.TaskType,
 			"status":        t.Status,
 			"start_time":    t.StartTime,
+			"note":          t.Note,
 		},
 	}
 	log, _ := json.Marshal(logData)
@@ -416,6 +420,7 @@ func (w *Worker) logTaskUnsafe() ([]byte, error) {
 				"start_time":    w.TaskActioning.StartTime,
 				"complete_time": w.TaskActioning.CompleteTime,
 				"num_args":      len(w.TaskActioning.Args),
+				"note":          w.TaskActioning.Note,
 				"response":      w.TaskActioning.Response,
 			},
 		}

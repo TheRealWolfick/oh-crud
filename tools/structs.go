@@ -18,17 +18,6 @@ func StructIsEmpty[T any](s *T) bool {
 	return v.IsZero()
 }
 
-func Deref(v reflect.Value) reflect.Value {
-	if v.Kind() == reflect.Ptr {
-		if v.IsNil() {
-			// Return zero value of the type the pointer points to
-			return reflect.Zero(v.Type().Elem())
-		}
-		return v.Elem()
-	}
-	return v
-}
-
 
 // This function takes a struct and will return it inside a valid or invalid slice. This
 // is just a wrapper for ValidateMultiStruct.

@@ -17,4 +17,5 @@ type Diff[T any] struct {
 	UserGenerated        *string           `json:"user_generated,omitempty" db:"generated_by_user" none:"NULL"` // Changed db tag
 	Checksum             *string           `json:"checksum" db:"checksum" none:"NULL"`
 	Created              *time.Time        `json:"created,omitempty" db:"created" none:"DEFAULT"`
+	Note                 *string           `json:"note,omitempty" db:"note" none:"NULL"`
 }
