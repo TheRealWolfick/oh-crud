@@ -75,12 +75,14 @@ func handleAddNewResource[T any](
 	tableName string,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		task_type := "Add Resource"
 		user_key := middleware.Contextkey("user")
 		req_ip := tools.GetIP(r)
 		req_id, err := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
 		note := r.Header.Get("X-User-Note")
-		qm.Logger.Info("REQUEST_RECEIVED", "user", req_username, "IP", req_ip, "function", "Add New Resource", "table", tableName, "request_id", req_id)
+
+		qm.Logger.Info("REQUEST_RECEIVED", "user", req_username, "IP", req_ip, "function", task_type, "table", tableName, "request_id", req_id)
 
 		// Response intialization
 		response := map[string]any{"task_type": "CREATE"}
@@ -91,28 +93,28 @@ func handleAddNewResource[T any](
 
 		// Validation and errors
 		if err != nil {
-			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Add New Resource", "error", err)
+			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", err)
 			http.Error(w, fmt.Sprintf("Could not decode body. Error: %v", err), http.StatusInternalServerError)
 			return
 		}
 		if tools.StructIsEmpty(&resource) {
 			http.Error(w, "No valid json supplied", http.StatusBadRequest)
-			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Add New Resource", "error", "No valid json supplied")
+			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", "No valid json supplied")
 			return
 		}
 		valid_resources, _ := tools.ValidateStruct(resource)
 		if len(valid_resources) < 1 {
-			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Add New Resource", "error", "resource invalid", "resource", resource)
+			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", "resource invalid", "resource", resource)
 			http.Error(w, "No valid domains", http.StatusBadRequest)
 			return
 		}
 
 		// Extract context and queue action
-		ctx_preserve := context.WithoutCancel(r.Context())
+		ctx_preserve := context.WithoutCancel(middleware.StartTask(r.Context(), task_type))
 		task_id, err := qm.QueueFunction(ctx_preserve, tools.SingleInsert(ctx_preserve, qm.Db, tableName, resource), note)
 
 		if err != nil {
-			qm.Logger.Error("TASK_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Add New Resource", "error", "could not create task", "resource", resource, "error", err)
+			qm.Logger.Error("TASK_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", "could not create task", "resource", resource, "error", err)
 			http.Error(w, fmt.Sprintf("Error creating create task\nError: %v", err), http.StatusInternalServerError)
 			return
 		}
@@ -131,12 +133,13 @@ func handleAddMultipleNewResources[T any](
 	tableName string,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		task_type := "Add Bulk Resources"
 		user_key := middleware.Contextkey("user")
 		req_ip := tools.GetIP(r)
 		req_id, err := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
 		note := r.Header.Get("X-User-Note")
-		qm.Logger.Info("REQUEST_RECEIVED", "user", req_username, "IP", req_ip, "function", "Add New Bulk Resource", "table", tableName, "request_id", req_id)
+		qm.Logger.Info("REQUEST_RECEIVED", "user", req_username, "IP", req_ip, "function", task_type, "table", tableName, "request_id", req_id)
 
 		// Response intialization
 		response := map[string]any{"task_type": "CREATE_BULK"}
@@ -147,27 +150,27 @@ func handleAddMultipleNewResources[T any](
 
 		// Validation and errors
 		if err != nil {
-			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Add New Bulk Resource", "error", err)
+			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", err)
 			http.Error(w, fmt.Sprintf("Error decoding body: %v", err), http.StatusInternalServerError)
 			return
 		}
 		if tools.StructIsEmpty(&resources) {
-			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Add New Bulk Resource", "error", "no valid json supplied")
+			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", "no valid json supplied")
 			http.Error(w, "No valid json supplied", http.StatusBadRequest)
 			return
 		}
 
 		valid_resources, invalid_resources := tools.ValidateMultiStruct(resources)
 		if len(valid_resources) < 1 {
-			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Add New Bulk Resource", "error", "no valid resources", "valid_resources", valid_resources)
+			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", "no valid resources", "valid_resources", valid_resources)
 			http.Error(w, "No valid resources", http.StatusBadRequest)
 			return
 		}
 
-		ctx_preserve := context.WithoutCancel(r.Context())
+		ctx_preserve := context.WithoutCancel(middleware.StartTask(r.Context(), task_type))
 		task_id, err := qm.QueueFunction(ctx_preserve, tools.RecursiveBatchInsert(ctx_preserve, qm.Db, tableName, tools.ToAnySlice(valid_resources)), note)
 		if err != nil {
-			qm.Logger.Error("TASK_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Add New Bulk Resource", "error", err)
+			qm.Logger.Error("TASK_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", err)
 			http.Error(w, fmt.Sprintf("Error creating bulk create task\nError: %v", err), http.StatusInternalServerError)
 			return
 		}
@@ -193,11 +196,12 @@ func handleGetResource[T interface{}](
 	customWith string,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		task_type := "Get Resource"
 		user_key := middleware.Contextkey("user")
 		req_ip := tools.GetIP(r)
 		req_id, err := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
-		qm.Logger.Info("REQUEST_RECEIVED", "user", req_username, "IP", req_ip, "function", "Get Resource", "table", tableName, "request_id", req_id)
+		qm.Logger.Info("REQUEST_RECEIVED", "user", req_username, "IP", req_ip, "function", task_type, "table", tableName, "request_id", req_id)
 
 		// Response intialization
 		w.Header().Set("Content-Type", "application/json")
@@ -213,7 +217,7 @@ func handleGetResource[T interface{}](
 			qb.SetWhereAbsolute(key, defaultWhere[key])
 		}
 		if err := tools.SetWhereFromURL(qb, r, res_type); err != nil {
-			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Get Resource", "error", err)
+			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", err)
 			http.Error(w, "Error in parsing where clauses", http.StatusBadRequest)
 			return
 		}
@@ -232,7 +236,7 @@ func handleGetResource[T interface{}](
 		rows, err := qm.Db.Query(r.Context(), query, qb.GetArgs()...)
 
 		if err != nil {
-			qm.Logger.Error("GET_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Get Resource", "error", err)
+			qm.Logger.Error("GET_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", err)
 			http.Error(w, fmt.Sprintf("Error with the query:\n%v", err), http.StatusInternalServerError)
 			return
 		}
@@ -258,12 +262,13 @@ func handleUpdateResource[T any](
 	tableName string,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		task_type := "Update Resource"
 		user_key := middleware.Contextkey("user")
 		req_ip := tools.GetIP(r)
 		req_id, err := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
 		note := r.Header.Get("X-User-Note")
-		qm.Logger.Info("REQUEST_RECEIVED", "user", req_username, "IP", req_ip, "function", "Update Resource", "table", tableName, "request_id", req_id)
+		qm.Logger.Info("REQUEST_RECEIVED", "user", req_username, "IP", req_ip, "function", task_type, "table", tableName, "request_id", req_id)
 
 		// Response intialization
 		response := map[string]any{"task_type": "UPDATE"}
@@ -273,14 +278,14 @@ func handleUpdateResource[T any](
 		err = json.NewDecoder(r.Body).Decode(&updated)
 
 		if err != nil {
-			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Update Resource", "error", err)
+			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", err)
 			http.Error(w, fmt.Sprintf("Error decoding body: %v", err), http.StatusInternalServerError)
 			return
 		}
 
 		// Check for valid values
 		if tools.StructIsEmpty(&updated) {
-			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Update Resource", "error", "no valid json supplied")
+			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", "no valid json supplied")
 			http.Error(w, "No valid updates", http.StatusBadRequest)
 			return
 		}
@@ -295,10 +300,10 @@ func handleUpdateResource[T any](
 		query := qb.BuildUpdate(tableName, r, updated)
 
 		// Queue the query
-		ctx_preserve := context.WithoutCancel(r.Context())
+		ctx_preserve := context.WithoutCancel(middleware.StartTask(r.Context(), task_type))
 		task_id, err := qm.QueueExec(ctx_preserve, query, note, qb.GetArgs()...)
 		if err != nil {
-			qm.Logger.Error("TASK_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Update Resource", "error", err)
+			qm.Logger.Error("TASK_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", err)
 			http.Error(w, fmt.Sprintf("Error creating update task\nError: %v", err), http.StatusInternalServerError)
 			return
 		}
@@ -316,12 +321,13 @@ func handleMultiUpdate[T any](
 	tableName string,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		task_type := "Update Multiple Resources"
 		user_key := middleware.Contextkey("user")
 		req_ip := tools.GetIP(r)
 		req_id, err := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
 		note := r.Header.Get("X-User-Note")
-		qm.Logger.Info("REQUEST_RECEIVED", "user", req_username, "IP", req_ip, "function", "Multi Update Resource", "table", tableName, "request_id", req_id)
+		qm.Logger.Info("REQUEST_RECEIVED", "user", req_username, "IP", req_ip, "function", task_type, "table", tableName, "request_id", req_id)
 
 		// Response intialization
 		response := map[string]any{"task_type": "BULK_UPDATE"}
@@ -331,23 +337,23 @@ func handleMultiUpdate[T any](
 		err = json.NewDecoder(r.Body).Decode(&updated)
 
 		if err != nil {
-			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Multi Update Resource", "error", err)
+			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", err)
 			http.Error(w, fmt.Sprintf("Error decoding body: %v", err), http.StatusInternalServerError)
 			return
 		}
 
 		// Check for valid values
 		if tools.StructIsEmpty(&updated) {
-			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Multi Update Resource", "error", "no valid json supplied")
+			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", "no valid json supplied")
 			http.Error(w, "No valid updates", http.StatusBadRequest)
 			return
 		}
 
 		// Queue the query
-		ctx_preserve := context.WithoutCancel(r.Context())
+		ctx_preserve := context.WithoutCancel(middleware.StartTask(r.Context(), task_type))
 		task_id, err := qm.QueueFunction(ctx_preserve, tools.MultiUpdate(ctx_preserve, qm.Db, tableName, updated), note)
 		if err != nil {
-			qm.Logger.Error("TASK_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Multi Update Resource", "error", err)
+			qm.Logger.Error("TASK_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", err)
 			http.Error(w, fmt.Sprintf("Error creating update task\nError: %v", err), http.StatusInternalServerError)
 			return
 		}
@@ -367,12 +373,13 @@ func handleDeleteResource[T any](
 	tableName string,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		task_type := "Delete Resource"
 		user_key := middleware.Contextkey("user")
 		req_ip := tools.GetIP(r)
 		req_id, err := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
 		note := r.Header.Get("X-User-Note")
-		qm.Logger.Info("REQUEST_RECEIVED", "user", req_username, "IP", req_ip, "function", "Delete Resource", "table", tableName, "request_id", req_id)
+		qm.Logger.Info("REQUEST_RECEIVED", "user", req_username, "IP", req_ip, "function", task_type, "table", tableName, "request_id", req_id)
 
 		// Response intialization
 		response := map[string]any{"task_type": "DELETE"}
@@ -383,13 +390,13 @@ func handleDeleteResource[T any](
 
 		// Error checking
 		if err != nil {
-			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Delete Resource", "error", err)
+			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", err)
 			http.Error(w, "Error reading request body", http.StatusBadRequest)
 			return
 		}
 
 		if tools.StructIsEmpty(resource_to_delete) {
-			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Delete Resource", "error", "no valid json supplied")
+			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", "no valid json supplied")
 			http.Error(w, "No valid json in request body", http.StatusBadRequest)
 			return
 		}
@@ -397,7 +404,7 @@ func handleDeleteResource[T any](
 		// Ensure the reosurce is valid for deletion
 		valid_resources, _ := tools.ValidateStruct(resource_to_delete)
 		if len(valid_resources) < 1 {
-			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Delete Resource", "error", "no valid resource to delete")
+			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", "no valid resource to delete")
 			http.Error(w, "Resource is invalid for deletion", http.StatusBadRequest)
 			return
 		}
@@ -407,10 +414,10 @@ func handleDeleteResource[T any](
 		query := qb.BuildDelete(tableName, resource_to_delete)
 
 		// Execute the query
-		ctx_preserve := context.WithoutCancel(r.Context())
+		ctx_preserve := context.WithoutCancel(middleware.StartTask(r.Context(), task_type))
 		task_id, err := qm.QueueExec(ctx_preserve, query, note, qb.GetArgs()...)
 		if err != nil {
-			qm.Logger.Error("TASK_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Delete Resource", "error", err)
+			qm.Logger.Error("TASK_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", err)
 			http.Error(w, fmt.Sprintf("Error creating delete task\nError: %v", err), http.StatusInternalServerError)
 			return
 		}

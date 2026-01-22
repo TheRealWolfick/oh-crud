@@ -17,6 +17,7 @@ import (
 type Task struct {
 	TaskID        string     `json:"task_id"`
 	TaskType      string     `json:"task_type"`
+	ExecType      string     `json:"-"`
 	Sql           string     `json:"sql"`
 	StartTime     time.Time  `json:"start_time"`
 	CompleteTime  time.Time  `json:"complete_time"`
@@ -74,16 +75,17 @@ func NewQueue(db *pgxpool.Pool, num_workers int, logger *slog.Logger) *QueueMana
 
 // Creates a new task
 func (qm *QueueManager) createTask(ctx context.Context, sql string, note string, args ...any) (*Task, error) {
-	task_id, ok := middleware.GetTask(ctx)
+	task, ok := middleware.GetTask(ctx)
 
 	if !ok {
-		task, _ := Generate32CharString()
-		task_id = task
+		new_task_id, _ := Generate32CharString()
+		task.Id = new_task_id
 	}
 
 	t := &Task{
-		TaskID: task_id,
-		TaskType: "exec",
+		TaskID: task.Id,
+		TaskType: task.Type,
+		ExecType: "exec",
 		StartTime: time.Now(),
 		Status: "queued",
 		Ctx: ctx,
@@ -101,16 +103,17 @@ func (qm *QueueManager) createTask(ctx context.Context, sql string, note string,
 
 // Creates a new function task
 func (qm *QueueManager) createFunctionTask(ctx context.Context, function func(context.Context, ...any) (map[string]any, error), note string, args ...any) (*Task, error) {
-	task_id, ok := middleware.GetTask(ctx)
+	task, ok := middleware.GetTask(ctx)
 
 	if !ok {
-		task, _ := Generate32CharString()
-		task_id = task
+		new_task_id, _ := Generate32CharString()
+		task.Id = new_task_id
 	}
 
 	t := &Task{
-		TaskID: task_id,
-		TaskType: "function",
+		TaskID: task.Id,
+		TaskType: task.Type,
+		ExecType: "function",
 		StartTime: time.Now(),
 		Status: "queued",
 		Ctx: ctx,
@@ -204,13 +207,13 @@ func (qm *QueueManager) work(w *Worker) {
 	ctx := w.TaskActioning.Ctx
 	sql := w.TaskActioning.Sql
 	args := w.TaskActioning.Args
-	task_type := w.TaskActioning.TaskType
+	exec_type := w.TaskActioning.ExecType
 	task_func := w.TaskActioning.Function
 
 	qm.mu.Unlock()
 
 	// Do work based on what type of work it is
-	switch task_type {
+	switch exec_type {
 	case "exec":
 		// SQL exec
 		cmdtag, err := qm.Db.Exec(ctx, sql, args...)

@@ -8,6 +8,11 @@ import (
 
 type Contextkey string
 
+type TaskContext struct {
+	Id string
+	Type string
+}
+
 const userContextKey Contextkey = "user"
 const taskContextKey Contextkey = "task"
 
@@ -20,21 +25,22 @@ func GetUser(ctx context.Context) (*models.User, bool) {
 	return user, ok
 }
 
-func StartTask(ctx context.Context) context.Context {
-	task, _ := generateRandomString(32)
+func StartTask(ctx context.Context, task_type string) context.Context {
+	id, _ := generateRandomString(32)
+	task := TaskContext{Id: id, Type: task_type}
 	return context.WithValue(ctx, taskContextKey, task)
 }
 
-func GetTask(ctx context.Context) (string, bool) {
+func GetTask(ctx context.Context) (TaskContext, bool) {
 	val := ctx.Value(taskContextKey)
 	if val == nil {
-		return "", false
+		return TaskContext{}, false
 	}
-	task, ok := val.(string)
+	task, ok := val.(TaskContext)
 	if !ok {
-		return "", false
+		return TaskContext{}, false
 	}
-	if len(task) == 32 {
+	if len(task.Id) == 32 {
 		return task, true
 	}
 	return task, false

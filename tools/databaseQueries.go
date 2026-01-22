@@ -177,9 +177,9 @@ func createDiff[T any](
 	if !userOk {
 		user = &models.User{}
 	}
-	task, taskOk := middleware.GetTask(ctx)
-	if !taskOk {
-		task = ""
+	task, _ := middleware.GetTask(ctx)
+	if len(task.Id) != 32 {
+		task.Id, _ = Generate32CharString()
 	}
 
 	tempjson := DereferencedString(diff_struct)
@@ -188,7 +188,7 @@ func createDiff[T any](
 	
 	diff_struct.Checksum = &checksum
 	diff_struct.UserGenerated = &user.Username
-	diff_struct.TaskID = &task
+	diff_struct.TaskID = &task.Id
 	diff_struct.DiffType = &tableName
 	diff_struct.Note = &note
 
@@ -267,7 +267,7 @@ func multiUpdate[T any](
 		cmdtag, err := db.Exec(ctx, query, qb.GetArgs()...)
 		
 		// Add to report update
-		if err != nil && cmdtag.RowsAffected() > 0 {
+		if err == nil && cmdtag.RowsAffected() > 0 {
 			report.SuccessCount = report.SuccessCount + int(cmdtag.RowsAffected())
 		} else {
 			report.Errors = append(report.Errors, models.MultiUpdateError{ID: idx, Error: err})

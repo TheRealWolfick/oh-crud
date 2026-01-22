@@ -14,7 +14,7 @@ type BatchInsertResult struct {
 }
 
 type MultiUpdateError struct {
-	ID    int   `json:"iteration_id"`
+	ID    int   `json:"idx"`
 	Error any   `json:"db_error"`
 }
 
