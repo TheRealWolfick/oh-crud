@@ -297,7 +297,7 @@ func (qm *QueueManager) logDatabaseEvent(ctx context.Context, event string, log 
 		query := `INSERT INTO events (type, event_log, event_user) VALUES ($1, $2, $3)`
 		_, err := qm.Db.Exec(ctx, query, event, log, ctx.Value(middleware.Contextkey("user")).(*models.User).Username)
 		if err != nil && qm.Logger != nil {
-			qm.Logger.Error("Failed to log event", "error", err, "event", event, "user", ctx.Value(middleware.Contextkey("user")).(*models.User).Username)
+			qm.Logger.Error("Failed to log event", "error", err, "event", event, "user", ctx.Value(middleware.Contextkey("user")).(*models.User).Username, "log", log)
 		}
 	}()
 }

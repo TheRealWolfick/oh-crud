@@ -13,25 +13,15 @@ type BatchInsertResult struct {
 	Query 			 string
 }
 
-type ExecError struct {
-	Code int
-	File string
-	Hint string
-	Line int
-	Where string
-	Detail string
-	Message string
-	Routine string
-	Position int
-	Severity string
-	TableName string
-	ColumnName string
-	SchemaName string
-	DataTypeName string
-	InternalQuery string
-	ConstraintName string
-	InternalPosition int
-	SeverityUnlocalized string
+type MultiUpdateError struct {
+	ID    int   `json:"iteration_id"`
+	Error any   `json:"db_error"`
+}
+
+type MultiUpdateResult struct {
+	TotalUpdates int                `json:"total_updates"`
+	SuccessCount int                `json:"success_count"`
+	Errors       []MultiUpdateError   `json:"errors"`
 }
 
 type DBExecutor interface {

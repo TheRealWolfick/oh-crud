@@ -35,6 +35,7 @@ type DataHandlerInterface interface {
 	HandleAddNew() http.HandlerFunc 
 	HandleAddMultipleNew() http.HandlerFunc 
 	HandleDelete() http.HandlerFunc 
+	HandleMultiUpdate() http.HandlerFunc
 }
 
 
@@ -54,6 +55,7 @@ func NewDataHandler[T any](qm *tools.QueueManager, tableName string, endPoint st
 func (dh *DataHandler[T]) RegisterRoutes(mux *http.ServeMux, auth func(http.Handler) http.Handler, qm *tools.QueueManager) {
 	mux.Handle(fmt.Sprintf("GET /%s", dh.EndPoint), auth(dh.HandleGet()))
 	mux.Handle(fmt.Sprintf("PUT /%s", dh.EndPoint), auth(dh.HandleUpdate()))
+	mux.Handle(fmt.Sprintf("PUT /%s-group", dh.EndPoint), auth(dh.HandleMultiUpdate()))
 	mux.Handle(fmt.Sprintf("POST /%s", dh.EndPoint), auth(dh.HandleAddNew()))
 	mux.Handle(fmt.Sprintf("POST /%s-group", dh.EndPoint), auth(dh.HandleAddMultipleNew()))
 	mux.Handle(fmt.Sprintf("DELETE /%s", dh.EndPoint), auth(dh.HandleDelete()))
@@ -293,7 +295,7 @@ func handleUpdateResource[T any](
 		ctx_preserve := context.WithoutCancel(r.Context())
 		task_id, err := qm.QueueExec(ctx_preserve, query, qb.GetArgs()...)
 		if err != nil {
-			qm.Logger.Error("TASK_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Add New Bulk Resource", "error", err)
+			qm.Logger.Error("TASK_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Update Resource", "error", err)
 			http.Error(w, fmt.Sprintf("Error creating update task\nError: %v", err), http.StatusInternalServerError)
 			return
 		}
@@ -305,6 +307,56 @@ func handleUpdateResource[T any](
 		json.NewEncoder(w).Encode(response)
 	}
 }
+
+func handleMultiUpdate[T any](
+	qm *tools.QueueManager,
+	tableName string,
+) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user_key := middleware.Contextkey("user")
+		req_ip := tools.GetIP(r)
+		req_id, err := tools.Generate32CharString()
+		req_username := r.Context().Value(user_key).(*models.User).Username
+		qm.Logger.Info("REQUEST_RECEIVED", "user", req_username, "IP", req_ip, "function", "Multi Update Resource", "table", tableName, "request_id", req_id)
+
+		// Response intialization
+		response := map[string]any{"task_type": "BULK_UPDATE"}
+		w.Header().Set("Content-Type", "application/json")
+
+		var updated []T
+		err = json.NewDecoder(r.Body).Decode(&updated)
+
+		if err != nil {
+			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Multi Update Resource", "error", err)
+			http.Error(w, fmt.Sprintf("Error decoding body: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		// Check for valid values
+		if tools.StructIsEmpty(&updated) {
+			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Multi Update Resource", "error", "no valid json supplied")
+			http.Error(w, "No valid updates", http.StatusBadRequest)
+			return
+		}
+
+		// Queue the query
+		ctx_preserve := context.WithoutCancel(r.Context())
+		task_id, err := qm.QueueFunction(ctx_preserve, tools.MultiUpdate(ctx_preserve, qm.Db, tableName, updated))
+		if err != nil {
+			qm.Logger.Error("TASK_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", "Multi Update Resource", "error", err)
+			http.Error(w, fmt.Sprintf("Error creating update task\nError: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		// Build and return
+		response["task_id"] = task_id
+		response["successful_submission"] = err == nil
+
+		json.NewEncoder(w).Encode(response)
+	}
+}
+
+
 
 func handleDeleteResource[T any](
 	qm *tools.QueueManager,
@@ -395,6 +447,13 @@ func (h *DataHandler[T]) HandleUpdate() http.HandlerFunc {
 	return handleNotAllowed[T](h.Allowed)
 }
 
+func (h *DataHandler[T]) HandleMultiUpdate() http.HandlerFunc {
+	if h.Allowed["ALL"] || h.Allowed["PUT-GROUP"] {
+		return handleMultiUpdate[T](h.Qm, h.TableName)
+	}
+	return handleNotAllowed[T](h.Allowed)
+}
+
 func (h *DataHandler[T]) HandleGet() http.HandlerFunc {
 	if h.Allowed["ALL"] || h.Allowed["GET"] {
 		return handleGetResource[T](h.Qm, h.TableName, h.SelectOverwrite, h.DefaultWhere, h.CustomWith)
@@ -424,15 +483,16 @@ func (h *DataHandler[T]) HandleDelete() http.HandlerFunc {
 }
 
 func (h *DataHandler[T]) HandleCreateDiff() http.HandlerFunc {
-	if h.Allowed["POST"] {
+	if h.Allowed["ALL"] || h.Allowed["POST"] {
 		return handleCreateDiff[T](h.Qm, h.TableName)
 	}
 	return handleNotAllowed[T](h.Allowed)
 }
 
 func (h *DataHandler[T]) HandleGetDiff() http.HandlerFunc {
-	if h.Allowed["GET"] {
+	if h.Allowed["ALL"] || h.Allowed["GET"] {
 		return  handleGetResource[models.Diff[T]](h.Qm, "diffs", []string{"diff_type", "task_id", "missing_from_supplied", "missing_from_stored", "diffs", "generated_by_user", "checksum", "created"}, map[string]any{"diff_type": h.TableName}, h.CustomWith)
 	}
 	return  handleNotAllowed[T](h.Allowed)
 }
+

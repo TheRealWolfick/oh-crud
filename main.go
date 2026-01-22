@@ -52,7 +52,7 @@ func main() {
 
 	// Define datahandler end point types
 	allow_all := map[string]bool{"ALL": true}
-	disallow_delete := map[string]bool{"GET": true, "PUT": true, "POST": true, "POST-GROUP": true, "DELETE": false}
+	disallow_delete := map[string]bool{"GET": true, "PUT": true, "POST": true, "POST-GROUP": true, "DELETE": false, "PUT-GROUP": true}
 	get_only := map[string]bool{"GET": true}
 	get_post := map[string]bool{"GET": true, "POST": true}
 

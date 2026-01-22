@@ -142,7 +142,7 @@ func setWhere(field string, value any, fieldType reflect.Kind, setFunc func(stri
 
 	var mod_guess string
 	var mod_guess2 string
-
+  
 	// Determine the field type and extract mod based on that
 	if reflect.TypeOf(value).Kind() == reflect.String {
 		value_as_string := fmt.Sprintf("%s", value)
@@ -154,7 +154,7 @@ func setWhere(field string, value any, fieldType reflect.Kind, setFunc func(stri
 			}
 			
 			switch fieldType {
-			case reflect.Int, reflect.Int32, reflect.Int64:
+			case reflect.Int, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 				if mod_guess == "<" || mod_guess == ">" {
 					if mod_guess2 == "<=" || mod_guess2 == ">=" {
 						if value_as_int, err := strconv.ParseInt(value_as_string[2:], 10, 64); err == nil {
@@ -195,6 +195,9 @@ func setWhere(field string, value any, fieldType reflect.Kind, setFunc func(stri
 				setFunc(field, value_as_string, "~*")
 			}
 		}
+	}
+	if reflect.TypeOf(value).Kind() == reflect.Int {
+		setFunc(field, value, "=")
 	}
 }
 
@@ -359,6 +362,27 @@ func (qb *QueryBuilder) BuildSelect(table string, select_fields []string) string
 } 
 
 
+func (qb *QueryBuilder) BuildUpdateNoURLParams(table string, model any) string {
+	if qb.query != "" {
+		return qb.query
+	}
+
+	// Construct the where and value clauses, where must be an exact match
+	w := make([]string, 0)
+	v := make([]string, 0)
+
+	for key, val := range qb.where {
+		w = append(w, fmt.Sprintf("%s = $%d", key, val))
+	}
+
+	for key, val := range qb.values {
+		v = append(v, fmt.Sprintf("%s = $%d", key, val))
+	}
+
+	qb.query = fmt.Sprintf("UPDATE %s SET %s WHERE %s;", table, strings.Join(v, ", "), strings.Join(w, " AND "))
+	return qb.query
+}
+
 // Build the query to update a single field in the database
 func (qb *QueryBuilder) BuildUpdate(table string, r *http.Request, model interface{}) string {
 	if qb.query != "" {
@@ -373,6 +397,7 @@ func (qb *QueryBuilder) BuildUpdate(table string, r *http.Request, model interfa
 	whereExists := false
 
 	for _, key := range prim_keys {
+		fmt.Println(key)
 		f, _ := reflect.TypeOf(model).FieldByName(key)
 		whereval := whereFields.Get(f.Tag.Get("db"))
 
@@ -380,6 +405,8 @@ func (qb *QueryBuilder) BuildUpdate(table string, r *http.Request, model interfa
 			qb.innerSetWhere(f.Tag.Get("db"), whereval, "=")
 			whereExists = true
 		}
+
+		// Add where values from struct
 	}
 
 	if !whereExists {

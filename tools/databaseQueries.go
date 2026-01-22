@@ -3,8 +3,10 @@ package tools
 import (
 	"context"
 	"crypto/md5"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -22,6 +24,28 @@ func SingleInsert(
 	return RecursiveBatchInsert(ctx, db, tableName, []any{item})
 }
 
+func CreateDiff[T any](
+	ctx context.Context,
+	db models.DBExecQuery,
+	tableName string,
+	supplied []T,
+) (func(context.Context, ...any) (map[string]any, error)) {
+	return func(ctx context.Context, a ...any) (map[string]any, error) {
+		return createDiff(ctx, db, tableName, supplied)
+	}
+}
+
+
+func MultiUpdate[T any](
+	ctx context.Context,
+	db models.DBExecQuery,
+	tableName string,
+	supplied []T,
+) (func(context.Context, ...any) (map[string]any, error)) {
+	return func(ctx context.Context, a ...any) (map[string]any, error) {
+		return multiUpdate(ctx, db, tableName, supplied)
+	}
+}
 
 func RecursiveBatchInsert(
 	ctx context.Context,
@@ -187,92 +211,69 @@ func createDiff[T any](
 	return ret_map, nil
 }
 
-func CreateDiff[T any](
-	ctx context.Context,
-	db models.DBExecQuery,
-	tableName string,
-	supplied []T,
-) (func(context.Context, ...any) (map[string]any, error)) {
-	return func(ctx context.Context, a ...any) (map[string]any, error) {
-		return createDiff(ctx, db, tableName, supplied)
-	}
-}
 
-/*
-func createDiff[T any](
+// Iterates over all the supplied items, extracts the primary keys into the where column, and runs an update call on all items.
+// 
+// Function does not check whether there is any actual updates and will report an update as "successful" even if there is no changes.
+// It only reports an error when the database has an error.
+func multiUpdate[T any](
 	ctx context.Context,
-	db models.DBExecQuery,
+	db models.DBExecutor,
 	tableName string,
 	supplied []T,
 ) (map[string]any, error) {
 
-	// Read data into stored
-	rows, err := db.Query(ctx, fmt.Sprintf("SELECT * FROM %s;", tableName))
-	if err != nil {
-		return nil, fmt.Errorf("error reading rows in createDiff: %w", err)
-	}
-	stored, err := pgx.CollectRows(rows, pgx.RowToStructByName[T])
-	if err != nil {
-		return nil, fmt.Errorf("error collecting rows in createDiff: %w", err)
+	// Create report update
+	report := models.MultiUpdateResult{
+		TotalUpdates: len(supplied),
+		SuccessCount: 0,
+		Errors: []models.MultiUpdateError{},
 	}
 
-	// Split the data between left, right, and diffs
-	fmt.Println(tableName)
-	fmt.Println(len(supplied))
-	fmt.Println(len(stored))
-	diff_struct := DiffStructSlices(supplied, stored)
+	// Update items
+	for idx := range supplied {
+		// Create a new query builder 
+		qb := NewQueryBuilder()
+		update_item := &supplied[idx]
 
-	// Check if diff_struct is nil or empty
-	if diff_struct == nil {
-		return map[string]any{
-			"table": tableName,
-			"rows_affected": 0,
-			"error": "no differences found or invalid comparator",
-		}, fmt.Errorf("no valid diff created")
+		// Extract the primary keys from the struct and save them into the where clause
+		prim_keys := GetPrimaryKeys(*update_item)
+		val := reflect.ValueOf(update_item)
+		if val.Kind() == reflect.Ptr {val = val.Elem()}
+		for _, key := range prim_keys {
+			// Check if value in struct
+			value := val.FieldByName(key)
+			if value.Kind() == reflect.Ptr {
+				if value.IsNil() {continue}
+				value = value.Elem()
+			}
+			if value.IsZero() {continue}
+
+			// Move value to where clause and remove from struct
+			qb.SetWhere(key, value.Interface(), value.Kind())
+			field := val.FieldByName(key)
+			field.Set(reflect.Zero(field.Type()))
+		}
+
+		// Save the value into the query builder
+		SetValueFromStruct(qb, update_item)
+
+		// Build the query
+		query := qb.BuildUpdateNoURLParams(tableName, *update_item)
+
+		// Execute
+		cmdtag, err := db.Exec(ctx, query, qb.GetArgs()...)
+		
+		// Add to report update
+		if err != nil && cmdtag.RowsAffected() > 0 {
+			report.SuccessCount = report.SuccessCount + int(cmdtag.RowsAffected())
+		} else {
+			report.Errors = append(report.Errors, models.MultiUpdateError{ID: idx, Error: err})
+		}
 	}
 
-	// Build checksum and add additional features
-	h := md5.New()
-	user, userOk := middleware.GetUser(ctx)
-	if !userOk {
-		user = &models.User{}
-	}
-	task, taskOk := middleware.GetTask(ctx)
-	if !taskOk {
-		task = ""
-	}
-
-	tempjson := DereferencedString(diff_struct)
-	h.Write([]byte(tempjson))
-	checksum := fmt.Sprintf("%x", h.Sum(nil))
-	
-	diff_struct.Checksum = &checksum
-	diff_struct.UserGenerated = &user.Username
-	diff_struct.TaskID = &task
-	diff_struct.DiffType = &tableName
-
-	// Create query building
-	qb := NewQueryBuilder()
-	query := qb.BuildInsert("diffs", diff_struct)
-
-	// Debug: print the query and args
-	fmt.Printf("Query: %s\n", query)
-	fmt.Printf("Args: %v\n", qb.GetArgs())
-
-	// Save the diff into the database
-	cmdtag, err := db.Exec(ctx, query, qb.GetArgs()...)
-
-	// Create return map
-	ret_map := map[string]any{
-		"table": tableName,
-		"rows_affected": cmdtag.RowsAffected(),
-	}
-	
-	if err != nil {
-		ret_map["error"] = err.Error()
-		return ret_map, err
-	}
-
-	return ret_map, nil
+	report_encoded, _ := json.Marshal(report)
+	report_to_return := map[string]any{}
+	err := json.Unmarshal(report_encoded, &report_to_return)
+	return report_to_return, err
 }
-*/
