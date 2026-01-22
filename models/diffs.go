@@ -18,4 +18,5 @@ type Diff[T any] struct {
 	Checksum             *string           `json:"checksum" db:"checksum" none:"NULL"`
 	Created              *time.Time        `json:"created,omitempty" db:"created" none:"DEFAULT"`
 	Note                 *string           `json:"note,omitempty" db:"note" none:"NULL"`
+	BatchId              *string           `json:"batch_id,omitempty" db:"batch_id" none:"DEFAULT"`
 }
