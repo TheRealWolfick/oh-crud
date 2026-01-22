@@ -55,9 +55,9 @@ func NewDataHandler[T any](qm *tools.QueueManager, tableName string, endPoint st
 func (dh *DataHandler[T]) RegisterRoutes(mux *http.ServeMux, auth func(http.Handler) http.Handler, qm *tools.QueueManager) {
 	mux.Handle(fmt.Sprintf("GET /%s", dh.EndPoint), auth(dh.HandleGet()))
 	mux.Handle(fmt.Sprintf("PUT /%s", dh.EndPoint), auth(dh.HandleUpdate()))
-	mux.Handle(fmt.Sprintf("PUT /%s-group", dh.EndPoint), auth(dh.HandleMultiUpdate()))
+	mux.Handle(fmt.Sprintf("PUT /%s/group", dh.EndPoint), auth(dh.HandleMultiUpdate()))
 	mux.Handle(fmt.Sprintf("POST /%s", dh.EndPoint), auth(dh.HandleAddNew()))
-	mux.Handle(fmt.Sprintf("POST /%s-group", dh.EndPoint), auth(dh.HandleAddMultipleNew()))
+	mux.Handle(fmt.Sprintf("POST /%s/group", dh.EndPoint), auth(dh.HandleAddMultipleNew()))
 	mux.Handle(fmt.Sprintf("DELETE /%s", dh.EndPoint), auth(dh.HandleDelete()))
 }
 
