@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type QueryBuilder struct {
@@ -191,6 +192,33 @@ func setWhere(field string, value any, fieldType reflect.Kind, setFunc func(stri
 					return
 				}
 
+			case reflect.Struct:
+				// Handle time.Time fields
+				var dateString string
+				var operator string
+
+				// Check for comparison operators
+				if mod_guess2 == "<=" || mod_guess2 == ">=" {
+					operator = mod_guess2
+					dateString = value_as_string[2:]
+				} else if mod_guess == "<" || mod_guess == ">" {
+					operator = mod_guess
+					dateString = value_as_string[1:]
+				} else {
+					operator = "="
+					dateString = value_as_string
+				}
+
+				// Try to parse the date with common formats
+				parsedDate, err := parseDate(dateString)
+				if err != nil {
+					// If it's not a valid date, treat as string comparison
+					setFunc(field, value_as_string, "~*")
+					return
+				}
+
+				setFunc(field, parsedDate, operator)
+
 			default:
 				setFunc(field, value_as_string, "~*")
 			}
@@ -201,6 +229,31 @@ func setWhere(field string, value any, fieldType reflect.Kind, setFunc func(stri
 	}
 }
 
+// parseDate tries to parse a date string using common formats
+func parseDate(dateStr string) (time.Time, error) {
+	// Common date formats to try
+	formats := []string{
+		"2006-01-02",                // ISO date (YYYY-MM-DD)
+		"2006-01-02T15:04:05Z07:00", // ISO 8601 with timezone
+		"2006-01-02T15:04:05",       // ISO 8601 without timezone
+		"2006-01-02 15:04:05",       // DateTime with space
+		"01/02/2006",                // US format (MM/DD/YYYY)
+		"02/01/2006",                // EU format (DD/MM/YYYY)
+		time.RFC3339,                // RFC3339
+		time.RFC3339Nano,            // RFC3339 with nanoseconds
+	}
+
+	var lastErr error
+	for _, format := range formats {
+		if parsed, err := time.Parse(format, dateStr); err == nil {
+			return parsed, nil
+		} else {
+			lastErr = err
+		}
+	}
+
+	return time.Time{}, lastErr
+}
 
 
 // Add a field and value into the where clause
