@@ -103,8 +103,8 @@ func handleActionDiff[T any](
 		var batch_code models.Read_Batch_Code
 
 		// Get item from diffs table
-		row := qm.Db.QueryRow(r.Context(), `SELECT * FROM diffs WHERE diff_type = $1 AND checksum = $2;`, tableName, checksum)
-		err := row.Scan(&diff)
+		row, err := qm.Db.Query(r.Context(), `SELECT * FROM diffs WHERE diff_type = $1 AND checksum = $2;`, tableName, checksum)
+		diff, err = pgx.CollectOneRow(row, pgx.RowToStructByName[models.Diff[T]])
 		 
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
@@ -118,8 +118,8 @@ func handleActionDiff[T any](
 		}
 
 		// Create batch number and get batch code
-		row = qm.Db.QueryRow(r.Context(), `SELECT generate_batch_code($1, $2, $3)`, req_username, tableName, checksum)
-		err = row.Scan(&batch_code.BatchCode)
+		row2 := qm.Db.QueryRow(r.Context(), `SELECT generate_batch_num($1, $2, $3)`, req_username, tableName, checksum)
+		err = row2.Scan(&batch_code.BatchCode)
 		if err != nil {
 			http.Error(w, "Error generating batch code", http.StatusInternalServerError)
 			qm.Logger.Error("BATCH_CODE_ERROR", "user", req_username, "IP", req_ip, "function", task_type, "table", "diffs", "type", tableName, "request_id", req_id, "error", err)

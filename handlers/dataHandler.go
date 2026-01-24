@@ -512,7 +512,7 @@ func (h *DataHandler[T]) HandleGetDiff() http.HandlerFunc {
 
 func (h *DataHandler[T]) HandleActionDiff() http.HandlerFunc {
 	if h.Allowed["ALL"] || h.Allowed["PUT"] {
-		return handleActionDiff[T](h.Qm, "diffs")
+		return handleActionDiff[T](h.Qm, h.TableName)
 	}
 	return handleNotAllowed[T](h.Allowed)
 }
