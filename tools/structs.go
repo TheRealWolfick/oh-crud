@@ -464,8 +464,8 @@ func DiffStructSlices[T any](left []T, right []T) *models.Diff[T] {
 
 	return &models.Diff[T]{
 		DiffType: &comparator_field,
-		MissingFromSupplied: left_only,
-		MissingFromStored: right,
+		MissingFromSupplied: right,
+		MissingFromStored: left_only,
 		Diffs: matches,
 	}
 }

@@ -20,3 +20,7 @@ type Diff[T any] struct {
 	Note                 *string           `json:"note,omitempty" db:"note" none:"NULL"`
 	BatchId              *string           `json:"batch_id,omitempty" db:"batch_id" none:"DEFAULT"`
 }
+
+type Read_Batch_Code struct {
+	BatchCode *string `json:"batch_code" db:"generate_batch_num"`
+}
