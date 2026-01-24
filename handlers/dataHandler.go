@@ -505,7 +505,7 @@ func (h *DataHandler[T]) HandleCreateDiff() http.HandlerFunc {
 
 func (h *DataHandler[T]) HandleGetDiff() http.HandlerFunc {
 	if h.Allowed["ALL"] || h.Allowed["GET"] {
-		return handleGetResource[models.Diff[T]](h.Qm, "diffs", []string{"diff_type", "task_id", "missing_from_supplied", "missing_from_stored", "diffs", "generated_by_user", "checksum", "created"}, map[string]any{"diff_type": h.TableName}, h.CustomWith)
+		return handleGetResource[models.Diff[T]](h.Qm, "diffs", []string{"diff_type", "task_id", "missing_from_supplied", "missing_from_stored", "diffs", "generated_by_user", "checksum", "created", "note"}, map[string]any{"diff_type": h.TableName}, h.CustomWith)
 	}
 	return handleNotAllowed[T](h.Allowed)
 }
