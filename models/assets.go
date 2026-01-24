@@ -116,8 +116,8 @@ type Unresolved_Assets struct {
 	Working_life             *int       `json:"working_life,omitempty"            db:"working_life"            req:""      pk:""      none:"NULL"     customwhere:"value->'item'->>'working_life'" `
 	Ownership_status         *string    `json:"ownership_status,omitempty"        db:"ownership_status"        req:""      pk:""      none:"DEFAULT"  customwhere:"value->'item'->>'ownership_status'" `
 	Altered_date             *time.Time `json:"altered_date,omitempty"            db:"altered_date"            req:""      pk:""      none:"DEFAULT"  customwhere:"value->'item'->>'altered_date'" `
-	Error                    *string    `json:"error,omitempty"          db:"error"          req:""   pk:""   none:"" customwhere:"value->'error'->>'Detail'"`
-	Error_message            *string    `json:"error_message,omitempty"  db:"error_message"  req:""   pk:""   none:"" customwhere:"value->'error'->>'Message'"`
+	Error                    *string    `json:"error,omitempty"          db:"Detail"          req:""   pk:""   none:"" customwhere:"value->'error'->>'Detail'"`
+	Error_message            *string    `json:"error_message,omitempty"  db:"Message"  req:""   pk:""   none:"" customwhere:"value->'error'->>'Message'"`
 }
 
 
