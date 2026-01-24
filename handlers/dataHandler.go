@@ -36,7 +36,7 @@ type DataHandlerInterface interface {
 	HandleAddMultipleNew() http.HandlerFunc 
 	HandleDelete() http.HandlerFunc 
 	HandleMultiUpdate() http.HandlerFunc
-	HandlerActionDiff() http.HandlerFunc
+	HandleActionDiff() http.HandlerFunc
 }
 
 
