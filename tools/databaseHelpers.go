@@ -48,6 +48,20 @@ func SetWhereFromStruct(qb *QueryBuilder, v interface{}) {
 	setFromStruct(v, qb.SetWhereAbsolute)
 }
 
+// Function to extract the checksum from the url param 'checksum'
+func GetChecksum(r *http.Request) string {
+	// Parse the form
+	if err := r.ParseForm(); err != nil {
+		return ""
+	}
+
+	if len(r.URL.Query()) < 1 {
+		return ""
+	}
+
+	return r.URL.Query().Get("checksum")
+}
+
 func SetWhereFromURL[T any](qb *QueryBuilder, r *http.Request, model T) error {
 	// Parse the form
 	if err := r.ParseForm(); err != nil {

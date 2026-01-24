@@ -36,6 +36,7 @@ type DataHandlerInterface interface {
 	HandleAddMultipleNew() http.HandlerFunc 
 	HandleDelete() http.HandlerFunc 
 	HandleMultiUpdate() http.HandlerFunc
+	HandlerActionDiff() http.HandlerFunc
 }
 
 
@@ -65,6 +66,7 @@ func (dh *DataHandler[T]) RegisterRoutes(mux *http.ServeMux, auth func(http.Hand
 func (dh *DataHandler[T]) RegisterDiffRoutes(mux *http.ServeMux, auth func(http.Handler) http.Handler, qm *tools.QueueManager) {
 	mux.Handle(fmt.Sprintf("GET /%s", dh.EndPoint), auth(dh.HandleGetDiff()))
 	mux.Handle(fmt.Sprintf("POST /%s", dh.EndPoint), auth(dh.HandleCreateDiff()))
+	mux.Handle(fmt.Sprintf("PUT /%s", dh.EndPoint), auth(dh.HandleActionDiff()))
 	mux.Handle(fmt.Sprintf("DELETE /%s", dh.EndPoint), auth(dh.HandleDelete()))
 }
 
@@ -503,8 +505,15 @@ func (h *DataHandler[T]) HandleCreateDiff() http.HandlerFunc {
 
 func (h *DataHandler[T]) HandleGetDiff() http.HandlerFunc {
 	if h.Allowed["ALL"] || h.Allowed["GET"] {
-		return  handleGetResource[models.Diff[T]](h.Qm, "diffs", []string{"diff_type", "task_id", "missing_from_supplied", "missing_from_stored", "diffs", "generated_by_user", "checksum", "created"}, map[string]any{"diff_type": h.TableName}, h.CustomWith)
+		return handleGetResource[models.Diff[T]](h.Qm, "diffs", []string{"diff_type", "task_id", "missing_from_supplied", "missing_from_stored", "diffs", "generated_by_user", "checksum", "created"}, map[string]any{"diff_type": h.TableName}, h.CustomWith)
 	}
-	return  handleNotAllowed[T](h.Allowed)
+	return handleNotAllowed[T](h.Allowed)
+}
+
+func (h *DataHandler[T]) HandleActionDiff() http.HandlerFunc {
+	if h.Allowed["ALL"] || h.Allowed["PUT"] {
+		return handleActionDiff[T](h.Qm, "diffs")
+	}
+	return handleNotAllowed[T](h.Allowed)
 }
 
