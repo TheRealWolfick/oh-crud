@@ -54,7 +54,8 @@ func main() {
 	allow_all := map[string]bool{"ALL": true}
 	disallow_delete := map[string]bool{"GET": true, "PUT": true, "POST": true, "POST-GROUP": true, "DELETE": false, "PUT-GROUP": true}
 	get_only := map[string]bool{"GET": true}
-	get_post := map[string]bool{"GET": true, "POST": true}
+	//get_post := map[string]bool{"GET": true, "POST": true}
+	get_post_put := map[string]bool{"GET": true, "POST": true, "PUT": true}
 
 	// Make the handlers
 	authMiddleware := middleware.RequireAuth(pool)
@@ -70,7 +71,7 @@ func main() {
 	assetDataHandler := handlers.NewDataHandler[models.Asset_Data](qm, "asset_data", "asset/data", allow_all, nil, nil, "")
 	unresolvedAssetDataHandler := handlers.NewDataHandler[models.Unresolved_Assets](qm, "items, jsonb_array_elements(items.failed_items)", "asset/unresolved", get_only, map[string]any{"value->>'rectified'": "false"}, models.UnresolvedAssets_CustomSelect(), "WITH items AS (SELECT DISTINCT event_log->'task'->'response'->'failed_items' as failed_items FROM events)")
 
-	assetDiffHandler := handlers.NewDataHandler[models.Asset_Data](qm, "asset_data", "asset/diff", get_post, nil, nil, "")
+	assetDiffHandler := handlers.NewDataHandler[models.Asset_Data](qm, "asset_data", "asset/diff", get_post_put, nil, nil, "")
 
 	// Group handlers
 	api_handlers := []handlers.DataHandlerInterface{
