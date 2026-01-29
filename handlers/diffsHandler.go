@@ -80,7 +80,7 @@ func handleActionDiff[T any](
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Variables
-		task_type := "Create Diff"
+		task_type := "Action / Process Diff"
 		user_key := middleware.Contextkey("user")
 		req_ip := tools.GetIP(r)
 		req_id, _ := tools.Generate32CharString()
