@@ -19,8 +19,8 @@ type Diff[T any] struct {
 	Checksum             *string          `json:"checksum" db:"checksum" none:"NULL"`
 	Created              *time.Time       `json:"created,omitempty" db:"created" none:"DEFAULT"`
 	Note                 *string          `json:"note,omitempty" db:"note" none:"NULL"`
-	Batched              *bool            `json:"batched,omitempty" db:"batched", none:"DEFAULT"`
-	BatchedDate          *time.Time       `json:"batched_date,omitempty" db:"batched_date", none:"DEFAULT"`
+	Batched              *bool            `json:"batched,omitempty" db:"batched" none:"DEFAULT"`
+	BatchedDate          *time.Time       `json:"batched_date,omitempty" db:"batched_date" none:"DEFAULT"`
 }
 
 type Read_Batch_Code struct {
