@@ -9,7 +9,7 @@ type Item_Diff[T any] struct {
 }
 
 type Diff[T any] struct {
-	DiffID               *int             `json:"diff_id,omitempty" db:"diff_id" pk:"true"`
+	DiffID               *int             `json:"diff_id,omitempty" db:"diff_id" pk:"true" none:"DEFAULT"`
 	DiffType             *string          `json:"diff_type" db:"diff_type" req:"true"`
 	TaskID               *string          `json:"task_id,omitempty" db:"task_id" none:"NULL"`
 	MissingFromSupplied  []T              `json:"missing_from_supplied,omitempty"  db:"missing_from_supplied" none:"NULL"`
