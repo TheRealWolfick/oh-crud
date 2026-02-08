@@ -147,8 +147,8 @@ func handleActionDiff[T any](
 			"batch_code": batch_code.BatchCode,
 			"missing_from_supplied": supplied_add,
 			"missing_from_stored": stored_add,
-			"sync_to_stored":   sync_to_stored,    // Updates to make stored match supplied
-			"sync_to_supplied": sync_to_supplied,  // Updates to make supplied match stored
+			"sync_stored":   sync_to_supplied,    // Updates to make stored match supplied
+			"sync_supplied": sync_to_stored,  // Updates to make supplied match stored
 		}
 
 		// Set response headers
