@@ -31,7 +31,7 @@ type Asset_Data struct {
   Description              *string     `json:"description,omitempty"             db:"description"             req:"true"  pk:""                     `
   Disposal_cost            *float64    `json:"disposal_cost,omitempty"           db:"disposal_cost"           req:""      pk:""      none:"DEFAULT" `
   Disposal_date            *time.Time  `json:"disposal_date,omitempty"           db:"disposal_date"           req:""      pk:""      none:"NULL"    `
-	Disposal_reason          *string     `json:"disposal_reason,omitempty"         db:"disposal_reason"         req:""      pk:""      none:""`
+	Disposal_reason          *string     `json:"disposal_reason,omitempty"         db:"disposal_reason"         req:""      pk:""      none:"NULL"`
   Domain                   *string     `json:"domain"                            db:"domain"                  req:"true"  pk:""                     `
 	Finance_group_code       *string     `json:"finance_group_code,omitempty"      db:"finance_group_code"      req:""      pk:""      none:"DEFAULT"  exclude_diff:"true"`
 	Floor                    *string     `json:"floor"                             db:"floor"                   req:"true"  pk:""                      absolute:"true" `
@@ -40,12 +40,12 @@ type Asset_Data struct {
   Installation_cost        *float64    `json:"installation_cost,omitempty"       db:"installation_cost"       req:""      pk:""      none:"DEFAULT" `
   Invoice_no               *string     `json:"invoice_no,omitempty"              db:"invoice_no"              req:""      pk:""      none:"DEFAULT" `
 	Is_virtual_asset         *bool       `json:"is_virtual_asset,omitempty"        db:"is_virtual_asset"        req:""      pk:""      none:"DEFAULT"  exclude_diff:"true"`
-  Label_location           *string     `json:"label_location,omitempty"          db:"label_location"          req:""      pk:""      none:"DEFAULT" `
+	Label_location           *string     `json:"label_location,omitempty"          db:"label_location"          req:""      pk:""      none:"DEFAULT"  exclude_diff:"true"`
   Latitude                 *float64    `json:"latitude,omitempty"                db:"latitude"                req:""      pk:""      none:"DEFAULT" `
 	Location                 *string     `json:"location,omitempty"                db:"location"                req:""      pk:""      none:"DEFAULT"  exclude_diff:"true"`
   Longitude                *float64    `json:"longitude,omitempty"               db:"longitude"               req:""      pk:""      none:"DEFAULT" `
   Make                     *string     `json:"make,omitempty"                    db:"make"                    req:""      pk:""      none:"DEFAULT" `
-  Manufacturer             *string     `json:"manufacturer,omitempty"            db:"manufacturer"            req:""      pk:""      none:"DEFAULT" `
+	Manufacturer             *string     `json:"manufacturer,omitempty"            db:"manufacturer"            req:""      pk:""      none:"DEFAULT"  exclude_diff:"true"`
   Model                    *string     `json:"model,omitempty"                   db:"model"                   req:""      pk:""      none:"DEFAULT" `
   Owning_cost_center       *string     `json:"owning_cost_center,omitempty"      db:"owning_cost_center"      req:""      pk:""      none:"DEFAULT" `
   Purchase_cost            *float64    `json:"purchase_cost,omitempty"           db:"purchase_cost"           req:""      pk:""      none:"DEFAULT" `
@@ -55,7 +55,7 @@ type Asset_Data struct {
 	RFID_tag_ID              *string     `json:"RFID_tag_ID,omitempty"             db:"rfid_tag_id"             req:""      pk:""      none:"DEFAULT"  exclude_diff:"true"`
   Room                     *string     `json:"room,omitempty"                    db:"room"                    req:""      pk:""      none:"DEFAULT" `
   Serial                   *string     `json:"serial,omitempty"                  db:"serial"                  req:""      pk:""      none:"DEFAULT" `
-  Service_agent            *string     `json:"service_agent,omitempty"           db:"service_agent"           req:""      pk:""      none:"DEFAULT" `
+	Service_agent            *string     `json:"service_agent,omitempty"           db:"service_agent"           req:""      pk:""      none:"DEFAULT"  exclude_diff:"true"`
 	Spare_parts              *string     `json:"spare_parts,omitempty"             db:"spare_parts"             req:""      pk:""      none:"DEFAULT"  exclude_diff:"true"`
 	Spare_parts_bin_no       *string     `json:"spare_parts_bin_no,omitempty"      db:"spare_parts_bin_no"      req:""      pk:""      none:"DEFAULT"  exclude_diff:"true"`
 	Spare_parts_held         *string     `json:"spare_parts_held,omitempty"        db:"spare_parts_held"        req:""      pk:""      none:"DEFAULT"  exclude_diff:"true"`
