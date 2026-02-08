@@ -97,8 +97,8 @@ func handleActionDiff[T any](
 
 		var supplied_add []T
 		var stored_add []T
-		var sync_to_stored []T
-		var sync_to_supplied []T
+		var sync_stored []T
+		var sync_supplied []T
 		var diff models.Diff[T]
 		var batch_code models.Read_Batch_Code
 
@@ -135,10 +135,10 @@ func handleActionDiff[T any](
 		// sync_to_supplied: updates that would sync supplied to match stored
 		for _, item_diff := range diff.Diffs {
 			if item_diff.Supplied != nil {
-				sync_to_stored = append(sync_to_stored, *item_diff.Supplied)
+				sync_stored = append(sync_stored, *item_diff.Supplied)
 			}
 			if item_diff.Stored != nil {
-				sync_to_supplied = append(sync_to_supplied, *item_diff.Stored)
+				sync_supplied = append(sync_supplied, *item_diff.Stored)
 			}
 		}
 
@@ -147,8 +147,8 @@ func handleActionDiff[T any](
 			"batch_code": batch_code.BatchCode,
 			"missing_from_supplied": supplied_add,
 			"missing_from_stored": stored_add,
-			"sync_stored":   sync_to_supplied,    // Updates to make stored match supplied
-			"sync_supplied": sync_to_stored,  // Updates to make supplied match stored
+			"sync_stored":   sync_stored,    // Updates to make stored match supplied
+			"sync_supplied": sync_supplied,  // Updates to make supplied match stored
 		}
 
 		// Set response headers
