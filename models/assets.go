@@ -25,6 +25,7 @@ type Asset_Data struct {
   Asset_status             *string     `json:"asset_status,omitempty"            db:"asset_status"            req:""      pk:""      none:"DEFAULT" `
   Building                 *string     `json:"building,omitempty"                db:"building"                req:"true"  pk:""                     `
   Condition_rating         *int        `json:"condition_rating,omitempty"        db:"condition_rating"        req:""      pk:""      none:"NULL"    `
+	Condition_rating_date    *time.Time  `json:"condition_rating_date,omitempty"   db:"condition_rating_date"   req:""      pk:""      none:"NULL"    `
 	Contact_ID               *string     `json:"contact_ID,omitempty"              db:"contact_id"              req:""      pk:""      none:"DEFAULT"  exclude_diff:"true"`
   Department               *string     `json:"department,omitempty"              db:"department"              req:"true"  pk:""                     `
   Description              *string     `json:"description,omitempty"             db:"description"             req:"true"  pk:""                     `
@@ -38,7 +39,7 @@ type Asset_Data struct {
   Install_date             *time.Time  `json:"install_date,omitempty"            db:"install_date"            req:""      pk:""      none:"NULL"    `
   Installation_cost        *float64    `json:"installation_cost,omitempty"       db:"installation_cost"       req:""      pk:""      none:"DEFAULT" `
   Invoice_no               *string     `json:"invoice_no,omitempty"              db:"invoice_no"              req:""      pk:""      none:"DEFAULT" `
-	Is_virtual_asset         *bool       `json:"is_virtual_asset,omitempty"        db:"is_virtual_asset"        req:""      pk:""      none:"DEFAULT" `
+	Is_virtual_asset         *bool       `json:"is_virtual_asset,omitempty"        db:"is_virtual_asset"        req:""      pk:""      none:"DEFAULT"  exclude_diff:"true"`
   Label_location           *string     `json:"label_location,omitempty"          db:"label_location"          req:""      pk:""      none:"DEFAULT" `
   Latitude                 *float64    `json:"latitude,omitempty"                db:"latitude"                req:""      pk:""      none:"DEFAULT" `
   Location                 *string     `json:"location,omitempty"                db:"location"                req:""      pk:""      none:"DEFAULT" `
@@ -76,15 +77,16 @@ type Unresolved_Assets struct {
 	Asset_status             *string    `json:"asset_status,omitempty"            db:"asset_status"            req:""      pk:""      none:"DEFAULT"  customwhere:"value->'item'->>'asset_status'" `
 	Building                 *string    `json:"building,omitempty"                db:"building"                req:"true"  pk:""                      customwhere:"value->'item'->>'building'" `
 	Condition_rating         *int       `json:"condition_rating,omitempty"        db:"condition_rating"        req:""      pk:""      none:"NULL"     customwhere:"value->'item'->>'condition_rating'" `
+	Condition_rating_date    *time.Time `json:"condition_rating_date,omitempty"   db:"condition_rating_date"   req:""      pk:""      none:"NULL"     customwhere:"value->'item'->>'condition_rating_date'"`
 	Contact_ID               *string    `json:"contact_ID,omitempty"              db:"contact_id"              req:""      pk:""      none:"DEFAULT"  customwhere:"value->'item'->>'contact_id'" `
 	Department               *string    `json:"department,omitempty"              db:"department"              req:"true"  pk:""                      customwhere:"value->'item'->>'department'" `
 	Description              *string    `json:"description,omitempty"             db:"description"             req:"true"  pk:""                      customwhere:"value->'item'->>'description'" `
 	Disposal_cost            *float64   `json:"disposal_cost,omitempty"           db:"disposal_cost"           req:""      pk:""      none:"DEFAULT"  customwhere:"value->'item'->>'disposal_cost'" `
 	Disposal_date            *time.Time `json:"disposal_date,omitempty"           db:"disposal_date"           req:""      pk:""      none:"NULL"     customwhere:"value->'item'->>'disposal_date'" `
-	Disposal_reason          *string    `json:"disposal_reason,omitempty"         db:"disposal_reason"         req:""      pk:""      none:"" customwhere:"value->'item'->>'disposal_reason'" `
+	Disposal_reason          *string    `json:"disposal_reason,omitempty"         db:"disposal_reason"         req:""      pk:""      none:""         customwhere:"value->'item'->>'disposal_reason'" `
 	Domain                   *string    `json:"domain"                            db:"domain"                  req:"true"  pk:""                      customwhere:"value->'item'->>'domain'" `
 	Finance_group_code       *string    `json:"finance_group_code,omitempty"      db:"finance_group_code"      req:""      pk:""      none:"DEFAULT"  customwhere:"value->'item'->>'finance_group_code'" `
-	Floor                    *string    `json:"floor"                             db:"floor"                   req:"true"  pk:""      absolute:"true"  customwhere:"value->'item'->>'floor'" `
+	Floor                    *string    `json:"floor"                             db:"floor"                   req:"true"  pk:""      absolute:"true" customwhere:"value->'item'->>'floor'" `
 	GL_asset_reference       *string    `json:"GL_asset_reference,omitempty"      db:"gl_asset_reference"      req:""      pk:""      none:"DEFAULT"  customwhere:"value->'item'->>'gl_asset_reference'" `
 	Install_date             *time.Time `json:"install_date,omitempty"            db:"install_date"            req:""      pk:""      none:"NULL"     customwhere:"value->'item'->>'install_date'" `
 	Installation_cost        *float64   `json:"installation_cost,omitempty"       db:"installation_cost"       req:""      pk:""      none:"DEFAULT"  customwhere:"value->'item'->>'installation_cost'" `
@@ -131,6 +133,7 @@ func UnresolvedAssets_CustomSelect() []string {
 		"value->'item'->>'asset_status' AS asset_status",
 		"value->'item'->>'building' AS building",
 		"value->'item'->>'condition_rating' AS condition_rating",
+		"value->'item'->>'condition_rating_date' AS condition_rating_date",
 		"value->'item'->>'contact_ID' AS contact_ID",
 		"value->'item'->>'department' AS department",
 		"value->'item'->>'description' AS description",
