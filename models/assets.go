@@ -42,7 +42,7 @@ type Asset_Data struct {
 	Is_virtual_asset         *bool       `json:"is_virtual_asset,omitempty"        db:"is_virtual_asset"        req:""      pk:""      none:"DEFAULT"  exclude_diff:"true"`
   Label_location           *string     `json:"label_location,omitempty"          db:"label_location"          req:""      pk:""      none:"DEFAULT" `
   Latitude                 *float64    `json:"latitude,omitempty"                db:"latitude"                req:""      pk:""      none:"DEFAULT" `
-  Location                 *string     `json:"location,omitempty"                db:"location"                req:""      pk:""      none:"DEFAULT" `
+	Location                 *string     `json:"location,omitempty"                db:"location"                req:""      pk:""      none:"DEFAULT"  exclude_diff:"true"`
   Longitude                *float64    `json:"longitude,omitempty"               db:"longitude"               req:""      pk:""      none:"DEFAULT" `
   Make                     *string     `json:"make,omitempty"                    db:"make"                    req:""      pk:""      none:"DEFAULT" `
   Manufacturer             *string     `json:"manufacturer,omitempty"            db:"manufacturer"            req:""      pk:""      none:"DEFAULT" `
