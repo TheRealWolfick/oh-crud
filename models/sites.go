@@ -45,7 +45,7 @@ type Departments struct {
 	Dept_id 	 *int 		 `json:"dept_id,omitempty"           db:"dept_id"      req:""      pk:"true"  none:"DEFAULT"  absolute:""     `
 	Dept_code  *string   `json:"dept_code"                   db:"dept_code"    req:"true"  pk:"true"  absolute:""     `
 	Description *string  `json:"dept_description,omitempty"  db:"description"  req:""      pk:""      none:""`
-	Building 	 *string   `json:"dept"                        db:"building"     req:""      pk:""      none:"NULL"     absolute:""     `
+	Building 	 *string   `json:"building"                    db:"building"     req:""      pk:""      none:"NULL"     absolute:""     `
 	Floor 		 *string   `json:"floor"                       db:"floor"        req:""      pk:""      none:"NULL"     absolute:"true" `
 	Is_active  *bool     `json:"is_active,omitempty"         db:"is_active"    req:""      pk:""      none:"DEFAULT"  absolute:""     `
 }

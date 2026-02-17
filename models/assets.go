@@ -19,7 +19,7 @@ type Condition_Ratings struct {
 type Asset_Data struct {
 	Asset_id                 *int        `json:"asset_id,omitempty"                db:"asset_id"                req:""      pk:"true"  none:"DEFAULT"  exclude_diff:"true"`
 	Added_date               *time.Time  `json:"added_date,omitempty"              db:"added_date"              req:""      pk:""      none:"DEFAULT"  exclude_diff:"true"`
-  Additional_details       *string     `json:"additional_details,omitempty"      db:"additional_details"      req:""      pk:""      none:""        `
+	Additional_details       *string     `json:"additional_details,omitempty"      db:"additional_details"      req:""      pk:""      none:""         exclude_diff:"true"`
 	Asset_category           *string     `json:"asset_category"                    db:"asset_category"          req:"true"  pk:""                     `
 	Asset_no                 *string     `json:"asset_no"                          db:"asset_no"                req:"true"  pk:"true"  none:"DEFAULT"  diff:"true"`
   Asset_status             *string     `json:"asset_status,omitempty"            db:"asset_status"            req:""      pk:""      none:"DEFAULT" `
