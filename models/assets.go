@@ -133,7 +133,7 @@ func UnresolvedAssets_CustomSelect() []string {
 		"value->'item'->>'asset_status' AS asset_status",
 		"value->'item'->>'building' AS building",
 		"value->'item'->>'condition_rating' AS condition_rating",
-		"value->'item'->>'condition_rating_date'::timestamp AS condition_rating_date",
+		"value->'item'->>'condition_rating_date' AS condition_rating_date",
 		"value->'item'->>'contact_ID' AS contact_ID",
 		"value->'item'->>'department' AS department",
 		"value->'item'->>'description' AS description",
