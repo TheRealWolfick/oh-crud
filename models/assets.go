@@ -76,7 +76,7 @@ type Unresolved_Assets struct {
 	Asset_no                 *string    `json:"asset_no"                          db:"asset_no"                req:""      pk:"true"  none:"DEFAULT"  customwhere:"value->'item'->>'asset_no'" `
 	Asset_status             *string    `json:"asset_status,omitempty"            db:"asset_status"            req:""      pk:""      none:"DEFAULT"  customwhere:"value->'item'->>'asset_status'" `
 	Building                 *string    `json:"building,omitempty"                db:"building"                req:"true"  pk:""                      customwhere:"value->'item'->>'building'" `
-	Condition_rating         *int       `json:"condition_rating,omitempty"        db:"condition_rating"        req:""      pk:""      none:"NULL"     customwhere:"value->'item'->>'condition_rating'" `
+	Condition_rating         *string       `json:"condition_rating,omitempty"        db:"condition_rating"        req:""      pk:""      none:"NULL"     customwhere:"value->'item'->>'condition_rating'" `
 	Condition_rating_date    *time.Time `json:"condition_rating_date,omitempty"   db:"condition_rating_date"   req:""      pk:""      none:"NULL"     customwhere:"value->'item'->>'condition_rating_date'"`
 	Contact_ID               *string    `json:"contact_ID,omitempty"              db:"contact_id"              req:""      pk:""      none:"DEFAULT"  customwhere:"value->'item'->>'contact_id'" `
 	Department               *string    `json:"department,omitempty"              db:"department"              req:"true"  pk:""                      customwhere:"value->'item'->>'department'" `
@@ -132,7 +132,7 @@ func UnresolvedAssets_CustomSelect() []string {
 		"value->'item'->>'asset_no' AS asset_no",
 		"value->'item'->>'asset_status' AS asset_status",
 		"value->'item'->>'building' AS building",
-		"value->'item'->>'condition_rating'::integer AS condition_rating",
+		"value->'item'->>'condition_rating' AS condition_rating",
 		"value->'item'->>'condition_rating_date'::timestamp AS condition_rating_date",
 		"value->'item'->>'contact_ID' AS contact_ID",
 		"value->'item'->>'department' AS department",
