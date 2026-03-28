@@ -23,6 +23,7 @@ fields:
     none: ~
     diff: true
     custom-where: ~
+    absolute: false
   description:
     type: string
     json: description
@@ -32,6 +33,7 @@ fields:
     none: ""
     diff: true
     custom-where: ~
+    absolute: false
   long_description:
     type: string
     json: long_description
@@ -41,3 +43,4 @@ fields:
     none: ""
     diff: true
     custom-where: ~
+    absolute: false

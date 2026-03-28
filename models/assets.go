@@ -1,8 +1,13 @@
 package models
 
-import "time"
+import (
+	"errors"
+	"fmt"
+	"strconv"
+	"time"
+)
 
-type BaseModelField struct {
+type DataModelField struct {
 	Type          *string  `yaml:"type"`
 	JSON          *string  `yaml:"json"`
 	DB            *string  `yaml:"db"`
@@ -11,9 +16,10 @@ type BaseModelField struct {
 	None          *string  `yaml:"none"`
 	Diff          *bool    `yaml:"diff"`
 	Custom_Where  *string  `yaml:"custom-where"`
+	Absolute      *bool    `yaml:"absolute"`
 }
 
-type BaseModelAllow struct {
+type DataModelAllow struct {
 	Get           bool  `yaml:"GET"`
 	Put           bool  `yaml:"PUT"`
 	Post 	        bool  `yaml:"POST"`
@@ -23,19 +29,71 @@ type BaseModelAllow struct {
 	Delete_Group  bool  `yaml:"DELETE-GROUP"`
 }
 
-type BaseModel struct {
+type DataModel struct {
 	Name              *string                      `yaml:"name"`
 	Table_Name        *string                      `yaml:"table-name"`
   End_Point         *string                      `yaml:"end-point"`
-	Allow             *BaseModelAllow            `yaml:"allow"`
-	Default_Where     *string                      `yaml:"default-where"`
-	Overwrite_Select  *string                      `yaml:"overwrite-select"`
+	Allow             *DataModelAllow            `yaml:"allow"`
+	Default_Where     map[string]any                      `yaml:"default-where"`
+	Overwrite_Select  []string                      `yaml:"overwrite-select"`
 	Custom_With       *string                      `yaml:"custom-with"`
-	Fields            map[string]BaseModelField  `yaml:"fields"`
+	Fields            map[string]DataModelField  `yaml:"fields"`
 }
 
-func NewBaseModel() *BaseModel {
-	return &BaseModel{}
+
+func NewDataModel() *DataModel {
+	return &DataModel{}
+}
+
+
+func DecodeAndCoerce(raw map[string]any, cfg *DataModel, enforce_required bool, enforce_pk bool) (*map[string]any, error) {
+	// Data structure
+	row_data := map[string]any{}
+
+	// Map all received fields into the row_data
+	for field_name, field_cfg := range cfg.Fields {
+		val, exists := raw[*field_cfg.JSON]
+
+		if enforce_required && !exists && *field_cfg.Req {
+			return nil, fmt.Errorf("Missing required field: %s", field_cfg.JSON)
+		}
+
+		if enforce_pk && !exists && *field_cfg.PK {
+			return nil, fmt.Errorf("Missing required primary key field: %s")
+		}
+
+		coerced_val, err := CoerceType(val, *field_cfg.Type)
+		if err != nil {
+			return nil, err
+		}
+
+		// Add coerced and confirmed data into struct
+		row_data[field_name] = coerced_val
+	}
+	return &row_data, nil
+}
+
+func CoerceType(raw any, type_name string) (any, error) {
+	var converted any
+	var err error
+
+	switch type_name {
+	case "int":
+		converted, err = strconv.Atoi(raw.(string))
+	case "float":
+		converted, err = strconv.ParseFloat(raw.(string), 64)
+	case "string":
+		converted = raw.(string)
+	case "bool":
+		converted, err = strconv.ParseBool(raw.(string))
+	default:
+		err = errors.New("Error")
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("Could not convert %v into type %s", raw, type_name)
+	}
+	return converted, nil
 }
 
 type Asset_Categories struct {

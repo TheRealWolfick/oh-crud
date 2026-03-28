@@ -3,15 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
-	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"gopkg.in/yaml.v3"
 	"lotusforge.au/api-server/handlers"
 	"lotusforge.au/api-server/middleware"
 	"lotusforge.au/api-server/models"
@@ -48,7 +44,7 @@ func main() {
 	get_post_put := map[string]bool{"GET": true, "POST": true, "PUT": true}
 
 	// Load the model files <testing>
-	base_models := make([]models.BaseModel, 0)
+	base_models := make([]models.DataModel, 0)
 	base_model_configs, err := os.ReadDir(models_dir)
 	if err != nil {
 		logger.Error("Error reading model config files. Shutting down server!", "error", err)
@@ -67,12 +63,10 @@ func main() {
 					continue
 				} else {
 					base_models = append(base_models, *data)
-					fmt.Print(base_models)
 				}
 			}
 		}
 	}
-	return
 
 	// Make the handlers
 	authMiddleware := middleware.RequireAuth(pool)
@@ -113,6 +107,11 @@ func main() {
 	}
 	for _, handler := range diff_handlers {
 		handler.RegisterDiffRoutes(mux, authMiddleware, qm)
+	}
+
+	// New register of routes for each handler loaded from a config
+	for _, dm := range base_models {
+		handlers.NewRegisterRoutes(&dm, mux, authMiddleware, qm)
 	}
 
 	// Launch the server

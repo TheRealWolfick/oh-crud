@@ -2,8 +2,11 @@ package tools
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"reflect"
+
+	"lotusforge.au/api-server/models"
 )
 
 // Save the struct fields into the query builder values data
@@ -60,6 +63,56 @@ func GetChecksum(r *http.Request) string {
 	}
 
 	return r.URL.Query().Get("checksum")
+}
+
+func DynamicSetWhereFromURL(qb *QueryBuilder, r *http.Request, cfg *models.DataModel) error {
+	// Parse the form
+	if err := r.ParseForm(); err != nil {
+		return err
+	}
+
+	if len(r.URL.Query()) < 1 {
+		return nil
+	}
+	
+	// Get valid elements
+	for _, field_cfg := range cfg.Fields {
+		// Read the database field name
+		if field_cfg.DB == nil || *field_cfg.DB == "" || *field_cfg.DB == "-" { continue }
+
+		// Search for any values passed in with the query in the url
+		url_value := r.FormValue(*field_cfg.DB)
+		if url_value == "" { continue }
+
+		// Get field type and validate it
+		dereferenced := DynamicValueDeref(field_cfg.Type)
+		if !dereferenced.IsValid() {
+			return fmt.Errorf("An invalid data type was found in the config", "config name", *cfg.Name)
+		}
+		field_type, err := DecodeDynamicFieldType(dereferenced.Interface().(string))
+		if err != nil { return err }
+
+		// Is this an absolute value (all non absolute values are passed as strings for parsing in setwhere
+		is_abs := *field_cfg.Absolute
+		if is_abs {
+			if ValidateValue(field_type, url_value) == false {
+				continue
+			}
+			if field_cfg.Custom_Where != nil {
+				qb.SetWhereAbsolute(*field_cfg.Custom_Where, url_value)
+			} else {
+				qb.SetWhereAbsolute(*field_cfg.DB, url_value)
+			}
+		} else {
+			if field_cfg.Custom_Where != nil {
+				qb.SetWhere(*field_cfg.Custom_Where, url_value, field_type)
+			} else {
+				qb.SetWhere(*field_cfg.DB, url_value, field_type)
+			}
+		}
+	}
+
+	return nil
 }
 
 func SetWhereFromURL[T any](qb *QueryBuilder, r *http.Request, model T) error {
@@ -130,43 +183,15 @@ func SetWhereFromURL[T any](qb *QueryBuilder, r *http.Request, model T) error {
 		}
 	}
 
-	// Made obsolete due to modification in dbfield params
-	/*
-	// Iterate over url params.
-	for key, val := range r.URL.Query() {
-		if strings.Contains(key, ".") {
-			q := strings.Split(key, ".")
-
-			// Ensure q[0] is a valid db field
-			if db_field := GetDBTagFromField(model, q[0]); db_field == "" {
-				continue
-			}
-
-			// Add potentially valid json fields
-			valid_json_fields := []string{q[0]}
-			for _, json_field := range q[1:] {
-				if len(json_field) > 0 && len(val) > 0 {
-					// Save the json field into qb values (to disallow potential sql injection)
-					field_pos := qb.SaveArbitraryValue(json_field)
-					valid_json_fields = append(valid_json_fields, fmt.Sprintf("%v", field_pos))
-
-				}
-			}
-
-			// Concatenate the json fields
-			valid_json := strings.Join(valid_json_fields[:len(valid_json_fields)-1], "->")
-			valid_json = fmt.Sprintf("%s->>%s", valid_json, valid_json_fields[len(valid_json_fields)-1])
-
-			// Convert the value into its potential type
-			processed_vals := ConvertURLValToAny(val)
-
-			// Save the custom where field
-			qb.SetWhereAbsolute(valid_json, processed_vals)
-		}
-	}
-	*/
-
 	return nil
+}
+
+func DynamicGetDatabaseColumns(cfg *models.DataModel) []string {
+	database_columns := []string{}
+	for _, field_cfg := range cfg.Fields {
+		database_columns = append(database_columns, *field_cfg.DB)
+	}
+	return database_columns
 }
 
 func GetDatabaseColumns[T any](model T) []string {
