@@ -17,6 +17,9 @@ import (
 )
 
 func main() {
+	// Directories
+	models_dir := "./config/base-models"
+
 	// Create logger to write to both stderr and a logging file`
 	// Create logger based on environment
 	log_type := os.Getenv("LOG_TYPE")
@@ -57,6 +60,23 @@ func main() {
 	//get_post := map[string]bool{"GET": true, "POST": true}
 	get_post_put := map[string]bool{"GET": true, "POST": true, "PUT": true}
 
+	// Load the model files <testing>
+	model_configs, err := os.ReadDir(models_dir)
+	if err != nil {
+		fmt.Println(err)
+		return
+	} else {
+		for _, m_config := range model_configs {
+			info, err := m_config.Info()
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			fmt.Printf("Name: %s, Size: %d bytes, IsDir: %t\n", info.Name(), info.Size(), info.IsDir())
+		}
+	}
+	return
+
 	// Make the handlers
 	authMiddleware := middleware.RequireAuth(pool)
 	userHandler := handlers.NewUserHandler(logger, log_level, pool)
@@ -66,7 +86,7 @@ func main() {
 	buildingFloorHandler := handlers.NewDataHandler[models.Building_Floor](qm, "building_floor_combo", "bfloor", allow_all, nil, nil, "")
 	buildingFloorRoomHandler := handlers.NewDataHandler[models.Building_Floor_Room](qm, "building_floor_room_combo", "room", allow_all, nil, nil, "")
 	departmentsHandler := handlers.NewDataHandler[models.Departments](qm, "departments", "department", allow_all, nil, nil, "")
-	conditionRatingsHandler := handlers.NewDataHandler[models.Condition_Ratings](qm, "condition_ratings", "condition/rating", allow_all, nil, nil, "")
+	// conditionRatingsHandler := handlers.NewDataHandler[models.Condition_Ratings](qm, "condition_ratings", "condition/rating", allow_all, nil, nil, "")
 	assetCategoriesHandler := handlers.NewDataHandler[models.Asset_Categories](qm, "asset_categories", "asset/category", allow_all, nil, nil, "")
 	assetDataHandler := handlers.NewDataHandler[models.Asset_Data](qm, "asset_data", "asset/data", allow_all, nil, nil, "")
 	unresolvedAssetDataHandler := handlers.NewDataHandler[models.Unresolved_Assets](qm, "items, jsonb_array_elements(items.failed_items)", "asset/unresolved", get_only, map[string]any{"value->>'rectified'": "false"}, models.UnresolvedAssets_CustomSelect(), "WITH items AS (SELECT DISTINCT event_log->'task'->'response'->'failed_items' as failed_items FROM events)")
@@ -76,7 +96,7 @@ func main() {
 	// Group handlers
 	api_handlers := []handlers.DataHandlerInterface{
 		domainHandler, buildingHandler, floorHandler, buildingFloorHandler, buildingFloorRoomHandler, departmentsHandler, 
-		conditionRatingsHandler, assetCategoriesHandler, assetDataHandler, unresolvedAssetDataHandler,
+		assetCategoriesHandler, assetDataHandler, unresolvedAssetDataHandler,
 	}
 	diff_handlers := []handlers.DataHandlerInterface{
 		assetDiffHandler,

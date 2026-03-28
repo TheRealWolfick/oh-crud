@@ -2,6 +2,38 @@ package models
 
 import "time"
 
+type Base_Model_Field struct {
+	Type          string  `yaml:"type"`
+	JSON          string  `yaml:"json"`
+	DB            string  `yaml:"db"`
+	PK            bool    `yaml:"pk"`
+	Req           bool    `yaml:"req"`
+	None          string  `yaml:"none"`
+	Diff          bool    `yaml:"diff"`
+	Custom_Where  string  `yaml:"custom-where"`
+}
+
+type Base_Model_Allow struct {
+	Get           bool  `yaml:"GET"`
+	Put           bool  `yaml:"PUT"`
+	Post 	        bool  `yaml:"POST"`
+	Delete        bool  `yaml:"DELETE"`
+	Put_Group     bool  `yaml:"PUT-GROUP"`
+	Post_Group    bool  `yaml:"POST-GROUP"`
+	Delete_Group  bool  `yaml:"DELETE-GROUP"`
+}
+
+type Base_Model struct {
+	Name              *string                      `yaml:"name"`
+	Table_Name        *string                      `yaml:"table-name"`
+  End_Point         *string                      `yaml:"end-point"`
+	Allow             *Base_Model_Allow            `yaml:"allow"`
+	Default_Where     *string                      `yaml:"default-where"`
+	Overwrite_Select  *string                      `yaml:"overwrite-select"`
+	Custom_With       *string                      `yaml:"custom-with"`
+	Fields            map[string]Base_Model_Field  `yaml:"fields"`
+}
+
 type Asset_Categories struct {
   Cat_code          *string  `json:"cat_code"                   db:"cat_code"         req:"true"  pk:"true"                 `
 	Asset_system      *string  `json:"asset_system,omitempty"     db:"asset_system"     req:""      pk:""      none:"DEFAULT" `

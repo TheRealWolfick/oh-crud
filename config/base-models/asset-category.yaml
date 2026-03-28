@@ -21,6 +21,7 @@ fields:
     pk: true
     req: true
     none: ~
+    diff: true
     custom-where: ~
   description:
     type: string
@@ -29,6 +30,7 @@ fields:
     pk: false
     req: false
     none: ""
+    diff: true
     custom-where: ~
   long_description:
     type: string
@@ -37,4 +39,5 @@ fields:
     pk: false
     req: false
     none: ""
+    diff: true
     custom-where: ~
