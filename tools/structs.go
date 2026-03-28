@@ -164,6 +164,19 @@ func GetAllFieldNames[T any](model T) []string {
 	return getFields(model, "ignore", "all")
 }
 
+func GetStructAsDict[T any](model T) map[string]any {
+	fieldnames := GetAllFieldNames(model)
+	return_dict := make(map[string]any)
+	val := reflect.ValueOf(model)
+	val = Deref(val)
+
+	for _, field := range fieldnames {
+		value := val.FieldByName(field)
+		return_dict[field] = Deref(value).Interface()
+	}
+	return return_dict
+}
+
 func GetDiffFieldName[T any](model T) string {
 	diff_fields := getFields(model, "diff", "true")
 	if len(diff_fields) > 0 {
