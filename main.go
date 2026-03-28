@@ -7,9 +7,11 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"gopkg.in/yaml.v3"
 	"lotusforge.au/api-server/handlers"
 	"lotusforge.au/api-server/middleware"
 	"lotusforge.au/api-server/models"
@@ -72,7 +74,15 @@ func main() {
 				fmt.Println(err)
 				continue
 			}
-			fmt.Printf("Name: %s, Size: %d bytes, IsDir: %t\n", info.Name(), info.Size(), info.IsDir())
+			if filepath.Ext(info.Name()) == ".yaml" {
+				data := models.NewBaseModel()
+				file, err := os.ReadFile(fmt.Sprint(models_dir, "/", m_config.Name()))
+				err = yaml.Unmarshal(file, &data)
+				if err != nil {
+					println(err)
+				}
+				fmt.Print(tools.DereferencedString(data))
+			}
 		}
 	}
 	return
