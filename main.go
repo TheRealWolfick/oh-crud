@@ -22,27 +22,12 @@ func main() {
 	// Directories
 	models_dir := "./config/base-models"
 
-	// Create logger to write to both stderr and a logging file`
-	// Create logger based on environment
-	log_type := os.Getenv("LOG_TYPE")
-	var logger *slog.Logger
-	if log_type == "production" {
-		writer_file, _ := os.OpenFile("/opt/myapi/logs/log.json", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		logger = slog.New( slog.NewJSONHandler(io.MultiWriter(os.Stderr, writer_file),nil) )
-	} else {
-		logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
-	}
-
-	// Load env variables
-	log_level, err := strconv.Atoi(os.Getenv("LOG_LEVEL"))
-	if err != nil {
-		logger.Error("Could not load logging level. Logging disabled", "error", err)
-		log_level = 0
-	}
+	// Load the logger
+	logger := tools.LoadLogger()
 
 	// Connect to database
 	pool, err := pgxpool.New(context.Background(),  fmt.Sprintf("postgres://%s:%s@%s", os.Getenv("DATABASE_USER"), os.Getenv("DATABASE_PWD"), os.Getenv("DATABASE_URL")))
-	if err != nil && log_level > 0 {
+	if err != nil{
 		if os.Getenv("DATABASE_URL") == "" {
 			logger.Error("Database connection failed", "error", "Database variable not found")
 		} else {
@@ -50,9 +35,9 @@ func main() {
 		}
 		os.Exit(1)
 	}
-	if log_level > 0 {logger.Info("Database connection made")}
+	logger.Info("Database connection made")
 
-	// Create the queue
+	// Create the queue for handling jobs
 	qm := tools.NewQueue(pool, 5, logger)
 
 	// Define datahandler end point types
@@ -63,25 +48,27 @@ func main() {
 	get_post_put := map[string]bool{"GET": true, "POST": true, "PUT": true}
 
 	// Load the model files <testing>
-	model_configs, err := os.ReadDir(models_dir)
+	base_models := make([]models.BaseModel, 0)
+	base_model_configs, err := os.ReadDir(models_dir)
 	if err != nil {
-		fmt.Println(err)
+		logger.Error("Error reading model config files. Shutting down server!", "error", err)
 		return
 	} else {
-		for _, m_config := range model_configs {
-			info, err := m_config.Info()
+		for _, config_file := range base_model_configs {
+			info, err := config_file.Info()
 			if err != nil {
-				fmt.Println(err)
+				logger.Warn("Error reading the base model config file", "error", err)
 				continue
 			}
 			if filepath.Ext(info.Name()) == ".yaml" {
-				data := models.NewBaseModel()
-				file, err := os.ReadFile(fmt.Sprint(models_dir, "/", m_config.Name()))
-				err = yaml.Unmarshal(file, &data)
+				data, err := tools.LoadModel_YAML(fmt.Sprint(models_dir, "/", info.Name()))
 				if err != nil {
-					println(err)
+					logger.Warn(fmt.Sprintf("Failed to load config file: %s", info.Name()), "error", err)
+					continue
+				} else {
+					base_models = append(base_models, *data)
+					fmt.Print(base_models)
 				}
-				fmt.Print(tools.DereferencedString(data))
 			}
 		}
 	}
@@ -89,7 +76,7 @@ func main() {
 
 	// Make the handlers
 	authMiddleware := middleware.RequireAuth(pool)
-	userHandler := handlers.NewUserHandler(logger, log_level, pool)
+	userHandler := handlers.NewUserHandler(logger, pool)
 	domainHandler := handlers.NewDataHandler[models.Domain](qm, "domains", "domain", allow_all, nil, nil, "")
 	buildingHandler := handlers.NewDataHandler[models.Building](qm, "buildings", "building", allow_all, nil, nil, "")
 	floorHandler := handlers.NewDataHandler[models.Floors](qm, "floors", "floor", disallow_delete, nil, nil, "")
@@ -119,7 +106,7 @@ func main() {
 
 	mux.Handle("GET /user", authMiddleware(http.HandlerFunc(userHandler.GetUserInfo)))
 	mux.Handle("PUT /user", authMiddleware(http.HandlerFunc(userHandler.UpdateUserInfo)))
-	
+
 	// Register the routes for each handler
 	for _, handler := range api_handlers {
 		handler.RegisterRoutes(mux, authMiddleware, qm)

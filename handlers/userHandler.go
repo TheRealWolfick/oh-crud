@@ -17,11 +17,10 @@ type userHandler struct {
 	BaseHandler
 }
 
-func NewUserHandler(logger *slog.Logger, log_level int, db *pgxpool.Pool) *userHandler {
+func NewUserHandler(logger *slog.Logger, db *pgxpool.Pool) *userHandler {
 	return &userHandler{
 		BaseHandler: BaseHandler{
 			logger: logger,
-			log_level: log_level,
 			db: db,
 		},
 	}
@@ -35,21 +34,19 @@ func (h *userHandler) GetUserInfo(w http.ResponseWriter, r *http.Request) {
 	origin := r.Header.Get("Origin")
 	api_key := r.Header.Get("X-API-Key")
 
-	if h.log_level >= 3 {
-		h.logger.Info("Extracted the following info at GetUserInfo:", "Username", username, "user agent", userAgent, "origin", origin, "X-API-Key", api_key)
-	}
+	h.logger.Debug("Extracted the following info at GetUserInfo:", "Username", username, "user agent", userAgent, "origin", origin, "X-API-Key", api_key)
 
 	// Query database
 	err := h.db.QueryRow(r.Context(),"SELECT username, email, mobile FROM users WHERE username = $1;", username).Scan(&req.Username, &req.Email, &req.Mobile)
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			if h.log_level >= 1 { h.logger.Error("No rows returned", "function", "getUserInfo", "user", username, "useragent", userAgent, "origin", origin) }
+			h.logger.Debug("No rows returned", "function", "getUserInfo", "user", username, "useragent", userAgent, "origin", origin)
 			http.Error(w, "GetUserInfo: Something went wrong!", http.StatusInternalServerError)
 		}
-		if h.log_level >= 1 { h.logger.Error("Server error occured", "function", "getUserInfo", "user", username, "useragent", userAgent,"origin", origin) }
+		h.logger.Debug("Server error occured", "function", "getUserInfo", "user", username, "useragent", userAgent,"origin", origin)
 		http.Error(w, "GetUserInfo: Something went wrong!", http.StatusInternalServerError)
 	}
-	if h.log_level >= 1 { h.logger.Info("Success", "function", "getUserInfo", "user", username, "useragent", userAgent, "origin", origin) }
+	h.logger.Debug("Success", "function", "getUserInfo", "user", username, "useragent", userAgent, "origin", origin)
 
 	// Build return value
 	to_ret, err := json.Marshal(req)

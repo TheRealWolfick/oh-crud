@@ -8,14 +8,12 @@ import (
 
 type BaseHandler struct {
 	logger *slog.Logger
-	log_level int
 	db *pgxpool.Pool
 }
 
-func NewBaseHandler(logger *slog.Logger, log_level int, db *pgxpool.Pool) *BaseHandler {
+func NewBaseHandler(logger *slog.Logger, db *pgxpool.Pool) *BaseHandler {
 	return &BaseHandler{
 		logger: logger,
-		log_level: log_level,
 		db: db,
 	}
 }
