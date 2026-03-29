@@ -23,6 +23,15 @@ func SingleInsert(
 ) (func(context.Context, ...any) (map[string]any, error)) {
 	return RecursiveBatchInsert(ctx, db, tableName, []any{item})
 }
+func SingleInsert_Dynamic(
+	ctx context.Context,
+	db models.DBExecutor,
+	cfg *models.DataModel,
+	item map[string]any,
+) (func(context.Context, ...any) (map[string]any, error)) {
+	return RecursiveBatchInsert_Dynamic(ctx, db, cfg, []map[string]any{item})
+}
+
 
 func CreateDiff[T any](
 	ctx context.Context,
@@ -48,6 +57,7 @@ func MultiUpdate[T any](
 	}
 }
 
+
 func RecursiveBatchInsert(
 	ctx context.Context,
 	db models.DBExecutor, // interface { Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error) }
@@ -66,6 +76,25 @@ func RecursiveBatchInsert(
 		return logData, nil
 	}
 }	
+func RecursiveBatchInsert_Dynamic(
+	ctx context.Context,
+	db models.DBExecutor, // interface { Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error) }
+	cfg *models.DataModel,
+	items []map[string]any,
+) (func(context.Context, ...any) (map[string]any, error)) {
+	return func(context.Context, ...any) (map[string]any, error) {
+		result := recursiveBatchInsertProcess_Dynamic(ctx, db, cfg, items)
+		failed_count := len(result.FailedItems)
+		logData := map[string]any{
+			"total_count": result.SuccessCount + failed_count,
+			"success_count": result.SuccessCount,
+			"failed_count": failed_count,
+			"failed_items": result.FailedItems,
+		}
+		return logData, nil
+	}
+}	
+
 
 func recursiveBatchInsertProcess(
 	ctx context.Context,
@@ -127,6 +156,67 @@ func recursiveBatchInsertProcess(
 	result.Query = qb.query
 	return result
 }
+func recursiveBatchInsertProcess_Dynamic(
+	ctx context.Context,
+	db models.DBExecutor, // interface { Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error) }
+	cfg *models.DataModel,
+	items []map[string]any,
+) models.BatchInsertResult {
+	result := models.BatchInsertResult{
+		SuccessCount: 0,
+		FailedItems:  make([]any, 0),
+	}
+
+	if len(items) == 0 {
+		return result
+	}
+
+	// Try to insert the batch
+	qb := NewQueryBuilder()
+	query := qb.BuildMultiInsert_Dynamic(cfg, items)
+
+	cmdTag, err := db.Exec(ctx, query, qb.GetArgs()...)
+
+	if err == nil {
+		// Success - all items inserted
+		result.SuccessCount = int(cmdTag.RowsAffected())
+		return result
+	}
+
+	// If there's only one item and it failed, add it to failed items
+	if len(items) == 1 {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) {
+			result.FailedItems = append(result.FailedItems, map[string]any{
+				"item": items[0], 
+				"rectified": strings.Contains(pgErr.Message, "duplicate key value violates"),
+				"date_rectified": nil,
+				"error": pgErr,
+			})
+
+			return result
+		}
+	}
+
+	// Split the slice in half and try each half recursively
+	mid := len(items) / 2
+	leftItems := items[:mid]
+	rightItems := items[mid:]
+
+	// Process left half
+	leftResult := recursiveBatchInsertProcess_Dynamic(ctx, db, cfg, leftItems)
+	result.SuccessCount += leftResult.SuccessCount
+	result.FailedItems = append(result.FailedItems, leftResult.FailedItems...)
+
+	// Process right half
+	rightResult := recursiveBatchInsertProcess_Dynamic(ctx, db, cfg, rightItems)
+	result.SuccessCount += rightResult.SuccessCount
+	result.FailedItems = append(result.FailedItems, rightResult.FailedItems...)
+
+	result.Query = qb.query
+	return result
+}
+
 
 func createDiff[T any](
 	ctx context.Context,

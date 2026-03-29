@@ -19,7 +19,7 @@ func NewRegisterRoutes(dm *models.DataModel, mux *http.ServeMux, auth func(http.
 	mux.Handle(fmt.Sprintf("GET /%s", *dm.End_Point), auth(handleGet(dm, qm)))
 	//mux.Handle(fmt.Sprintf("PUT /%s", *dh.End_Point), auth(dh.HandleUpdate()))
 	//mux.Handle(fmt.Sprintf("PUT /%s/group", *dh.End_Point), auth(dh.HandleMultiUpdate()))
-	//mux.Handle(fmt.Sprintf("POST /%s", *dh.End_Point), auth(dh.HandleAddNew()))
+	mux.Handle(fmt.Sprintf("POST /%s", *dm.End_Point), auth(handleAddNew(dm, qm)))
 	//mux.Handle(fmt.Sprintf("POST /%s/group", *dh.End_Point), auth(dh.HandleAddMultipleNew()))
 	//mux.Handle(fmt.Sprintf("DELETE /%s", *dh.End_Point), auth(dh.HandleDelete()))
 }
@@ -31,10 +31,16 @@ func handleGet(dm *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
 	return dynamicNotAllowed(*dm.Allow)
 }
 
+func handleAddNew(dm *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
+	if dm.Allow.Get {
+		return dynamicAddNewResource(qm, dm)
+	}
+	return dynamicNotAllowed(*dm.Allow)
+}
 
 func dynamicAddNewResource(
 	qm *tools.QueueManager,
-	dm *models.DataModel,
+	cfg *models.DataModel,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Add Resource"
@@ -44,16 +50,17 @@ func dynamicAddNewResource(
 		req_username := r.Context().Value(user_key).(*models.User).Username
 		note := r.Header.Get("X-User-Note")
 
-		qm.Logger.Info("REQUEST_RECEIVED", "user", req_username, "IP", req_ip, "function", task_type, "table", dm.Table_Name, "request_id", req_id)
+		qm.Logger.Info("REQUEST_RECEIVED", "user", req_username, "IP", req_ip, "function", task_type, "table", cfg.Table_Name, "request_id", req_id)
 
 		// Response intialization
 		response := map[string]any{"task_type": "CREATE"}
 		w.Header().Set("Content-Type", "application/json")
 
 		// Read and coerce incoming data
-		var resource map[string]any
-		err = json.NewDecoder(r.Body).Decode(&resource)
-
+		var raw map[string]any
+		err = json.NewDecoder(r.Body).Decode(&raw)
+		qm.Logger.Debug("Decoding and coercing raw data", "data", fmt.Sprint(raw))
+		resource, err := models.DecodeAndCoerce(raw, cfg, true, true)
 
 		// Validation and errors
 		if err != nil {
@@ -61,24 +68,25 @@ func dynamicAddNewResource(
 			http.Error(w, fmt.Sprintf("Could not decode body. Error: %v", err), http.StatusInternalServerError)
 			return
 		}
-		if tools.StructIsEmpty(&resource) {
+		if len(resource) == 0 {
 			http.Error(w, "No valid json supplied", http.StatusBadRequest)
 			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", "No valid json supplied")
 			return
 		}
-		valid_resources, _ := tools.ValidateStruct(resource)
+		valid_resources, _ := tools.Validate_Map_AgainstConfig(cfg, resource, false, true)
 		if len(valid_resources) < 1 {
-			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", "resource invalid", "resource", resource)
+			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", "resource invalid", "resource", raw)
 			http.Error(w, "No valid domains", http.StatusBadRequest)
 			return
 		}
 
+
 		// Extract context and queue action
 		ctx_preserve := context.WithoutCancel(middleware.StartTask(r.Context(), task_type))
-		task_id, err := qm.QueueFunction(ctx_preserve, tools.SingleInsert(ctx_preserve, qm.Db, *dm.Table_Name, resource), note)
+		task_id, err := qm.QueueFunction(ctx_preserve, tools.SingleInsert_Dynamic(ctx_preserve, qm.Db, cfg, valid_resources[0]), note)
 
 		if err != nil {
-			qm.Logger.Error("TASK_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", "could not create task", "resource", resource, "error", err)
+			qm.Logger.Error("TASK_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", "could not create task", "resource", raw, "error", err)
 			http.Error(w, fmt.Sprintf("Error creating create task\nError: %v", err), http.StatusInternalServerError)
 			return
 		}
@@ -110,7 +118,7 @@ func dynamicGetResource(
 		var query string
 
 		// Create new query builder 
-		qb := tools.NewQueryBuilder()
+		qb := tools.NewQueryBuilder(qm.Logger.With("call", "GET"))
 
 		// Load where vals
 		qm.Logger.Debug("Read default where:", "value", cfg.Default_Where)

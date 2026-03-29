@@ -46,3 +46,25 @@ func DecodeDynamicFieldType(typ string) (reflect.Kind, error) {
 	}
 	return reflect.Invalid, fmt.Errorf("Unsupported data format %s", typ)
 }
+
+func GetRequiredJSONFields_FromConfig(cfg *models.DataModel, enforce_pk bool) []string {
+
+	// Initiate slice of required fields
+	req_fields := []string{}
+
+	// Iterate through each config field and check if it is required
+	for _, field_cfg := range cfg.Fields {
+		switch enforce_pk {
+		case true:
+			if *field_cfg.PK {
+				req_fields = append(req_fields, *field_cfg.JSON)
+			}
+		case false:
+			if *field_cfg.Req || *field_cfg.PK {
+				req_fields = append(req_fields, *field_cfg.JSON)
+			}
+		}
+	}
+
+	return req_fields
+}

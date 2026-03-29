@@ -1,7 +1,6 @@
 package models
 
 import (
-	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -36,6 +35,7 @@ type DataModel struct {
 	Allow             *DataModelAllow            `yaml:"allow"`
 	Default_Where     map[string]any                      `yaml:"default-where"`
 	Overwrite_Select  []string                      `yaml:"overwrite-select"`
+	Allow_Diff        *bool                      `yaml:"allow-diff"`
 	Custom_With       *string                      `yaml:"custom-with"`
 	Fields            map[string]DataModelField  `yaml:"fields"`
 }
@@ -46,7 +46,7 @@ func NewDataModel() *DataModel {
 }
 
 
-func DecodeAndCoerce(raw map[string]any, cfg *DataModel, enforce_required bool, enforce_pk bool) (*map[string]any, error) {
+func DecodeAndCoerce(raw map[string]any, cfg *DataModel, enforce_required bool, enforce_pk bool) (map[string]any, error) {
 	// Data structure
 	row_data := map[string]any{}
 
@@ -54,12 +54,11 @@ func DecodeAndCoerce(raw map[string]any, cfg *DataModel, enforce_required bool, 
 	for field_name, field_cfg := range cfg.Fields {
 		val, exists := raw[*field_cfg.JSON]
 
-		if enforce_required && !exists && *field_cfg.Req {
-			return nil, fmt.Errorf("Missing required field: %s", field_cfg.JSON)
-		}
-
 		if enforce_pk && !exists && *field_cfg.PK {
-			return nil, fmt.Errorf("Missing required primary key field: %s")
+			return nil, fmt.Errorf("Missing required primary key field: %s", *field_cfg.JSON)
+		}
+		if enforce_required && !exists && *field_cfg.Req {
+			return nil, fmt.Errorf("Missing required field: %s", *field_cfg.JSON)
 		}
 
 		coerced_val, err := CoerceType(val, *field_cfg.Type)
@@ -70,42 +69,60 @@ func DecodeAndCoerce(raw map[string]any, cfg *DataModel, enforce_required bool, 
 		// Add coerced and confirmed data into struct
 		row_data[field_name] = coerced_val
 	}
-	return &row_data, nil
+	return row_data, nil
 }
 
 func CoerceType(raw any, type_name string) (any, error) {
-	var converted any
-	var err error
-
+	if raw == nil { return nil, nil }
 	switch type_name {
 	case "int":
-		converted, err = strconv.Atoi(raw.(string))
+		switch v := raw.(type) {
+		case int:
+			return v, nil
+		case float64:
+			return int(v), nil
+		case string:
+			return strconv.Atoi(v)
+		}
 	case "float":
-		converted, err = strconv.ParseFloat(raw.(string), 64)
+		switch v := raw.(type) {
+		case float64:
+			return v, nil
+		case int:
+			return float64(v), nil
+		case string:
+			return strconv.ParseFloat(v, 64)
+		}
 	case "string":
-		converted = raw.(string)
+		switch v := raw.(type) {
+		case string:
+			return v, nil
+		default:
+			return fmt.Sprintf("%v", v), nil
+		}
 	case "bool":
-		converted, err = strconv.ParseBool(raw.(string))
-	default:
-		err = errors.New("Error")
+		switch v := raw.(type) {
+		case bool:
+			return v, nil
+		case float64:
+			return v != 0, nil
+		case string:
+			return strconv.ParseBool(v)
+		}
 	}
-
-	if err != nil {
-		return nil, fmt.Errorf("Could not convert %v into type %s", raw, type_name)
-	}
-	return converted, nil
+	return nil, fmt.Errorf("could not convert %v (%T) into type %s", raw, raw, type_name)
 }
 
 type Asset_Categories struct {
-  Cat_code          *string  `json:"cat_code"                   db:"cat_code"         req:"true"  pk:"true"                 `
+	Cat_code          *string  `json:"cat_code"                   db:"cat_code"         req:"true"  pk:"true"                 `
 	Asset_system      *string  `json:"asset_system,omitempty"     db:"asset_system"     req:""      pk:""      none:"DEFAULT" `
-  Asset_subsystem   *string  `json:"asset_subsystem,omitempty"  db:"asset_subsystem"  req:""      pk:""      none:"DEFAULT" `
-  Is_active         *bool    `json:"is_active,omitempty"        db:"is_active"        req:""      pk:""      none:"DEFAULT" `
+	Asset_subsystem   *string  `json:"asset_subsystem,omitempty"  db:"asset_subsystem"  req:""      pk:""      none:"DEFAULT" `
+	Is_active         *bool    `json:"is_active,omitempty"        db:"is_active"        req:""      pk:""      none:"DEFAULT" `
 	Description       *string  `json:"description,omitempty"      db:"description"      req:""      pk:""      none:""        `
 }
 
 type Condition_Ratings struct {
-  Condition_rating  *int     `json:"condition_rating" db:"condition_rating"  pk:"true"  req:"true"          `
+	Condition_rating  *int     `json:"condition_rating" db:"condition_rating"  pk:"true"  req:"true"          `
 	Description       *string  `json:"description"      db:"description"       pk:""      req:""      none:"" `
 	Long_description  *string  `json:"long_description" db:"long_description"  pk:""      req:""      none:"" `
 }
@@ -116,49 +133,49 @@ type Asset_Data struct {
 	Additional_details       *string     `json:"additional_details,omitempty"      db:"additional_details"      req:""      pk:""      none:""         exclude_diff:"true"`
 	Asset_category           *string     `json:"asset_category"                    db:"asset_category"          req:"true"  pk:""                     `
 	Asset_no                 *string     `json:"asset_no"                          db:"asset_no"                req:"true"  pk:"true"  none:"DEFAULT"  diff:"true"`
-  Asset_status             *string     `json:"asset_status,omitempty"            db:"asset_status"            req:""      pk:""      none:"DEFAULT" `
-  Building                 *string     `json:"building,omitempty"                db:"building"                req:"true"  pk:""                     `
-  Condition_rating         *int        `json:"condition_rating,omitempty"        db:"condition_rating"        req:""      pk:""      none:"NULL"    `
+	Asset_status             *string     `json:"asset_status,omitempty"            db:"asset_status"            req:""      pk:""      none:"DEFAULT" `
+	Building                 *string     `json:"building,omitempty"                db:"building"                req:"true"  pk:""                     `
+	Condition_rating         *int        `json:"condition_rating,omitempty"        db:"condition_rating"        req:""      pk:""      none:"NULL"    `
 	Condition_rating_date    *time.Time  `json:"condition_rating_date,omitempty"   db:"condition_rating_date"   req:""      pk:""      none:"NULL"    `
 	Contact_ID               *string     `json:"contact_ID,omitempty"              db:"contact_id"              req:""      pk:""      none:"DEFAULT"  exclude_diff:"true"`
-  Department               *string     `json:"department,omitempty"              db:"department"              req:"true"  pk:""                     `
-  Description              *string     `json:"description,omitempty"             db:"description"             req:"true"  pk:""                     `
-  Disposal_cost            *float64    `json:"disposal_cost,omitempty"           db:"disposal_cost"           req:""      pk:""      none:"DEFAULT" `
-  Disposal_date            *time.Time  `json:"disposal_date,omitempty"           db:"disposal_date"           req:""      pk:""      none:"NULL"    `
+	Department               *string     `json:"department,omitempty"              db:"department"              req:"true"  pk:""                     `
+	Description              *string     `json:"description,omitempty"             db:"description"             req:"true"  pk:""                     `
+	Disposal_cost            *float64    `json:"disposal_cost,omitempty"           db:"disposal_cost"           req:""      pk:""      none:"DEFAULT" `
+	Disposal_date            *time.Time  `json:"disposal_date,omitempty"           db:"disposal_date"           req:""      pk:""      none:"NULL"    `
 	Disposal_reason          *string     `json:"disposal_reason,omitempty"         db:"disposal_reason"         req:""      pk:""      none:"NULL"`
-  Domain                   *string     `json:"domain"                            db:"domain"                  req:"true"  pk:""                     `
+	Domain                   *string     `json:"domain"                            db:"domain"                  req:"true"  pk:""                     `
 	Finance_group_code       *string     `json:"finance_group_code,omitempty"      db:"finance_group_code"      req:""      pk:""      none:"DEFAULT"  exclude_diff:"true"`
 	Floor                    *string     `json:"floor"                             db:"floor"                   req:"true"  pk:""                      absolute:"true" `
 	GL_asset_reference       *string     `json:"GL_asset_reference,omitempty"      db:"gl_asset_reference"      req:""      pk:""      none:"DEFAULT"  exclude_diff:"true"`
-  Install_date             *time.Time  `json:"install_date,omitempty"            db:"install_date"            req:""      pk:""      none:"NULL"    `
-  Installation_cost        *float64    `json:"installation_cost,omitempty"       db:"installation_cost"       req:""      pk:""      none:"DEFAULT" `
-  Invoice_no               *string     `json:"invoice_no,omitempty"              db:"invoice_no"              req:""      pk:""      none:"DEFAULT" `
+	Install_date             *time.Time  `json:"install_date,omitempty"            db:"install_date"            req:""      pk:""      none:"NULL"    `
+	Installation_cost        *float64    `json:"installation_cost,omitempty"       db:"installation_cost"       req:""      pk:""      none:"DEFAULT" `
+	Invoice_no               *string     `json:"invoice_no,omitempty"              db:"invoice_no"              req:""      pk:""      none:"DEFAULT" `
 	Is_virtual_asset         *bool       `json:"is_virtual_asset,omitempty"        db:"is_virtual_asset"        req:""      pk:""      none:"DEFAULT"  exclude_diff:"true"`
 	Label_location           *string     `json:"label_location,omitempty"          db:"label_location"          req:""      pk:""      none:"DEFAULT"  exclude_diff:"true"`
-  Latitude                 *float64    `json:"latitude,omitempty"                db:"latitude"                req:""      pk:""      none:"DEFAULT" `
+	Latitude                 *float64    `json:"latitude,omitempty"                db:"latitude"                req:""      pk:""      none:"DEFAULT" `
 	Location                 *string     `json:"location,omitempty"                db:"location"                req:""      pk:""      none:"DEFAULT"  exclude_diff:"true"`
-  Longitude                *float64    `json:"longitude,omitempty"               db:"longitude"               req:""      pk:""      none:"DEFAULT" `
-  Make                     *string     `json:"make,omitempty"                    db:"make"                    req:""      pk:""      none:"DEFAULT" `
+	Longitude                *float64    `json:"longitude,omitempty"               db:"longitude"               req:""      pk:""      none:"DEFAULT" `
+	Make                     *string     `json:"make,omitempty"                    db:"make"                    req:""      pk:""      none:"DEFAULT" `
 	Manufacturer             *string     `json:"manufacturer,omitempty"            db:"manufacturer"            req:""      pk:""      none:"DEFAULT"  exclude_diff:"true"`
-  Model                    *string     `json:"model,omitempty"                   db:"model"                   req:""      pk:""      none:"DEFAULT" `
-  Owning_cost_center       *string     `json:"owning_cost_center,omitempty"      db:"owning_cost_center"      req:""      pk:""      none:"DEFAULT" `
-  Purchase_cost            *float64    `json:"purchase_cost,omitempty"           db:"purchase_cost"           req:""      pk:""      none:"DEFAULT" `
-  Purchase_date            *time.Time  `json:"purchase_date,omitempty"           db:"purchase_date"           req:""      pk:""      none:"NULL"    `
-  Purchase_order_no        *string     `json:"purchase_order_no,omitempty"       db:"purchase_order_no"       req:""      pk:""      none:"DEFAULT" `
-  Purchasing_cost_center   *string     `json:"purchasing_cost_center,omitempty"  db:"purchasing_cost_center"  req:""      pk:""      none:"DEFAULT" `
+	Model                    *string     `json:"model,omitempty"                   db:"model"                   req:""      pk:""      none:"DEFAULT" `
+	Owning_cost_center       *string     `json:"owning_cost_center,omitempty"      db:"owning_cost_center"      req:""      pk:""      none:"DEFAULT" `
+	Purchase_cost            *float64    `json:"purchase_cost,omitempty"           db:"purchase_cost"           req:""      pk:""      none:"DEFAULT" `
+	Purchase_date            *time.Time  `json:"purchase_date,omitempty"           db:"purchase_date"           req:""      pk:""      none:"NULL"    `
+	Purchase_order_no        *string     `json:"purchase_order_no,omitempty"       db:"purchase_order_no"       req:""      pk:""      none:"DEFAULT" `
+	Purchasing_cost_center   *string     `json:"purchasing_cost_center,omitempty"  db:"purchasing_cost_center"  req:""      pk:""      none:"DEFAULT" `
 	RFID_tag_ID              *string     `json:"RFID_tag_ID,omitempty"             db:"rfid_tag_id"             req:""      pk:""      none:"DEFAULT"  exclude_diff:"true"`
-  Room                     *string     `json:"room,omitempty"                    db:"room"                    req:""      pk:""      none:"DEFAULT" `
-  Serial                   *string     `json:"serial,omitempty"                  db:"serial"                  req:""      pk:""      none:"DEFAULT" `
+	Room                     *string     `json:"room,omitempty"                    db:"room"                    req:""      pk:""      none:"DEFAULT" `
+	Serial                   *string     `json:"serial,omitempty"                  db:"serial"                  req:""      pk:""      none:"DEFAULT" `
 	Service_agent            *string     `json:"service_agent,omitempty"           db:"service_agent"           req:""      pk:""      none:"DEFAULT"  exclude_diff:"true"`
 	Spare_parts              *string     `json:"spare_parts,omitempty"             db:"spare_parts"             req:""      pk:""      none:"DEFAULT"  exclude_diff:"true"`
 	Spare_parts_bin_no       *string     `json:"spare_parts_bin_no,omitempty"      db:"spare_parts_bin_no"      req:""      pk:""      none:"DEFAULT"  exclude_diff:"true"`
 	Spare_parts_held         *string     `json:"spare_parts_held,omitempty"        db:"spare_parts_held"        req:""      pk:""      none:"DEFAULT"  exclude_diff:"true"`
-  Supplier_code            *string     `json:"supplier_code,omitempty"           db:"supplier_code"           req:""      pk:""      none:"DEFAULT" `
-  Tech_manual_reference    *string     `json:"tech_manual_reference,omitempty"   db:"tech_manual_reference"   req:""      pk:""      none:"DEFAULT" `
+	Supplier_code            *string     `json:"supplier_code,omitempty"           db:"supplier_code"           req:""      pk:""      none:"DEFAULT" `
+	Tech_manual_reference    *string     `json:"tech_manual_reference,omitempty"   db:"tech_manual_reference"   req:""      pk:""      none:"DEFAULT" `
 	User_defined_fields      *string     `json:"user_defined_fields,omitempty"     db:"user_defined_fields"     req:""      pk:""      none:"NULL"     exclude_diff:"true"`
-  Warranty_period          *int        `json:"warranty_period,omitempty"         db:"warranty_period"         req:""      pk:""      none:"12"      `
-  Working_life             *int        `json:"working_life,omitempty"            db:"working_life"            req:""      pk:""      none:"NULL"    `
-  Ownership_status         *string     `json:"ownership_status,omitempty"        db:"ownership_status"        req:""      pk:""      none:"DEFAULT" `
+	Warranty_period          *int        `json:"warranty_period,omitempty"         db:"warranty_period"         req:""      pk:""      none:"12"      `
+	Working_life             *int        `json:"working_life,omitempty"            db:"working_life"            req:""      pk:""      none:"NULL"    `
+	Ownership_status         *string     `json:"ownership_status,omitempty"        db:"ownership_status"        req:""      pk:""      none:"DEFAULT" `
 	Altered_date             *time.Time  `json:"altered_date,omitempty"            db:"altered_date"            req:""      pk:""      none:"DEFAULT"  exclude_diff:"true"`
 }
 

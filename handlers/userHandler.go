@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"os"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -78,7 +79,7 @@ func (h *userHandler) UpdateUserInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user.Username = &requester.Username
-	qb := tools.NewQueryBuilder()
+	qb := tools.NewQueryBuilder(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
 	// Get current user info
 	var user_cur models.UserCreateUpdate

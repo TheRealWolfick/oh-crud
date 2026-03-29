@@ -13,6 +13,7 @@ allow:
 default-where: ~
 overwrite-select: ~
 custon-with: ~
+allow-diff: false
 fields:
   condition_rating:
     type: int
@@ -21,7 +22,7 @@ fields:
     pk: true
     req: true
     none: ~
-    diff: true
+    diff: false
     custom-where: ~
     absolute: false
   description:
@@ -29,7 +30,7 @@ fields:
     json: description
     db: description
     pk: false
-    req: false
+    req: true
     none: ""
     diff: true
     custom-where: ~

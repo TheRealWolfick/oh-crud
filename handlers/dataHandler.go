@@ -213,7 +213,7 @@ func handleGetResource[T interface{}](
 		var query string
 
 		// Create new query builder 
-		qb := tools.NewQueryBuilder()
+		qb := tools.NewQueryBuilder(qm.Logger.With("call", "GET"))
 
 		// Load where vals
 		for key, _ := range defaultWhere {
@@ -296,7 +296,7 @@ func handleUpdateResource[T any](
 		}
 
 		// Create new query builder
-		qb := tools.NewQueryBuilder()
+		qb := tools.NewQueryBuilder(qm.Logger.With("call", "POST"))
 
 		// Set values from the struct
 		tools.SetValueFromStruct(qb, updated)
@@ -415,7 +415,7 @@ func handleDeleteResource[T any](
 		}
 
 		// Create query builder
-		qb := tools.NewQueryBuilder()
+		qb := tools.NewQueryBuilder(qm.Logger.With("call", "DELETE"))
 		query := qb.BuildDelete(tableName, resource_to_delete)
 
 		// Execute the query

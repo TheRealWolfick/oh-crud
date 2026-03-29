@@ -2,11 +2,14 @@ package tools
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
+
+	"lotusforge.au/api-server/models"
 )
 
 type QueryBuilder struct {
@@ -16,6 +19,7 @@ type QueryBuilder struct {
 	pos    uint
 	wheremod map[string]string
 	query  string
+	logger *slog.Logger
 }
 
 
@@ -26,7 +30,7 @@ type SetCallback interface {
 
 // Create a new blank query builder without a primary key where value.
 // Primarily used when there won't be a WHERE clause in the SQL (INSERT)
-func NewQueryBuilder() *QueryBuilder {
+func NewQueryBuilder(logger *slog.Logger) *QueryBuilder {
 	return &QueryBuilder{
 		values: make(map[string]uint),
 		where: make(map[string]uint),
@@ -34,6 +38,7 @@ func NewQueryBuilder() *QueryBuilder {
 		pos: 1,
 		wheremod: make(map[string]string),
 		query: "",
+		logger: logger,
 	}
 }
 
@@ -390,6 +395,69 @@ func (qb *QueryBuilder) BuildMultiInsert(table string, models []any) string {
 	}
 
 	qb.query = fmt.Sprintf("INSERT INTO %s (%s) VALUES %s;", table, strings.Join(c, ", "), fmt.Sprintf("%s",strings.Join(v, ", ")))
+	return qb.query
+}
+
+func (qb *QueryBuilder) BuildMultiInsert_Dynamic(cfg *models.DataModel, data []map[string]any) string {
+
+	// Early return if query has already been built
+	if qb.query != "" {
+		return qb.query
+	}
+	
+	// BUILD MULTI INSERT QUERY //
+
+	// Initiate columns
+	c := []string{}
+	v := []string{}
+
+	// Iterate through each row to be inserted
+	for pos, row := range data {
+
+		local_values := []string{}
+
+		// Iterate through each column of the model
+		for _, field_cfg := range cfg.Fields {
+			
+			// Check if this is a valid field
+			if field_cfg.DB == nil || *field_cfg.DB == "" || *field_cfg.DB == "-" { continue }
+
+			// If this is the first row, add the column names to columns list
+			if pos == 0 { c = append(c, *field_cfg.DB) }
+
+			// Check if this column exists in map
+			val, ok := row[*field_cfg.JSON]
+			if ok {
+				// Value was supplied
+				local_values = append(local_values, fmt.Sprintf("$%d", qb.pos))
+				qb.pos++
+				qb.args = append(qb.args, val)
+			} else {
+				local_values = append(local_values, fmt.Sprintf("$%d", qb.pos))
+				qb.pos++
+				if field_cfg.None == nil {
+					// No default specified — send NULL
+					qb.args = append(qb.args, nil)
+				} else if *field_cfg.None == "" {
+					// Explicit blank string default
+					qb.args = append(qb.args, "")
+				} else {
+					// Parse the none value to the correct type
+					parsed, err := models.CoerceType(*field_cfg.None, *field_cfg.Type)
+					if err != nil {
+						qb.args = append(qb.args, nil)
+					} else {
+						qb.args = append(qb.args, parsed)
+					}
+				}
+			}
+		}
+		// Append all the value positions and default values to the values slice
+		v = append(v, fmt.Sprintf(("(%s)"), strings.Join(local_values, ", ")))
+	}
+	// Build the query, save it into the query builder, and return it for use.
+	qb.query = fmt.Sprintf("INSERT INTO %s (%s) VALUES %s;", *cfg.Table_Name, strings.Join(c, ", "), fmt.Sprintf("%s",strings.Join(v, ", ")))
+	fmt.Println(qb.query)
 	return qb.query
 }
 
