@@ -46,3 +46,8 @@ func parseLogLevel(s string) slog.Level {
         return slog.LevelInfo
     }
 }
+
+// Returns a default logger that writes to stdout
+func GetBasicLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+}

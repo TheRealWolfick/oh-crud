@@ -339,6 +339,7 @@ func (qb *QueryBuilder) BuildMultiInsert(table string, models []any) string {
 
 	// Early return
 	if qb.query != "" {
+		qb.logger.Warn("BuildMultiInsert called with a query already existing")
 		return qb.query
 	}
 
@@ -402,6 +403,7 @@ func (qb *QueryBuilder) BuildMultiInsert_Dynamic(cfg *models.DataModel, data []m
 
 	// Early return if query has already been built
 	if qb.query != "" {
+		qb.logger.Warn("Called BuildMultiInsert_Dynamic after a query had already been built")
 		return qb.query
 	}
 	
@@ -414,39 +416,51 @@ func (qb *QueryBuilder) BuildMultiInsert_Dynamic(cfg *models.DataModel, data []m
 	// Iterate through each row to be inserted
 	for pos, row := range data {
 
+		qb.logger.Debug("Inserting row", "pos", pos, "row", fmt.Sprint(row))
 		local_values := []string{}
 
 		// Iterate through each column of the model
-		for _, field_cfg := range cfg.Fields {
+		for field_name, field_cfg := range cfg.Fields {
 			
 			// Check if this is a valid field
-			if field_cfg.DB == nil || *field_cfg.DB == "" || *field_cfg.DB == "-" { continue }
+			if field_cfg.DB == nil || *field_cfg.DB == "" || *field_cfg.DB == "-" { 
+				qb.logger.Debug("Skipping non database field", "field", field_name)
+				continue 
+			}
 
 			// If this is the first row, add the column names to columns list
 			if pos == 0 { c = append(c, *field_cfg.DB) }
 
 			// Check if this column exists in map
-			val, ok := row[*field_cfg.JSON]
+			qb.logger.Debug(fmt.Sprintf("Checking if field %s exists in passed data", *field_cfg.JSON))
+			val, ok := row[*field_cfg.JSON]; 
 			if ok {
 				// Value was supplied
+				qb.logger.Debug(fmt.Sprintf("Column %s found!", *field_cfg.JSON), "value", val)
 				local_values = append(local_values, fmt.Sprintf("$%d", qb.pos))
 				qb.pos++
 				qb.args = append(qb.args, val)
 			} else {
+				qb.logger.Debug(fmt.Sprintf("Column %s not found! Using data in field 'None'", *field_cfg.JSON))
 				local_values = append(local_values, fmt.Sprintf("$%d", qb.pos))
 				qb.pos++
 				if field_cfg.None == nil {
 					// No default specified — send NULL
+					qb.logger.Debug("'None' field was nil")
 					qb.args = append(qb.args, nil)
 				} else if *field_cfg.None == "" {
 					// Explicit blank string default
+					qb.logger.Debug("'None' field was a blank string")
 					qb.args = append(qb.args, "")
 				} else {
 					// Parse the none value to the correct type
+					qb.logger.Debug("'None' field has a value. Attempting to parse", "value", *field_cfg.None)
 					parsed, err := models.CoerceType(*field_cfg.None, *field_cfg.Type)
 					if err != nil {
+						qb.logger.Debug("Parse failed!")
 						qb.args = append(qb.args, nil)
 					} else {
+						qb.logger.Debug("Parse success!")
 						qb.args = append(qb.args, parsed)
 					}
 				}

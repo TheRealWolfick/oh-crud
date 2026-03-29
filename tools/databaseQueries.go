@@ -112,7 +112,8 @@ func recursiveBatchInsertProcess(
 	}
 
 	// Try to insert the batch
-	qb := NewQueryBuilder()
+	log, ok := middleware.GetLogger(ctx); if !ok { log = GetBasicLogger() }
+	qb := NewQueryBuilder(log)
 	query := qb.BuildMultiInsert(tableName, items)
 
 	cmdTag, err := db.Exec(ctx, query, qb.GetArgs()...)
@@ -172,13 +173,15 @@ func recursiveBatchInsertProcess_Dynamic(
 	}
 
 	// Try to insert the batch
-	qb := NewQueryBuilder()
+	log, ok := middleware.GetLogger(ctx); if !ok { log = GetBasicLogger() }
+	qb := NewQueryBuilder(log)
 	query := qb.BuildMultiInsert_Dynamic(cfg, items)
 
 	cmdTag, err := db.Exec(ctx, query, qb.GetArgs()...)
 
 	if err == nil {
 		// Success - all items inserted
+		log.Debug("Insert successful", "count", cmdTag.RowsAffected())
 		result.SuccessCount = int(cmdTag.RowsAffected())
 		return result
 	}
@@ -283,7 +286,8 @@ func createDiff[T any](
 	diff_struct.Note = &note
 
 	// Create query building
-	qb := NewQueryBuilder()
+	log, ok := middleware.GetLogger(ctx); if !ok { log = GetBasicLogger() }
+	qb := NewQueryBuilder(log)
 	query = qb.BuildInsert("diffs", diff_struct)
 
 	// Save the diff into the database
@@ -322,11 +326,12 @@ func multiUpdate[T any](
 		Errors: []models.MultiUpdateError{},
 	}
 
+	log, ok := middleware.GetLogger(ctx); if !ok { log = GetBasicLogger() }
 	// Update items
 	for idx := range supplied {
 		// Create a new query builder 
-		qb := NewQueryBuilder()
 		update_item := &supplied[idx]
+		qb := NewQueryBuilder(log.With(update_item))
 
 		// Extract the primary keys from the struct and save them into the where clause
 		prim_keys := GetPrimaryKeys(*update_item)

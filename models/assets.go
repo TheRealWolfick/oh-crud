@@ -46,7 +46,7 @@ func NewDataModel() *DataModel {
 }
 
 
-func DecodeAndCoerce(raw map[string]any, cfg *DataModel, enforce_required bool, enforce_pk bool) (map[string]any, error) {
+func DecodeAndCoerce(raw map[string]any, cfg *DataModel, enforce_req bool, enforce_pk bool) (map[string]any, error) {
 	// Data structure
 	row_data := map[string]any{}
 
@@ -57,9 +57,10 @@ func DecodeAndCoerce(raw map[string]any, cfg *DataModel, enforce_required bool, 
 		if enforce_pk && !exists && *field_cfg.PK {
 			return nil, fmt.Errorf("Missing required primary key field: %s", *field_cfg.JSON)
 		}
-		if enforce_required && !exists && *field_cfg.Req {
+		if enforce_req && !exists && (*field_cfg.Req || *field_cfg.PK) {
 			return nil, fmt.Errorf("Missing required field: %s", *field_cfg.JSON)
 		}
+		if !exists {continue}
 
 		coerced_val, err := CoerceType(val, *field_cfg.Type)
 		if err != nil {
