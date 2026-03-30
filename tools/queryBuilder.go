@@ -105,19 +105,21 @@ func (qb *QueryBuilder) innerSetWhere(field string, value any, mod string) {
 		return
 	}
 
+	qb.logger.Debug("Setting where value. Will increment qb.args if it does not exist in eqisting where args", "field", field, "value", value)
 	_, exists := qb.where[field]
 
 	if !exists {
+		qb.logger.Debug("Doesn't exist currently in qb map!")
 		qb.where[field] = qb.pos
 		qb.wheremod[field] = mod
 		qb.args = append(qb.args, value)
 		qb.pos++
 	} else {
-		qb.args[qb.values[field]-1] = value
+		qb.logger.Debug("Exists in qb map!")
+		qb.args[qb.values[field]] = value
 		qb.wheremod[field] = mod
 	}
 }
-
 
 
 // Wrapper for directly interfacing with the innerSetWhere function
@@ -126,15 +128,18 @@ func (qb *QueryBuilder) SetWhereAbsolute(field string, value any) {
 		return
 	}
 
+	qb.logger.Debug("Setting absolute where value. Will increment qb.args if it does not exist in eqisting where args", "field", field, "value", value)
 	_, exists := qb.where[field]
 
 	if !exists {
+		qb.logger.Debug("Doesn't exist currently in qb map!")
 		qb.where[field] = qb.pos
 		qb.wheremod[field] = "="
 		qb.args = append(qb.args, value)
 		qb.pos++
 	} else {
-		qb.args[qb.values[field]-1] = value
+		qb.logger.Debug("Exists in qb map!")
+		qb.args[qb.values[field]] = value
 		qb.wheremod[field] = "="
 	}
 }

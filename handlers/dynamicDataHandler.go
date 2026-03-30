@@ -243,6 +243,65 @@ func dynamicGetResource(
 	}
 }
 
+// Update resource via the standard api
+func dynamicUpdateResource[T any](
+	qm *tools.QueueManager,
+	tableName string,
+) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		task_type := "Update Resource"
+		user_key := middleware.Contextkey("user")
+		req_ip := tools.GetIP(r)
+		req_id, err := tools.Generate32CharString()
+		req_username := r.Context().Value(user_key).(*models.User).Username
+		note := r.Header.Get("X-User-Note")
+		qm.Logger.Info("REQUEST_RECEIVED", "user", req_username, "IP", req_ip, "function", task_type, "table", tableName, "request_id", req_id)
+
+		// Response intialization
+		response := map[string]any{"task_type": "UPDATE"}
+		w.Header().Set("Content-Type", "application/json")
+
+		var updated T
+		err = json.NewDecoder(r.Body).Decode(&updated)
+
+		if err != nil {
+			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", err)
+			http.Error(w, fmt.Sprintf("Error decoding body: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		// Check for valid values
+		if tools.StructIsEmpty(&updated) {
+			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", "no valid json supplied")
+			http.Error(w, "No valid updates", http.StatusBadRequest)
+			return
+		}
+
+		// Create new query builder
+		qb := tools.NewQueryBuilder(qm.Logger.With("call", "POST"))
+
+		// Set values from the struct
+		tools.SetValueFromStruct(qb, updated)
+
+		// Build the query
+		query := qb.BuildUpdate(tableName, r, updated)
+
+		// Queue the query
+		ctx_preserve := context.WithoutCancel(middleware.StartTask(r.Context(), task_type))
+		task_id, err := qm.QueueExec(ctx_preserve, query, note, qb.GetArgs()...)
+		if err != nil {
+			qm.Logger.Error("TASK_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", err)
+			http.Error(w, fmt.Sprintf("Error creating update task\nError: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		// Build and return
+		response["task_id"] = task_id
+		response["successful_submission"] = err == nil
+
+		json.NewEncoder(w).Encode(response)
+	}
+}
 
 // Handle a disallowed endPoint
 func dynamicNotAllowed(

@@ -2,6 +2,11 @@
 name: Condition Ratings
 table-name: condition_ratings
 end-point: condition/rating
+default-where: 
+  condition_rating: 2 
+overwrite-select:
+custon-with: ~
+allow-diff: false
 allow:
   GET: true
   PUT: true
@@ -10,10 +15,6 @@ allow:
   PUT-GROUP: true
   POST-GROUP: true
   DELETE-GROUP: false
-default-where: ~
-overwrite-select: ~
-custon-with: ~
-allow-diff: false
 fields:
   condition_rating:
     type: int

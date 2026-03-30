@@ -67,11 +67,13 @@ func GetChecksum(r *http.Request) string {
 
 func DynamicSetWhereFromURL(qb *QueryBuilder, r *http.Request, cfg *models.DataModel) error {
 	// Parse the form
+	qb.logger.Debug("Setting where values from URL")
 	if err := r.ParseForm(); err != nil {
 		return err
 	}
 
 	if len(r.URL.Query()) < 1 {
+		qb.logger.Debug("No valid URL values passed")
 		return nil
 	}
 	
@@ -81,11 +83,12 @@ func DynamicSetWhereFromURL(qb *QueryBuilder, r *http.Request, cfg *models.DataM
 		if field_cfg.DB == nil || *field_cfg.DB == "" || *field_cfg.DB == "-" { continue }
 
 		// Search for any values passed in with the query in the url
-		url_value := r.FormValue(*field_cfg.DB)
+		url_value := r.FormValue(*field_cfg.JSON)
 		if url_value == "" { continue }
 
 		// Get field type and validate it
 		dereferenced := DynamicValueDeref(field_cfg.Type)
+		qb.logger.Debug("Dereferenced the field type", "field_type", dereferenced)
 		if !dereferenced.IsValid() {
 			return fmt.Errorf("An invalid data type was found in the config", "config name", *cfg.Name)
 		}
