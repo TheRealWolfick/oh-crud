@@ -52,7 +52,7 @@ func Validate_SliceOfMaps_AgainstConfig(cfg *models.DataModel, rows []map[string
 		// Was it a valid struct
 		if is_valid {
 			// Attempt to decode and coerce the values into their proper type
-			coerced_vals, err := models.DecodeAndCoerce(row, cfg, enforce_pk, enforce_pk)
+			coerced_vals, err := models.DecodeAndCoerce(row, cfg, enforce_req, enforce_pk)
 			// Test is coercion works correctly. If yes, it was a valid struct
 			if err != nil {
 				invalid_structs = append(invalid_structs, row)

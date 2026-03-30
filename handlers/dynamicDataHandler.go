@@ -14,28 +14,33 @@ import (
 )
 
 
-func NewRegisterRoutes(dm *models.DataModel, mux *http.ServeMux, auth func(http.Handler) http.Handler, qm *tools.QueueManager) {
-	qm.Logger.Debug("Dynamic end point generating", "data-model", *dm.Name, "end-point", *dm.End_Point)
-	mux.Handle(fmt.Sprintf("GET /%s", *dm.End_Point), auth(handleGet(dm, qm)))
+func NewRegisterRoutes(cfg *models.DataModel, mux *http.ServeMux, auth func(http.Handler) http.Handler, qm *tools.QueueManager) {
+	qm.Logger.Debug("Dynamic end point generating", "data-model", *cfg.Name, "end-point", *cfg.End_Point)
+	mux.Handle(fmt.Sprintf("GET /%s", *cfg.End_Point), auth(handleGet(cfg, qm)))
 	//mux.Handle(fmt.Sprintf("PUT /%s", *dh.End_Point), auth(dh.HandleUpdate()))
 	//mux.Handle(fmt.Sprintf("PUT /%s/group", *dh.End_Point), auth(dh.HandleMultiUpdate()))
-	mux.Handle(fmt.Sprintf("POST /%s", *dm.End_Point), auth(handleAddNew(dm, qm)))
-	//mux.Handle(fmt.Sprintf("POST /%s/group", *dh.End_Point), auth(dh.HandleAddMultipleNew()))
+	mux.Handle(fmt.Sprintf("POST /%s", *cfg.End_Point), auth(handleAddNew(cfg, qm)))
+	mux.Handle(fmt.Sprintf("POST /%s/group", *cfg.End_Point), auth(handleAddMulipleNew(cfg, qm)))
 	//mux.Handle(fmt.Sprintf("DELETE /%s", *dh.End_Point), auth(dh.HandleDelete()))
 }
 
-func handleGet(dm *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
-	if dm.Allow.Get {
-		return dynamicGetResource(qm, dm)
+func handleGet(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
+	if cfg.Allow.Get {
+		return dynamicGetResource(qm, cfg)
 	}
-	return dynamicNotAllowed(*dm.Allow)
+	return dynamicNotAllowed(*cfg.Allow)
 }
 
-func handleAddNew(dm *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
-	if dm.Allow.Get {
-		return dynamicAddNewResource(qm, dm)
+func handleAddNew(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
+	if cfg.Allow.Get {
+		return dynamicAddNewResource(qm, cfg)
 	}
-	return dynamicNotAllowed(*dm.Allow)
+	return dynamicNotAllowed(*cfg.Allow)
+}
+
+func handleAddMulipleNew(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
+	if cfg.Allow.Post_Group { return dynamicAddMultipleNewResources(qm, cfg) }
+	return dynamicNotAllowed(*cfg.Allow)
 }
 
 func dynamicAddNewResource(
@@ -100,6 +105,69 @@ func dynamicAddNewResource(
 	}
 }
 
+// Add multiple resources via the default path
+func dynamicAddMultipleNewResources(
+	qm *tools.QueueManager,
+	cfg *models.DataModel,
+) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		task_type := "Add Bulk Resources"
+		user_key := middleware.Contextkey("user")
+		req_ip := tools.GetIP(r)
+		req_id, err := tools.Generate32CharString()
+		req_username := r.Context().Value(user_key).(*models.User).Username
+		note := r.Header.Get("X-User-Note")
+		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "table", *cfg.Table_Name, "request_id", req_id)
+		ctx := middleware.SetLogger(r.Context(), log)
+
+		log.Info("REQUEST_RECEIVED")
+
+		// Response intialization
+		response := map[string]any{"task_type": "CREATE_BULK"}
+		w.Header().Set("Content-Type", "application/json")
+
+		var raw []map[string]any
+		err = json.NewDecoder(r.Body).Decode(&raw)
+
+		// Validation and errors
+		if err != nil {
+			log.Error("REQUEST_ERROR", "error", err)
+			http.Error(w, fmt.Sprintf("Error decoding body: %v", err), http.StatusInternalServerError)
+			return
+		}
+		if tools.StructIsEmpty(&raw) {
+			log.Error("REQUEST_ERROR", "error", "no valid json supplied")
+			http.Error(w, "No valid json supplied", http.StatusBadRequest)
+			return
+		}
+
+		log.Debug("Decoding and coercing raw data", "data", fmt.Sprint(raw))
+		valid_resources, invalid_resources := tools.Validate_SliceOfMaps_AgainstConfig(cfg, raw, true, true)
+		if len(valid_resources) < 1 {
+			log.Error("REQUEST_ERROR", "error", "no valid resources")
+			http.Error(w, "No valid resources", http.StatusBadRequest)
+			return
+		}
+
+		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type))
+		task_id, err := qm.QueueFunction(ctx_preserve, tools.RecursiveBatchInsert_Dynamic(ctx_preserve, qm.Db, cfg, valid_resources), note)
+		if err != nil {
+			qm.Logger.Error("TASK_ERROR", "error", err)
+			http.Error(w, fmt.Sprintf("Error creating bulk create task\nError: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		// Respond
+		response["task_id"] = task_id
+		response["successful_submission"] = err == nil
+		response["rows_received"] = len(raw)
+		response["rows_valid"] = len(valid_resources)
+		response["rows_invalid"] = len(invalid_resources)
+		response["invalid"] = invalid_resources
+
+		json.NewEncoder(w).Encode(response)
+	}
+}
 
 // Get resources via the standard api
 func dynamicGetResource(
