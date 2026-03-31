@@ -19,19 +19,7 @@ func StructIsEmpty[T any](s *T) bool {
 }
 
 
-// This function takes a struct and will return it inside a valid or invalid slice. This
-// is just a wrapper for ValidateMultiStruct.
-// Validation is done via the "req" tag which are extracted from the first struct being
-// passed to GetRequiredFields.
-// 
-// Return: []valid, []invalid
-func ValidateStruct[T any](s T) ([]T, []T) {
-	asStruct := []T{s}
-	return ValidateMultiStruct(asStruct)
-}
-
-
-// This function takes a slice of any struct and will return it as valid and invalid slices. 
+// This function takes a slice of any struct and will return it as valid and invalid slices.
 // Validation is done via the "req" tag which are extracted from the first struct being
 // passed to GetRequiredFields.
 // 
@@ -156,10 +144,6 @@ func GetDatabaseFields[T any](model T) []string {
 	return getFields(model, "db", "exists")
 }
 
-func GetAbsolute[T any](model T) []string {
-	return getFields(model, "absolute", "true")
-}
-
 func GetAllFieldNames[T any](model T) []string {
 	return getFields(model, "ignore", "all")
 }
@@ -216,28 +200,6 @@ func getAbsoluteTagFromField[T interface{}](model T, field string) string {
 func IsAbsolute[T any](model T, field string) bool {
 	absolute := getAbsoluteTagFromField(model, field)
 	return absolute == "true"
-}
-
-
-// Remove all the items in element b from element a
-func StringSliceSubtract(a []string, b []string) []string {
-	new_slice := make([]string, 0, len(a))
-	var add bool
-
-	for _, a_val := range a {
-		add = true
-		for _, b_val := range b {
-			if a_val == b_val {
-				add = false
-				break
-			}
-		}
-		if add {
-			new_slice = append(new_slice, a_val)
-		}
-	}
-
-	return  new_slice
 }
 
 

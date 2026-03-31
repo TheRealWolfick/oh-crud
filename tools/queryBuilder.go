@@ -498,65 +498,37 @@ func (qb *QueryBuilder) BuildSelect(table string, select_fields []string) string
 } 
 
 
-func (qb *QueryBuilder) BuildUpdateNoURLParams(table string, model any) string {
-	if qb.query != "" {
-		return qb.query
-	}
-
-	// Construct the where and value clauses, where must be an exact match
-	w := make([]string, 0)
-	v := make([]string, 0)
-
-	for key, val := range qb.where {
-		w = append(w, fmt.Sprintf("%s = $%d", key, val))
-	}
-
-	for key, val := range qb.values {
-		v = append(v, fmt.Sprintf("%s = $%d", key, val))
-	}
-
-	qb.query = fmt.Sprintf("UPDATE %s SET %s WHERE %s;", table, strings.Join(v, ", "), strings.Join(w, " AND "))
-	return qb.query
-}
-
-// Build the query to update a single field in the database
+// BuildUpdate builds a parameterized UPDATE query for a struct-typed model.
+// WHERE clauses are extracted from URL query parameters matching the model's primary key fields.
+// Returns an empty string if no primary key values are found in the URL.
 func (qb *QueryBuilder) BuildUpdate(table string, r *http.Request, model interface{}) string {
 	if qb.query != "" {
 		return qb.query
 	}
 
-	// Read the url and get the database columns that where is allowed on
 	whereFields := r.URL.Query()
 	prim_keys := GetPrimaryKeys(model)
-
-	// Search for any of the main keys from the URL query for the where clause. Soft fail on no keys
 	whereExists := false
 
 	for _, key := range prim_keys {
-		fmt.Println(key)
 		f, _ := reflect.TypeOf(model).FieldByName(key)
 		whereval := whereFields.Get(f.Tag.Get("db"))
-
 		if whereval != "" {
 			qb.innerSetWhere(f.Tag.Get("db"), whereval, "=")
 			whereExists = true
 		}
-
-		// Add where values from struct
 	}
 
 	if !whereExists {
 		return ""
 	}
 
-	// Construct the where and value clauses, where must be an exact match
 	w := make([]string, 0)
 	v := make([]string, 0)
 
 	for key, val := range qb.where {
 		w = append(w, fmt.Sprintf("%s = $%d", key, val))
 	}
-
 	for key, val := range qb.values {
 		v = append(v, fmt.Sprintf("%s = $%d", key, val))
 	}
@@ -565,8 +537,8 @@ func (qb *QueryBuilder) BuildUpdate(table string, r *http.Request, model interfa
 	return qb.query
 }
 
-
-// Build the query to update a single field in the database
+// BuildUpdate_Dynamic builds a parameterized UPDATE query from the where and value clauses
+// already set on the query builder.
 func (qb *QueryBuilder) BuildUpdate_Dynamic(cfg *models.DataModel) string {
 	if qb.query != "" {
 		qb.logger.Warn("Called build update after query had already been built!")
@@ -586,26 +558,6 @@ func (qb *QueryBuilder) BuildUpdate_Dynamic(cfg *models.DataModel) string {
 	}
 
 	qb.query = fmt.Sprintf("UPDATE %s SET %s WHERE %s;", *cfg.Table_Name, strings.Join(v, ", "), strings.Join(w, " AND "))
-	return qb.query
-}
-
-// Build the query to delete a resource from the database
-func (qb *QueryBuilder) BuildDelete(table string, model interface{}) string {
-	if qb.query != "" {
-		return qb.query
-	}
-
-	// Load the where values from the struct
-	SetWhereFromStruct(qb, model)
-
-	// Build the where values for the query
-	w := make([]string, 0)
-
-	for key, val := range qb.where {
-		w = append(w, fmt.Sprintf("%s %s $%d", key, qb.wheremod[key], val))
-	}
-
-	qb.query = fmt.Sprintf("DELETE FROM %s WHERE %s;", table, strings.Join(w, " AND "))
 	return qb.query
 }
 
