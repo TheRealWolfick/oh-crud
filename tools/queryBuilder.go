@@ -570,6 +570,29 @@ func (qb *QueryBuilder) BuildUpdate(table string, r *http.Request, model interfa
 }
 
 
+// Build the query to update a single field in the database
+func (qb *QueryBuilder) BuildUpdate_Dynamic(cfg *models.DataModel) string {
+	if qb.query != "" {
+		qb.logger.Warn("Called build update after query had already been built!")
+		return qb.query
+	}
+
+	// Construct the where and value clauses, where must be an exact match
+	w := make([]string, 0)
+	v := make([]string, 0)
+
+	for key, val := range qb.where {
+		w = append(w, fmt.Sprintf("%s = $%d", key, val))
+	}
+
+	for key, val := range qb.values {
+		v = append(v, fmt.Sprintf("%s = $%d", key, val))
+	}
+
+	qb.query = fmt.Sprintf("UPDATE %s SET %s WHERE %s;", *cfg.Table_Name, strings.Join(v, ", "), strings.Join(w, " AND "))
+	return qb.query
+}
+
 // Build the query to delete a resource from the database
 func (qb *QueryBuilder) BuildDelete(table string, model interface{}) string {
 	if qb.query != "" {

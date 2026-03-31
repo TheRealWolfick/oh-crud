@@ -189,9 +189,18 @@ func SetWhereFromURL[T any](qb *QueryBuilder, r *http.Request, model T) error {
 	return nil
 }
 
-func DynamicGetDatabaseColumns(cfg *models.DataModel) []string {
+func DynamicGetDatabaseColumns(cfg *models.DataModel, pk_only bool, req_only bool) []string {
 	database_columns := []string{}
 	for _, field_cfg := range cfg.Fields {
+		if pk_only || req_only {
+			if pk_only {
+				if *field_cfg.PK { database_columns = append(database_columns, *field_cfg.DB) }
+			} else {
+				if *field_cfg.Req || *field_cfg.PK { database_columns = append(database_columns, *field_cfg.DB) }
+			}
+		} else {
+			database_columns = append(database_columns, *field_cfg.DB)
+		}
 		database_columns = append(database_columns, *field_cfg.DB)
 	}
 	return database_columns

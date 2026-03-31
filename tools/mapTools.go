@@ -67,3 +67,25 @@ func Validate_SliceOfMaps_AgainstConfig(cfg *models.DataModel, rows []map[string
 
 	return valid_structs, invalid_structs
 }
+
+func SetValueFromMap(qb *QueryBuilder, m map[string]any) {
+	setFromMap(m, qb.SetValue)
+}
+
+func SetValueAndWhereFromMap(qb *QueryBuilder, m map[string]any, where string) {
+	for k, v := range m {
+		if k == where {
+			qb.SetWhereAbsolute(k, v)
+		} else {
+			qb.SetValue(k, v)
+		}
+	}
+}
+
+// Save the struct fields into the query builder values data
+func setFromMap(m map[string]any, setFunc func(string, any)) {
+	for k, v := range m {
+		setFunc(k, v)
+	}
+}
+

@@ -15,9 +15,10 @@ import (
 
 
 func NewRegisterRoutes(cfg *models.DataModel, mux *http.ServeMux, auth func(http.Handler) http.Handler, qm *tools.QueueManager) {
-	qm.Logger.Debug("Dynamic end point generating", "data-model", *cfg.Name, "end-point", *cfg.End_Point)
+	qm.Logger = qm.Logger.With("end_point", *cfg.End_Point)
+	qm.Logger.Debug("Dynamic end point generating", "data-model", *cfg.Name)
 	mux.Handle(fmt.Sprintf("GET /%s", *cfg.End_Point), auth(handleGet(cfg, qm)))
-	//mux.Handle(fmt.Sprintf("PUT /%s", *dh.End_Point), auth(dh.HandleUpdate()))
+	mux.Handle(fmt.Sprintf("PUT /%s", *cfg.End_Point), auth(handleUpdate(cfg, qm)))
 	//mux.Handle(fmt.Sprintf("PUT /%s/group", *dh.End_Point), auth(dh.HandleMultiUpdate()))
 	mux.Handle(fmt.Sprintf("POST /%s", *cfg.End_Point), auth(handleAddNew(cfg, qm)))
 	mux.Handle(fmt.Sprintf("POST /%s/group", *cfg.End_Point), auth(handleAddMulipleNew(cfg, qm)))
@@ -25,16 +26,12 @@ func NewRegisterRoutes(cfg *models.DataModel, mux *http.ServeMux, auth func(http
 }
 
 func handleGet(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
-	if cfg.Allow.Get {
-		return dynamicGetResource(qm, cfg)
-	}
+	if cfg.Allow.Get { return dynamicGetResource(qm, cfg) }
 	return dynamicNotAllowed(*cfg.Allow)
 }
 
 func handleAddNew(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
-	if cfg.Allow.Get {
-		return dynamicAddNewResource(qm, cfg)
-	}
+	if cfg.Allow.Get { return dynamicAddNewResource(qm, cfg) }
 	return dynamicNotAllowed(*cfg.Allow)
 }
 
@@ -42,6 +39,12 @@ func handleAddMulipleNew(cfg *models.DataModel, qm *tools.QueueManager) http.Han
 	if cfg.Allow.Post_Group { return dynamicAddMultipleNewResources(qm, cfg) }
 	return dynamicNotAllowed(*cfg.Allow)
 }
+
+func handleUpdate(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
+	if cfg.Allow.Put { return dynamicUpdateResource(qm, cfg) }
+	return dynamicNotAllowed(*cfg.Allow)
+}
+
 
 func dynamicAddNewResource(
 	qm *tools.QueueManager,
@@ -209,7 +212,7 @@ func dynamicGetResource(
 		// Build the query
 		log.Debug("Read overwrite select in dynamicgetresource", "value", cfg.Overwrite_Select)
 		if cfg.Overwrite_Select == nil {
-			query = qb.BuildSelect(*cfg.Table_Name, tools.DynamicGetDatabaseColumns(cfg))
+			query = qb.BuildSelect(*cfg.Table_Name, tools.DynamicGetDatabaseColumns(cfg, false, false))
 		} else {
 			query = qb.BuildSelect(*cfg.Table_Name, cfg.Overwrite_Select)
 		}
@@ -244,9 +247,9 @@ func dynamicGetResource(
 }
 
 // Update resource via the standard api
-func dynamicUpdateResource[T any](
+func dynamicUpdateResource(
 	qm *tools.QueueManager,
-	tableName string,
+	cfg *models.DataModel,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Update Resource"
@@ -255,39 +258,55 @@ func dynamicUpdateResource[T any](
 		req_id, err := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
 		note := r.Header.Get("X-User-Note")
-		qm.Logger.Info("REQUEST_RECEIVED", "user", req_username, "IP", req_ip, "function", task_type, "table", tableName, "request_id", req_id)
+		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "table", *cfg.Table_Name, "request_id", req_id)
+		ctx := middleware.SetLogger(r.Context(), log)
+
+		log.Info("REQUEST_RECEIVED")
 
 		// Response intialization
 		response := map[string]any{"task_type": "UPDATE"}
 		w.Header().Set("Content-Type", "application/json")
 
-		var updated T
-		err = json.NewDecoder(r.Body).Decode(&updated)
+		var raw_values map[string]any
+		err = json.NewDecoder(r.Body).Decode(&raw_values)
 
 		if err != nil {
-			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", err)
+			log.Error("REQUEST_ERROR", "error", err)
 			http.Error(w, fmt.Sprintf("Error decoding body: %v", err), http.StatusInternalServerError)
 			return
 		}
 
+		// Coerce data into map
+		valid_updates, invalid := tools.Validate_Map_AgainstConfig(cfg, raw_values, true, false)
+		if len(invalid) > 0 { 
+			log.Error("Invalid values passed", "invalid", invalid)
+			http.Error(w, "No valid values to update.", http.StatusBadRequest)
+			return
+		}
+
 		// Check for valid values
-		if tools.StructIsEmpty(&updated) {
-			qm.Logger.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", "no valid json supplied")
+		if tools.StructIsEmpty(&valid_updates[0]) {
+			log.Error("REQUEST_ERROR", "error", "no valid json supplied")
 			http.Error(w, "No valid updates", http.StatusBadRequest)
 			return
 		}
 
 		// Create new query builder
-		qb := tools.NewQueryBuilder(qm.Logger.With("call", "POST"))
+		qb := tools.NewQueryBuilder(log)
 
 		// Set values from the struct
-		tools.SetValueFromStruct(qb, updated)
+		prim_keys := tools.DynamicGetDatabaseColumns(cfg, true, false)
+		if len(prim_keys) < 1 {
+			log.Error("Error reading the primary key from config")
+			http.Error(w, "Error reading primary key from config", http.StatusBadRequest)
+		}
+		tools.SetValueAndWhereFromMap(qb, raw_values, prim_keys[0])
 
 		// Build the query
-		query := qb.BuildUpdate(tableName, r, updated)
+		query := qb.BuildUpdate_Dynamic(cfg)
 
 		// Queue the query
-		ctx_preserve := context.WithoutCancel(middleware.StartTask(r.Context(), task_type))
+		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type))
 		task_id, err := qm.QueueExec(ctx_preserve, query, note, qb.GetArgs()...)
 		if err != nil {
 			qm.Logger.Error("TASK_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", err)
