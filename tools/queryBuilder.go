@@ -67,10 +67,6 @@ func (qb *QueryBuilder) GetArgsAsString() string {
 // Save a field and value into the query builder. Intended to use with
 // updating fields (set only the relevant fields)
 func (qb *QueryBuilder) SetValue(field string, value any) {
-	if value == nil {
-		return
-	}
-
 	// Check to make sure it isn't already in the updates
 	_, exists := qb.values[field]
  

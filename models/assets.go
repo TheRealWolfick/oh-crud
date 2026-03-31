@@ -83,6 +83,7 @@ func CoerceType(raw any, type_name string) (any, error) {
 		case float64:
 			return int(v), nil
 		case string:
+			if v == "" { return nil, nil }
 			return strconv.Atoi(v)
 		}
 	case "float":
@@ -92,6 +93,7 @@ func CoerceType(raw any, type_name string) (any, error) {
 		case int:
 			return float64(v), nil
 		case string:
+			if v == "" { return nil, nil }
 			return strconv.ParseFloat(v, 64)
 		}
 	case "string":
@@ -108,6 +110,7 @@ func CoerceType(raw any, type_name string) (any, error) {
 		case float64:
 			return v != 0, nil
 		case string:
+			if v == "" { return nil, nil }
 			return strconv.ParseBool(v)
 		}
 	}

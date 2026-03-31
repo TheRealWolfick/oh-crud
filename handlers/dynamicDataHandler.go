@@ -138,11 +138,6 @@ func dynamicAddMultipleNewResources(
 			http.Error(w, fmt.Sprintf("Error decoding body: %v", err), http.StatusInternalServerError)
 			return
 		}
-		if tools.StructIsEmpty(&raw) {
-			log.Error("REQUEST_ERROR", "error", "no valid json supplied")
-			http.Error(w, "No valid json supplied", http.StatusBadRequest)
-			return
-		}
 
 		log.Debug("Decoding and coercing raw data", "data", fmt.Sprint(raw))
 		valid_resources, invalid_resources := tools.Validate_SliceOfMaps_AgainstConfig(cfg, raw, true, true)
@@ -267,8 +262,8 @@ func dynamicUpdateResource(
 		response := map[string]any{"task_type": "UPDATE"}
 		w.Header().Set("Content-Type", "application/json")
 
-		var raw_values map[string]any
-		err = json.NewDecoder(r.Body).Decode(&raw_values)
+		var raw map[string]any
+		err = json.NewDecoder(r.Body).Decode(&raw)
 
 		if err != nil {
 			log.Error("REQUEST_ERROR", "error", err)
@@ -277,17 +272,16 @@ func dynamicUpdateResource(
 		}
 
 		// Coerce data into map
-		valid_updates, invalid := tools.Validate_Map_AgainstConfig(cfg, raw_values, true, false)
-		if len(invalid) > 0 { 
-			log.Error("Invalid values passed", "invalid", invalid)
-			http.Error(w, "No valid values to update.", http.StatusBadRequest)
-			return
-		}
+		valid_resources, invalid_resources := tools.Validate_Map_AgainstConfig(cfg, raw, true, false)
+		if len(invalid_resources) > 0 { 
+			log.Warn("Request with no valid resources for update")
+			response["successful_submission"] = false
+			response["rows_received"] = len(raw)
+			response["rows_valid"] = len(valid_resources)
+			response["rows_invalid"] = len(invalid_resources)
+			response["invalid"] = invalid_resources
 
-		// Check for valid values
-		if tools.StructIsEmpty(&valid_updates[0]) {
-			log.Error("REQUEST_ERROR", "error", "no valid json supplied")
-			http.Error(w, "No valid updates", http.StatusBadRequest)
+			json.NewEncoder(w).Encode(response)
 			return
 		}
 
@@ -300,7 +294,7 @@ func dynamicUpdateResource(
 			log.Error("Error reading the primary key from config")
 			http.Error(w, "Error reading primary key from config", http.StatusBadRequest)
 		}
-		tools.SetValueAndWhereFromMap(qb, raw_values, prim_keys[0])
+		tools.SetValueAndWhereFromMap(qb, valid_resources[0], prim_keys[0])
 
 		// Build the query
 		query := qb.BuildUpdate_Dynamic(cfg)
@@ -317,10 +311,66 @@ func dynamicUpdateResource(
 		// Build and return
 		response["task_id"] = task_id
 		response["successful_submission"] = err == nil
+		response["rows_received"] = 1
+		response["rows_valid"] = len(valid_resources)
+		response["rows_invalid"] = len(invalid_resources)
+		response["invalid"] = invalid_resources
 
 		json.NewEncoder(w).Encode(response)
 	}
 }
+
+func dynamicMultiUpdateResource(
+	qm *tools.QueueManager,
+	cfg *models.DataModel,
+) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		task_type := "Update Multiple Resources"
+		user_key := middleware.Contextkey("user")
+		req_ip := tools.GetIP(r)
+		req_id, err := tools.Generate32CharString()
+		req_username := r.Context().Value(user_key).(*models.User).Username
+		note := r.Header.Get("X-User-Note")
+		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "table", *cfg.Table_Name, "request_id", req_id)
+		ctx := middleware.SetLogger(r.Context(), log)
+
+		log.Info("REQUEST_RECEIVED")
+
+		// Response intialization
+		response := map[string]any{"task_type": "BULK_UPDATE"}
+		w.Header().Set("Content-Type", "application/json")
+
+		var raw []map[string]any 
+		err = json.NewDecoder(r.Body).Decode(&raw)
+		valid_resources, invalid_resources := tools.Validate_SliceOfMaps_AgainstConfig(cfg, raw, true, false)
+
+		if err != nil {
+			log.Error("REQUEST_ERROR", "error", err)
+			http.Error(w, fmt.Sprintf("Error decoding body: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		// Queue the query
+		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type))
+		task_id, err := qm.QueueFunction(ctx_preserve, tools.MultiUpdate_Dynamic(ctx_preserve, qm.Db, cfg, valid_resources), note)
+		if err != nil {
+			log.Error("TASK_ERROR", "error", err)
+			http.Error(w, fmt.Sprintf("Error creating update task\nError: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		// Build and return
+		response["task_id"] = task_id
+		response["successful_submission"] = err == nil
+		response["rows_received"] = len(raw)
+		response["rows_valid"] = len(valid_resources)
+		response["rows_invalid"] = len(invalid_resources)
+		response["invalid"] = invalid_resources
+
+		json.NewEncoder(w).Encode(response)
+	}
+}
+
 
 // Handle a disallowed endPoint
 func dynamicNotAllowed(

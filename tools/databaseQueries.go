@@ -56,6 +56,16 @@ func MultiUpdate[T any](
 		return multiUpdate(ctx, db, tableName, supplied)
 	}
 }
+func MultiUpdate_Dynamic(
+	ctx context.Context,
+	db models.DBExecQuery,
+	cfg *models.DataModel,
+	supplied []map[string]any,
+) (func(context.Context, ...any) (map[string]any, error)) {
+	return func(ctx context.Context, a ...any) (map[string]any, error) {
+		return multiUpdate_Dynamic(ctx, db, cfg, supplied)
+	}
+}
 
 
 func RecursiveBatchInsert(
@@ -357,6 +367,61 @@ func multiUpdate[T any](
 
 		// Build the query
 		query := qb.BuildUpdateNoURLParams(tableName, *update_item)
+
+		// Execute
+		cmdtag, err := db.Exec(ctx, query, qb.GetArgs()...)
+		
+		// Add to report update
+		if err == nil && cmdtag.RowsAffected() > 0 {
+			report.SuccessCount = report.SuccessCount + int(cmdtag.RowsAffected())
+		} else {
+			report.Errors = append(report.Errors, models.MultiUpdateError{ID: idx, Error: err})
+		}
+	}
+
+	report_encoded, _ := json.Marshal(report)
+	report_to_return := map[string]any{}
+	err := json.Unmarshal(report_encoded, &report_to_return)
+	return report_to_return, err
+}
+func multiUpdate_Dynamic(
+	ctx context.Context,
+	db models.DBExecutor,
+	cfg *models.DataModel,
+	supplied []map[string]any,
+) (map[string]any, error) {
+
+	// Create report update
+	report := models.MultiUpdateResult{
+		TotalUpdates: len(supplied),
+		SuccessCount: 0,
+		Errors: []models.MultiUpdateError{},
+	}
+
+	log, _ := middleware.GetLogger(ctx)
+
+	log, ok := middleware.GetLogger(ctx); if !ok { log = GetBasicLogger() }
+	prim_keys := GetRequiredJSONFields_FromConfig(cfg, true)
+	if len(prim_keys) < 1 {
+		log.Error("Multi Update: Could not extract primary key from config")
+		return nil, fmt.Errorf("Multi Update: Could not extract primary key from config")
+	}
+	prim_key := prim_keys[0]
+
+	// Update items
+	for idx, row := range supplied {
+		// Create a new query builder 
+		qb := NewQueryBuilder(log.With("primary_key", row[prim_key]))
+
+		for k, v := range row {
+			if k == prim_key {
+				qb.SetWhereAbsolute(k, v)
+			} else {
+				qb.SetValue(k, v)
+			}
+		}
+
+		query := qb.BuildUpdate_Dynamic(cfg)
 
 		// Execute
 		cmdtag, err := db.Exec(ctx, query, qb.GetArgs()...)
