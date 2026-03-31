@@ -1,0 +1,504 @@
+---
+name: Asset Data
+table-name: asset_data
+end-point: asset/data
+allow-diff: true
+allow:
+  GET: true
+  PUT: true
+  POST: true
+  DELETE: true
+  PUT-GROUP: true
+  POST-GROUP: true
+  DELETE-GROUP: true
+fields:
+  asset_id:
+    type: int
+    json: asset_id
+    db: asset_id
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: false
+    custom-where: ~
+    absolute: false
+  added_date:
+    type: string
+    json: added_date
+    db: added_date
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: false
+    custom-where: ~
+    absolute: false
+  additional_details:
+    type: string
+    json: additional_details
+    db: additional_details
+    pk: false
+    req: false
+    none: ""
+    diff: false
+    custom-where: ~
+    absolute: false
+  asset_category:
+    type: string
+    json: asset_category
+    db: asset_category
+    pk: false
+    req: true
+    none: ~
+    diff: ~
+    custom-where: ~
+    absolute: false
+  asset_no:
+    type: string
+    json: asset_no
+    db: asset_no
+    pk: true
+    req: true
+    none: "DEFAULT"
+    diff: true
+    custom-where: ~
+    absolute: false
+  asset_status:
+    type: string
+    json: asset_status
+    db: asset_status
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: ~
+    custom-where: ~
+    absolute: false
+  building:
+    type: string
+    json: building
+    db: building
+    pk: false
+    req: true
+    none: ~
+    diff: ~
+    custom-where: ~
+    absolute: false
+  condition_rating:
+    type: int
+    json: condition_rating
+    db: condition_rating
+    pk: false
+    req: false
+    none: "NULL"
+    diff: ~
+    custom-where: ~
+    absolute: false
+  condition_rating_date:
+    type: string
+    json: condition_rating_date
+    db: condition_rating_date
+    pk: false
+    req: false
+    none: "NULL"
+    diff: ~
+    custom-where: ~
+    absolute: false
+  contact_id:
+    type: string
+    json: contact_ID
+    db: contact_id
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: false
+    custom-where: ~
+    absolute: false
+  department:
+    type: string
+    json: department
+    db: department
+    pk: false
+    req: true
+    none: ~
+    diff: ~
+    custom-where: ~
+    absolute: false
+  description:
+    type: string
+    json: description
+    db: description
+    pk: false
+    req: true
+    none: ~
+    diff: ~
+    custom-where: ~
+    absolute: false
+  disposal_cost:
+    type: float
+    json: disposal_cost
+    db: disposal_cost
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: ~
+    custom-where: ~
+    absolute: false
+  disposal_date:
+    type: string
+    json: disposal_date
+    db: disposal_date
+    pk: false
+    req: false
+    none: "NULL"
+    diff: ~
+    custom-where: ~
+    absolute: false
+  disposal_reason:
+    type: string
+    json: disposal_reason
+    db: disposal_reason
+    pk: false
+    req: false
+    none: "NULL"
+    diff: ~
+    custom-where: ~
+    absolute: false
+  domain:
+    type: string
+    json: domain
+    db: domain
+    pk: false
+    req: true
+    none: ~
+    diff: ~
+    custom-where: ~
+    absolute: false
+  finance_group_code:
+    type: string
+    json: finance_group_code
+    db: finance_group_code
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: false
+    custom-where: ~
+    absolute: false
+  floor:
+    type: string
+    json: floor
+    db: floor
+    pk: false
+    req: true
+    none: ~
+    diff: ~
+    custom-where: ~
+    absolute: true
+  gl_asset_reference:
+    type: string
+    json: GL_asset_reference
+    db: gl_asset_reference
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: false
+    custom-where: ~
+    absolute: false
+  install_date:
+    type: string
+    json: install_date
+    db: install_date
+    pk: false
+    req: false
+    none: "NULL"
+    diff: ~
+    custom-where: ~
+    absolute: false
+  installation_cost:
+    type: float
+    json: installation_cost
+    db: installation_cost
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: ~
+    custom-where: ~
+    absolute: false
+  invoice_no:
+    type: string
+    json: invoice_no
+    db: invoice_no
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: ~
+    custom-where: ~
+    absolute: false
+  is_virtual_asset:
+    type: bool
+    json: is_virtual_asset
+    db: is_virtual_asset
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: false
+    custom-where: ~
+    absolute: false
+  label_location:
+    type: string
+    json: label_location
+    db: label_location
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: false
+    custom-where: ~
+    absolute: false
+  latitude:
+    type: float
+    json: latitude
+    db: latitude
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: ~
+    custom-where: ~
+    absolute: false
+  location:
+    type: string
+    json: location
+    db: location
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: false
+    custom-where: ~
+    absolute: false
+  longitude:
+    type: float
+    json: longitude
+    db: longitude
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: ~
+    custom-where: ~
+    absolute: false
+  make:
+    type: string
+    json: make
+    db: make
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: ~
+    custom-where: ~
+    absolute: false
+  manufacturer:
+    type: string
+    json: manufacturer
+    db: manufacturer
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: false
+    custom-where: ~
+    absolute: false
+  model:
+    type: string
+    json: model
+    db: model
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: ~
+    custom-where: ~
+    absolute: false
+  owning_cost_center:
+    type: string
+    json: owning_cost_center
+    db: owning_cost_center
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: ~
+    custom-where: ~
+    absolute: false
+  purchase_cost:
+    type: float
+    json: purchase_cost
+    db: purchase_cost
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: ~
+    custom-where: ~
+    absolute: false
+  purchase_date:
+    type: string
+    json: purchase_date
+    db: purchase_date
+    pk: false
+    req: false
+    none: "NULL"
+    diff: ~
+    custom-where: ~
+    absolute: false
+  purchase_order_no:
+    type: string
+    json: purchase_order_no
+    db: purchase_order_no
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: ~
+    custom-where: ~
+    absolute: false
+  purchasing_cost_center:
+    type: string
+    json: purchasing_cost_center
+    db: purchasing_cost_center
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: ~
+    custom-where: ~
+    absolute: false
+  rfid_tag_id:
+    type: string
+    json: RFID_tag_ID
+    db: rfid_tag_id
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: false
+    custom-where: ~
+    absolute: false
+  room:
+    type: string
+    json: room
+    db: room
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: ~
+    custom-where: ~
+    absolute: false
+  serial:
+    type: string
+    json: serial
+    db: serial
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: ~
+    custom-where: ~
+    absolute: false
+  service_agent:
+    type: string
+    json: service_agent
+    db: service_agent
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: false
+    custom-where: ~
+    absolute: false
+  spare_parts:
+    type: string
+    json: spare_parts
+    db: spare_parts
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: false
+    custom-where: ~
+    absolute: false
+  spare_parts_bin_no:
+    type: string
+    json: spare_parts_bin_no
+    db: spare_parts_bin_no
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: false
+    custom-where: ~
+    absolute: false
+  spare_parts_held:
+    type: string
+    json: spare_parts_held
+    db: spare_parts_held
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: false
+    custom-where: ~
+    absolute: false
+  supplier_code:
+    type: string
+    json: supplier_code
+    db: supplier_code
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: ~
+    custom-where: ~
+    absolute: false
+  tech_manual_reference:
+    type: string
+    json: tech_manual_reference
+    db: tech_manual_reference
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: ~
+    custom-where: ~
+    absolute: false
+  user_defined_fields:
+    type: string
+    json: user_defined_fields
+    db: user_defined_fields
+    pk: false
+    req: false
+    none: "NULL"
+    diff: false
+    custom-where: ~
+    absolute: false
+  warranty_period:
+    type: int
+    json: warranty_period
+    db: warranty_period
+    pk: false
+    req: false
+    none: "12"
+    diff: ~
+    custom-where: ~
+    absolute: false
+  working_life:
+    type: int
+    json: working_life
+    db: working_life
+    pk: false
+    req: false
+    none: "NULL"
+    diff: ~
+    custom-where: ~
+    absolute: false
+  ownership_status:
+    type: string
+    json: ownership_status
+    db: ownership_status
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: ~
+    custom-where: ~
+    absolute: false
+  altered_date:
+    type: string
+    json: altered_date
+    db: altered_date
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: false
+    custom-where: ~
+    absolute: false

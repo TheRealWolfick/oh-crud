@@ -1,0 +1,34 @@
+---
+name: Domain
+table-name: domains
+end-point: domain
+allow-diff: false
+allow:
+  GET: true
+  PUT: true
+  POST: true
+  DELETE: true
+  PUT-GROUP: true
+  POST-GROUP: true
+  DELETE-GROUP: true
+fields:
+  domain_code:
+    type: string
+    json: domain_code
+    db: domain_code
+    pk: true
+    req: true
+    none: ~
+    diff: ~
+    custom-where: ~
+    absolute: false
+  domain_description:
+    type: string
+    json: domain_description
+    db: domain_description
+    pk: false
+    req: false
+    none: ""
+    diff: ~
+    custom-where: ~
+    absolute: false

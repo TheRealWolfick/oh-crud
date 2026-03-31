@@ -47,6 +47,35 @@ func DecodeDynamicFieldType(typ string) (reflect.Kind, error) {
 	return reflect.Invalid, fmt.Errorf("Unsupported data format %s", typ)
 }
 
+// Returns the YAML field name (= DB column name) of the field marked diff:true.
+// Falls back to the first PK field if no diff comparator is explicitly set.
+func GetDiffComparatorKey(cfg *models.DataModel) string {
+	for field_name, field_cfg := range cfg.Fields {
+		if field_cfg.Diff != nil && *field_cfg.Diff {
+			return field_name
+		}
+	}
+	// Fall back to first PK
+	for field_name, field_cfg := range cfg.Fields {
+		if field_cfg.PK != nil && *field_cfg.PK {
+			return field_name
+		}
+	}
+	return ""
+}
+
+// Returns the set of DB column names (YAML keys) that should be excluded from diff
+// comparison — those with diff:false. Fields with diff:nil are included.
+func BuildExcludeKeysFromConfig(cfg *models.DataModel) map[string]bool {
+	excluded := map[string]bool{}
+	for field_name, field_cfg := range cfg.Fields {
+		if field_cfg.Diff != nil && !*field_cfg.Diff {
+			excluded[field_name] = true
+		}
+	}
+	return excluded
+}
+
 func GetRequiredJSONFields_FromConfig(cfg *models.DataModel, enforce_pk bool) []string {
 
 	// Initiate slice of required fields

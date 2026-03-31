@@ -33,6 +33,106 @@ func SingleInsert_Dynamic(
 }
 
 
+func CreateDiff_Dynamic(
+	ctx context.Context,
+	db models.DBExecQuery,
+	cfg *models.DataModel,
+	supplied []map[string]any,
+	note string,
+) func(context.Context, ...any) (map[string]any, error) {
+	return func(ctx context.Context, a ...any) (map[string]any, error) {
+		return createDiff_Dynamic(ctx, db, cfg, supplied, note)
+	}
+}
+
+func createDiff_Dynamic(
+	ctx context.Context,
+	db models.DBExecQuery,
+	cfg *models.DataModel,
+	supplied []map[string]any,
+	note string,
+) (map[string]any, error) {
+	log, ok := middleware.GetLogger(ctx)
+	if !ok { log = GetBasicLogger() }
+
+	comparatorKey := GetDiffComparatorKey(cfg)
+	if comparatorKey == "" {
+		return nil, fmt.Errorf("no diff comparator field found in config for table %s", *cfg.Table_Name)
+	}
+	excludeKeys := BuildExcludeKeysFromConfig(cfg)
+
+	// Build select of all DB columns
+	cols := []string{}
+	for _, field_cfg := range cfg.Fields {
+		if field_cfg.DB != nil && *field_cfg.DB != "" && *field_cfg.DB != "-" {
+			cols = append(cols, *field_cfg.DB)
+		}
+	}
+	qb := NewQueryBuilder(log)
+	query := qb.BuildSelect(*cfg.Table_Name, cols)
+
+	rows, err := db.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("error reading rows in createDiff_Dynamic: %w", err)
+	}
+	stored, err := pgx.CollectRows(rows, pgx.RowToMap)
+	if err != nil {
+		return nil, fmt.Errorf("error collecting rows in createDiff_Dynamic: %w", err)
+	}
+
+	diff_struct := DiffMapSlices(supplied, stored, comparatorKey, excludeKeys)
+	if diff_struct == nil {
+		return map[string]any{
+			"table":        *cfg.Table_Name,
+			"rows_affected": 0,
+			"error":        "no differences found or invalid comparator",
+		}, fmt.Errorf("no valid diff created")
+	}
+
+	totalDiffs := len(diff_struct.Diffs) + len(diff_struct.MissingFromSupplied) + len(diff_struct.MissingFromStored)
+	if totalDiffs == 0 {
+		return map[string]any{
+			"action":       "diff",
+			"on_table":     *cfg.Table_Name,
+			"rows_affected": 0,
+			"message":      "no differences found between supplied and stored data",
+		}, nil
+	}
+
+	h := md5.New()
+	user, userOk := middleware.GetUser(ctx)
+	if !userOk { user = &models.User{} }
+	task, _ := middleware.GetTask(ctx)
+	if len(task.Id) != 32 {
+		task.Id, _ = Generate32CharString()
+	}
+
+	tempjson := DereferencedString(diff_struct)
+	h.Write([]byte(tempjson))
+	checksum := fmt.Sprintf("%x", h.Sum(nil))
+	tableName := *cfg.Table_Name
+
+	diff_struct.Checksum = &checksum
+	diff_struct.UserGenerated = &user.Username
+	diff_struct.TaskID = &task.Id
+	diff_struct.DiffType = &tableName
+	diff_struct.Note = &note
+
+	insertQb := NewQueryBuilder(log)
+	insertQuery := insertQb.BuildInsert("diffs", diff_struct)
+	cmdtag, err := db.Exec(ctx, insertQuery, insertQb.GetArgs()...)
+
+	ret_map := map[string]any{
+		"table":        *cfg.Table_Name,
+		"rows_affected": cmdtag.RowsAffected(),
+	}
+	if err != nil {
+		ret_map["error"] = err.Error()
+		return ret_map, err
+	}
+	return ret_map, nil
+}
+
 func CreateDiff[T any](
 	ctx context.Context,
 	db models.DBExecQuery,

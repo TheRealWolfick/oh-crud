@@ -433,6 +433,106 @@ func DiffStruct[T any](supplied T, stored T, comparatorField string) models.Item
 }
 
 
+// DiffMap compares two maps by all keys except those in excludeKeys.
+// Returns an empty Item_Diff if the comparator values don't match or there are no differences.
+func DiffMap(
+	supplied map[string]any,
+	stored map[string]any,
+	comparatorKey string,
+	excludeKeys map[string]bool,
+) models.Item_Diff[map[string]any] {
+	sv, ok1 := supplied[comparatorKey]
+	stv, ok2 := stored[comparatorKey]
+	if !ok1 || !ok2 {
+		return models.Item_Diff[map[string]any]{}
+	}
+	comp := fmt.Sprintf("%v", sv)
+	if comp != fmt.Sprintf("%v", stv) || comp == "" {
+		return models.Item_Diff[map[string]any]{}
+	}
+
+	suppliedDiff := map[string]any{comparatorKey: sv}
+	storedDiff := map[string]any{comparatorKey: stv}
+	hasDiffs := false
+
+	// Collect all keys from both maps
+	allKeys := map[string]struct{}{}
+	for k := range supplied { allKeys[k] = struct{}{} }
+	for k := range stored   { allKeys[k] = struct{}{} }
+
+	for k := range allKeys {
+		if k == comparatorKey || excludeKeys[k] { continue }
+		sVal := fmt.Sprintf("%v", supplied[k])
+		stVal := fmt.Sprintf("%v", stored[k])
+		if sVal != stVal {
+			suppliedDiff[k] = supplied[k]
+			storedDiff[k] = stored[k]
+			hasDiffs = true
+		}
+	}
+
+	if !hasDiffs {
+		return models.Item_Diff[map[string]any]{}
+	}
+
+	return models.Item_Diff[map[string]any]{
+		Comparator: &comp,
+		Supplied:   &suppliedDiff,
+		Stored:     &storedDiff,
+	}
+}
+
+// DiffMapSlices compares two slices of maps using comparatorKey to match rows.
+// excludeKeys lists fields that should not be compared per-field.
+func DiffMapSlices(
+	left []map[string]any,
+	right []map[string]any,
+	comparatorKey string,
+	excludeKeys map[string]bool,
+) *models.Diff[map[string]any] {
+	if len(left) < 1 || len(right) < 1 {
+		return nil
+	}
+
+	leftOnly := make([]map[string]any, 0)
+	rightRemaining := make([]map[string]any, len(right))
+	copy(rightRemaining, right)
+	diffs := make([]models.Item_Diff[map[string]any], 0)
+
+	for _, l := range left {
+		lval, ok := l[comparatorKey]
+		if !ok {
+			leftOnly = append(leftOnly, l)
+			continue
+		}
+		lStr := fmt.Sprintf("%v", lval)
+
+		found := false
+		for i, r := range rightRemaining {
+			rval, ok2 := r[comparatorKey]
+			if !ok2 { continue }
+			if fmt.Sprintf("%v", rval) == lStr {
+				found = true
+				d := DiffMap(l, r, comparatorKey, excludeKeys)
+				if d.Comparator != nil {
+					diffs = append(diffs, d)
+				}
+				rightRemaining = append(rightRemaining[:i], rightRemaining[i+1:]...)
+				break
+			}
+		}
+		if !found {
+			leftOnly = append(leftOnly, l)
+		}
+	}
+
+	return &models.Diff[map[string]any]{
+		MissingFromStored:   leftOnly,        // in supplied, not in stored
+		MissingFromSupplied: rightRemaining,  // in stored, not in supplied
+		Diffs:               diffs,
+	}
+}
+
 func DiffStructSlices[T any](left []T, right []T) *models.Diff[T] {
 	if len(left) < 1 || len(right) < 1 {
 		return nil
