@@ -11,7 +11,7 @@ allow:
   GET: true
   PUT: true
   POST: true
-  DELETE: false
+  DELETE: true
   PUT-GROUP: true
   POST-GROUP: true
   DELETE-GROUP: false

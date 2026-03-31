@@ -612,3 +612,20 @@ func (qb *QueryBuilder) BuildDelete(table string, model interface{}) string {
 func (qb *QueryBuilder) HasUpdates() bool {
 	return len(qb.values) > 0
 }
+
+
+// Build a parameterized DELETE query using the where clauses already set on the query builder.
+func (qb *QueryBuilder) BuildDelete_Dynamic(cfg *models.DataModel) string {
+	if qb.query != "" {
+		qb.logger.Warn("Called build delete after query had already been built!")
+		return qb.query
+	}
+
+	w := make([]string, 0)
+	for key, val := range qb.where {
+		w = append(w, fmt.Sprintf("%s = $%d", key, val))
+	}
+
+	qb.query = fmt.Sprintf("DELETE FROM %s WHERE %s;", *cfg.Table_Name, strings.Join(w, " AND "))
+	return qb.query
+}

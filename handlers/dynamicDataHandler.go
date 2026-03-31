@@ -19,10 +19,11 @@ func NewRegisterRoutes(cfg *models.DataModel, mux *http.ServeMux, auth func(http
 	qm.Logger.Debug("Dynamic end point generating", "data-model", *cfg.Name)
 	mux.Handle(fmt.Sprintf("GET /%s", *cfg.End_Point), auth(handleGet(cfg, qm)))
 	mux.Handle(fmt.Sprintf("PUT /%s", *cfg.End_Point), auth(handleUpdate(cfg, qm)))
-	//mux.Handle(fmt.Sprintf("PUT /%s/group", *dh.End_Point), auth(dh.HandleMultiUpdate()))
+	mux.Handle(fmt.Sprintf("PUT /%s/group", *cfg.End_Point), auth(handleDynamicMultiUpdate(cfg, qm)))
 	mux.Handle(fmt.Sprintf("POST /%s", *cfg.End_Point), auth(handleAddNew(cfg, qm)))
 	mux.Handle(fmt.Sprintf("POST /%s/group", *cfg.End_Point), auth(handleAddMulipleNew(cfg, qm)))
-	//mux.Handle(fmt.Sprintf("DELETE /%s", *dh.End_Point), auth(dh.HandleDelete()))
+	mux.Handle(fmt.Sprintf("DELETE /%s", *cfg.End_Point), auth(handleDelete(cfg, qm)))
+	mux.Handle(fmt.Sprintf("DELETE /%s/group", *cfg.End_Point), auth(handleDynamicMultiDelete(cfg, qm)))
 }
 
 func handleGet(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
@@ -31,7 +32,7 @@ func handleGet(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
 }
 
 func handleAddNew(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
-	if cfg.Allow.Get { return dynamicAddNewResource(qm, cfg) }
+	if cfg.Allow.Post { return dynamicAddNewResource(qm, cfg) }
 	return dynamicNotAllowed(*cfg.Allow)
 }
 
@@ -42,6 +43,21 @@ func handleAddMulipleNew(cfg *models.DataModel, qm *tools.QueueManager) http.Han
 
 func handleUpdate(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
 	if cfg.Allow.Put { return dynamicUpdateResource(qm, cfg) }
+	return dynamicNotAllowed(*cfg.Allow)
+}
+
+func handleDynamicMultiUpdate(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
+	if cfg.Allow.Put_Group { return dynamicMultiUpdateResource(qm, cfg) }
+	return dynamicNotAllowed(*cfg.Allow)
+}
+
+func handleDelete(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
+	if cfg.Allow.Delete { return dynamicDeleteResource(qm, cfg) }
+	return dynamicNotAllowed(*cfg.Allow)
+}
+
+func handleDynamicMultiDelete(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
+	if cfg.Allow.Delete_Group { return dynamicMultiDeleteResource(qm, cfg) }
 	return dynamicNotAllowed(*cfg.Allow)
 }
 
@@ -371,6 +387,125 @@ func dynamicMultiUpdateResource(
 	}
 }
 
+
+// Delete a single resource identified by its primary key in the request body
+func dynamicDeleteResource(
+	qm *tools.QueueManager,
+	cfg *models.DataModel,
+) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		task_type := "Delete Resource"
+		user_key := middleware.Contextkey("user")
+		req_ip := tools.GetIP(r)
+		req_id, err := tools.Generate32CharString()
+		req_username := r.Context().Value(user_key).(*models.User).Username
+		note := r.Header.Get("X-User-Note")
+		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "table", *cfg.Table_Name, "request_id", req_id)
+		ctx := middleware.SetLogger(r.Context(), log)
+
+		log.Info("REQUEST_RECEIVED")
+
+		response := map[string]any{"task_type": "DELETE"}
+		w.Header().Set("Content-Type", "application/json")
+
+		var raw map[string]any
+		err = json.NewDecoder(r.Body).Decode(&raw)
+		if err != nil {
+			log.Error("REQUEST_ERROR", "error", err)
+			http.Error(w, fmt.Sprintf("Error decoding body: %v", err), http.StatusBadRequest)
+			return
+		}
+
+		// Only enforce that the PK is present; other fields are ignored for delete
+		valid_resources, _ := tools.Validate_Map_AgainstConfig(cfg, raw, true, false)
+		if len(valid_resources) < 1 {
+			log.Error("REQUEST_ERROR", "error", "missing primary key")
+			http.Error(w, "Primary key missing or invalid", http.StatusBadRequest)
+			return
+		}
+
+		prim_keys := tools.DynamicGetDatabaseColumns(cfg, true, false)
+		if len(prim_keys) < 1 {
+			log.Error("Error reading the primary key from config")
+			http.Error(w, "Error reading primary key from config", http.StatusInternalServerError)
+			return
+		}
+
+		qb := tools.NewQueryBuilder(log)
+		if val, ok := valid_resources[0][prim_keys[0]]; ok {
+			qb.SetWhereAbsolute(prim_keys[0], val)
+		}
+
+		query := qb.BuildDelete_Dynamic(cfg)
+
+		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type))
+		task_id, err := qm.QueueExec(ctx_preserve, query, note, qb.GetArgs()...)
+		if err != nil {
+			log.Error("TASK_ERROR", "error", err)
+			http.Error(w, fmt.Sprintf("Error creating delete task\nError: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		response["task_id"] = task_id
+		response["successful_submission"] = true
+		json.NewEncoder(w).Encode(response)
+	}
+}
+
+// Delete multiple resources, each identified by its primary key
+func dynamicMultiDeleteResource(
+	qm *tools.QueueManager,
+	cfg *models.DataModel,
+) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		task_type := "Delete Multiple Resources"
+		user_key := middleware.Contextkey("user")
+		req_ip := tools.GetIP(r)
+		req_id, err := tools.Generate32CharString()
+		req_username := r.Context().Value(user_key).(*models.User).Username
+		note := r.Header.Get("X-User-Note")
+		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "table", *cfg.Table_Name, "request_id", req_id)
+		ctx := middleware.SetLogger(r.Context(), log)
+
+		log.Info("REQUEST_RECEIVED")
+
+		response := map[string]any{"task_type": "BULK_DELETE"}
+		w.Header().Set("Content-Type", "application/json")
+
+		var raw []map[string]any
+		err = json.NewDecoder(r.Body).Decode(&raw)
+		if err != nil {
+			log.Error("REQUEST_ERROR", "error", err)
+			http.Error(w, fmt.Sprintf("Error decoding body: %v", err), http.StatusBadRequest)
+			return
+		}
+
+		// Only enforce that each row has the PK; other fields are ignored for delete
+		valid_resources, invalid_resources := tools.Validate_SliceOfMaps_AgainstConfig(cfg, raw, true, false)
+		if len(valid_resources) < 1 {
+			log.Error("REQUEST_ERROR", "error", "no valid resources with primary key")
+			http.Error(w, "No valid resources with primary key supplied", http.StatusBadRequest)
+			return
+		}
+
+		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type))
+		task_id, err := qm.QueueFunction(ctx_preserve, tools.MultiDelete_Dynamic(ctx_preserve, qm.Db, cfg, valid_resources), note)
+		if err != nil {
+			log.Error("TASK_ERROR", "error", err)
+			http.Error(w, fmt.Sprintf("Error creating bulk delete task\nError: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		response["task_id"] = task_id
+		response["successful_submission"] = true
+		response["rows_received"] = len(raw)
+		response["rows_valid"] = len(valid_resources)
+		response["rows_invalid"] = len(invalid_resources)
+		response["invalid"] = invalid_resources
+
+		json.NewEncoder(w).Encode(response)
+	}
+}
 
 // Handle a disallowed endPoint
 func dynamicNotAllowed(

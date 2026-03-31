@@ -67,6 +67,17 @@ func MultiUpdate_Dynamic(
 	}
 }
 
+func MultiDelete_Dynamic(
+	ctx context.Context,
+	db models.DBExecutor,
+	cfg *models.DataModel,
+	supplied []map[string]any,
+) (func(context.Context, ...any) (map[string]any, error)) {
+	return func(ctx context.Context, a ...any) (map[string]any, error) {
+		return multiDelete_Dynamic(ctx, db, cfg, supplied)
+	}
+}
+
 
 func RecursiveBatchInsert(
 	ctx context.Context,
@@ -425,8 +436,59 @@ func multiUpdate_Dynamic(
 
 		// Execute
 		cmdtag, err := db.Exec(ctx, query, qb.GetArgs()...)
-		
+
 		// Add to report update
+		if err == nil && cmdtag.RowsAffected() > 0 {
+			report.SuccessCount = report.SuccessCount + int(cmdtag.RowsAffected())
+		} else {
+			report.Errors = append(report.Errors, models.MultiUpdateError{ID: idx, Error: err})
+		}
+	}
+
+	report_encoded, _ := json.Marshal(report)
+	report_to_return := map[string]any{}
+	err := json.Unmarshal(report_encoded, &report_to_return)
+	return report_to_return, err
+}
+
+func multiDelete_Dynamic(
+	ctx context.Context,
+	db models.DBExecutor,
+	cfg *models.DataModel,
+	supplied []map[string]any,
+) (map[string]any, error) {
+
+	report := models.MultiUpdateResult{
+		TotalUpdates: len(supplied),
+		SuccessCount: 0,
+		Errors:       []models.MultiUpdateError{},
+	}
+
+	log, ok := middleware.GetLogger(ctx)
+	if !ok {
+		log = GetBasicLogger()
+	}
+
+	prim_keys := GetRequiredJSONFields_FromConfig(cfg, true)
+	if len(prim_keys) < 1 {
+		log.Error("Multi Delete: Could not extract primary key from config")
+		return nil, fmt.Errorf("Multi Delete: Could not extract primary key from config")
+	}
+	prim_key := prim_keys[0]
+
+	for idx, row := range supplied {
+		qb := NewQueryBuilder(log.With("primary_key", row[prim_key]))
+
+		val, ok := row[prim_key]
+		if !ok {
+			report.Errors = append(report.Errors, models.MultiUpdateError{ID: idx, Error: fmt.Errorf("missing primary key %s", prim_key)})
+			continue
+		}
+		qb.SetWhereAbsolute(prim_key, val)
+
+		query := qb.BuildDelete_Dynamic(cfg)
+
+		cmdtag, err := db.Exec(ctx, query, qb.GetArgs()...)
 		if err == nil && cmdtag.RowsAffected() > 0 {
 			report.SuccessCount = report.SuccessCount + int(cmdtag.RowsAffected())
 		} else {
