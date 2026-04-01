@@ -18,10 +18,11 @@ fields:
     db: bfroom_id
     pk: true
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: true
   building:
     type: string
     json: building
@@ -32,6 +33,7 @@ fields:
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   floor:
     type: string
     json: floor
@@ -42,6 +44,7 @@ fields:
     diff: ~
     custom-where: ~
     absolute: true
+    skip-insert: false
   room:
     type: string
     json: room
@@ -52,13 +55,15 @@ fields:
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   room_description:
     type: string
     json: room_description
     db: room_description
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ""
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false

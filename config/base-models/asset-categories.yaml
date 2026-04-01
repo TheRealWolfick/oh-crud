@@ -22,6 +22,7 @@ fields:
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   asset_system:
     type: string
     json: asset_system
@@ -32,6 +33,7 @@ fields:
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   asset_subsystem:
     type: string
     json: asset_subsystem
@@ -42,6 +44,7 @@ fields:
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   is_active:
     type: bool
     json: is_active
@@ -52,6 +55,7 @@ fields:
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   description:
     type: string
     json: description
@@ -62,3 +66,4 @@ fields:
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false

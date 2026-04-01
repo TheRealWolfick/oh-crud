@@ -3,7 +3,6 @@ name: Condition Ratings
 table-name: condition_ratings
 end-point: condition/rating
 default-where: 
-  condition_rating: 2 
 overwrite-select:
 custon-with: ~
 allow-diff: false
@@ -26,6 +25,7 @@ fields:
     diff: false
     custom-where: ~
     absolute: false
+    skip-insert: false
   description:
     type: string
     json: description
@@ -36,6 +36,7 @@ fields:
     diff: true
     custom-where: ~
     absolute: false
+    skip-insert: false
   long_description:
     type: string
     json: long_description
@@ -46,3 +47,4 @@ fields:
     diff: true
     custom-where: ~
     absolute: false
+    skip-insert: false

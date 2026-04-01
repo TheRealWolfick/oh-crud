@@ -423,6 +423,9 @@ func (qb *QueryBuilder) BuildMultiInsert_Dynamic(cfg *models.DataModel, data []m
 		// Iterate through each column of the model
 		for field_name, field_cfg := range cfg.Fields {
 			
+			if field_cfg.Skip_Insert != nil && *field_cfg.Skip_Insert {
+				qb.logger.Debug("Field set to skip insert", "field", field_name)
+			}
 			// Check if this is a valid field
 			if field_cfg.DB == nil || *field_cfg.DB == "" || *field_cfg.DB == "-" { 
 				qb.logger.Debug("Skipping non database field", "field", field_name)

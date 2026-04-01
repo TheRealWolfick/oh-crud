@@ -22,6 +22,7 @@ fields:
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   domain_description:
     type: string
     json: domain_description
@@ -32,3 +33,4 @@ fields:
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false

@@ -15,23 +15,25 @@ fields:
   asset_id:
     type: int
     json: asset_id
-    db: "-"
+    db: "asset_id"
     pk: false
     req: false
     none: ~
     diff: false
     custom-where: ~
     absolute: false
+    skip-insert: true
   added_date:
     type: string
     json: added_date
     db: added_date
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: false
     custom-where: ~
     absolute: false
+    skip-insert: false
   additional_details:
     type: string
     json: additional_details
@@ -42,6 +44,7 @@ fields:
     diff: false
     custom-where: ~
     absolute: false
+    skip-insert: false
   asset_category:
     type: string
     json: asset_category
@@ -52,26 +55,29 @@ fields:
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   asset_no:
     type: string
     json: asset_no
     db: asset_no
     pk: true
     req: true
-    none: "DEFAULT"
+    none: ~
     diff: true
     custom-where: ~
     absolute: false
+    skip-insert: false
   asset_status:
     type: string
     json: asset_status
     db: asset_status
     pk: false
     req: false
-    none: "DEFAULT"
+    none: "A"
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   building:
     type: string
     json: building
@@ -82,36 +88,40 @@ fields:
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   condition_rating:
     type: int
     json: condition_rating
     db: condition_rating
     pk: false
     req: false
-    none: "NULL"
+    none: ~
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   condition_rating_date:
     type: string
     json: condition_rating_date
     db: condition_rating_date
     pk: false
     req: false
-    none: "NULL"
+    none: ~
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   contact_id:
     type: string
     json: contact_ID
     db: contact_id
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: false
     custom-where: ~
     absolute: false
+    skip-insert: false
   department:
     type: string
     json: department
@@ -122,6 +132,7 @@ fields:
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   description:
     type: string
     json: description
@@ -132,36 +143,40 @@ fields:
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   disposal_cost:
     type: float
     json: disposal_cost
     db: disposal_cost
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   disposal_date:
     type: string
     json: disposal_date
     db: disposal_date
     pk: false
     req: false
-    none: "NULL"
+    none: ~
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   disposal_reason:
     type: string
     json: disposal_reason
     db: disposal_reason
     pk: false
     req: false
-    none: "NULL"
+    none: ~
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   domain:
     type: string
     json: domain
@@ -172,16 +187,18 @@ fields:
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   finance_group_code:
     type: string
     json: finance_group_code
     db: finance_group_code
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: false
     custom-where: ~
     absolute: false
+    skip-insert: false
   floor:
     type: string
     json: floor
@@ -192,276 +209,304 @@ fields:
     diff: ~
     custom-where: ~
     absolute: true
+    skip-insert: false
   gl_asset_reference:
     type: string
     json: GL_asset_reference
     db: gl_asset_reference
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: false
     custom-where: ~
     absolute: false
+    skip-insert: false
   install_date:
     type: string
     json: install_date
     db: install_date
     pk: false
     req: false
-    none: "NULL"
+    none: ~
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   installation_cost:
     type: float
     json: installation_cost
     db: installation_cost
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   invoice_no:
     type: string
     json: invoice_no
     db: invoice_no
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   is_virtual_asset:
     type: bool
     json: is_virtual_asset
     db: is_virtual_asset
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: false
     custom-where: ~
     absolute: false
+    skip-insert: false
   label_location:
     type: string
     json: label_location
     db: label_location
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: false
     custom-where: ~
     absolute: false
+    skip-insert: false
   latitude:
     type: float
     json: latitude
     db: latitude
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   location:
     type: string
     json: location
     db: location
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: false
     custom-where: ~
     absolute: false
+    skip-insert: false
   longitude:
     type: float
     json: longitude
     db: longitude
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   make:
     type: string
     json: make
     db: make
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   manufacturer:
     type: string
     json: manufacturer
     db: manufacturer
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: false
     custom-where: ~
     absolute: false
+    skip-insert: false
   model:
     type: string
     json: model
     db: model
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   owning_cost_center:
     type: string
     json: owning_cost_center
     db: owning_cost_center
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   purchase_cost:
     type: float
     json: purchase_cost
     db: purchase_cost
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   purchase_date:
     type: string
     json: purchase_date
     db: purchase_date
     pk: false
     req: false
-    none: "NULL"
+    none: ~
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   purchase_order_no:
     type: string
     json: purchase_order_no
     db: purchase_order_no
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   purchasing_cost_center:
     type: string
     json: purchasing_cost_center
     db: purchasing_cost_center
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   rfid_tag_id:
     type: string
     json: RFID_tag_ID
     db: rfid_tag_id
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: false
     custom-where: ~
     absolute: false
+    skip-insert: false
   room:
     type: string
     json: room
     db: room
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   serial:
     type: string
     json: serial
     db: serial
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   service_agent:
     type: string
     json: service_agent
     db: service_agent
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: false
     custom-where: ~
     absolute: false
+    skip-insert: false
   spare_parts:
     type: string
     json: spare_parts
     db: spare_parts
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: false
     custom-where: ~
     absolute: false
+    skip-insert: false
   spare_parts_bin_no:
     type: string
     json: spare_parts_bin_no
     db: spare_parts_bin_no
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: false
     custom-where: ~
     absolute: false
+    skip-insert: false
   spare_parts_held:
     type: string
     json: spare_parts_held
     db: spare_parts_held
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: false
     custom-where: ~
     absolute: false
+    skip-insert: false
   supplier_code:
     type: string
     json: supplier_code
     db: supplier_code
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   tech_manual_reference:
     type: string
     json: tech_manual_reference
     db: tech_manual_reference
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   user_defined_fields:
     type: string
     json: user_defined_fields
     db: user_defined_fields
     pk: false
     req: false
-    none: "NULL"
+    none: ~
     diff: false
     custom-where: ~
     absolute: false
+    skip-insert: false
   warranty_period:
     type: int
     json: warranty_period
@@ -472,33 +517,37 @@ fields:
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   working_life:
     type: int
     json: working_life
     db: working_life
     pk: false
     req: false
-    none: "NULL"
+    none: ~
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   ownership_status:
     type: string
     json: ownership_status
     db: ownership_status
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   altered_date:
     type: string
     json: altered_date
     db: altered_date
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: false
     custom-where: ~
     absolute: false
+    skip-insert: false

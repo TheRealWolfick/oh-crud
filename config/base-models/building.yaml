@@ -18,10 +18,11 @@ fields:
     db: building_id
     pk: true
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   building:
     type: string
     json: building
@@ -32,6 +33,7 @@ fields:
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   db_domain:
     type: string
     json: db_domain
@@ -42,53 +44,59 @@ fields:
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   building_description:
     type: string
     json: building_description
     db: building_description
     pk: false
     req: false
-    none: "NULL"
+    none: ~
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   building_address:
     type: string
     json: building_address
     db: building_address
     pk: false
     req: false
-    none: "NULL"
+    none: ~
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   building_suburb:
     type: string
     json: building_suburb
     db: building_suburb
     pk: false
     req: false
-    none: "NULL"
+    none: ~
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   building_state:
     type: string
     json: building_state
     db: building_state
     pk: false
     req: false
-    none: "NULL"
+    none: ~
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   is_active:
     type: bool
     json: is_active
     db: is_active
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false

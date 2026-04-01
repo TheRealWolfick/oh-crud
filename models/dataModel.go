@@ -17,6 +17,7 @@ type DataModelField struct {
 	Diff          *bool    `yaml:"diff"`
 	Custom_Where  *string  `yaml:"custom-where"`
 	Absolute      *bool    `yaml:"absolute"`
+	Skip_Insert   *bool    `yaml:"skip-insert"`
 }
 
 // DataModelAllow controls which HTTP methods are enabled for a given endpoint.

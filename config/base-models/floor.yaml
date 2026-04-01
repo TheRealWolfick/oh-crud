@@ -18,10 +18,11 @@ fields:
     db: floor_id
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: ~
     custom-where: ~
     absolute: false
+    skip-insert: false
   floor:
     type: string
     json: floor
@@ -32,3 +33,4 @@ fields:
     diff: ~
     custom-where: ~
     absolute: true
+    skip-insert: false
