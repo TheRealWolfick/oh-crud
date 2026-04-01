@@ -28,7 +28,7 @@ fields:
     db: asset_system
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: ~
     custom-where: ~
     absolute: false
@@ -38,7 +38,7 @@ fields:
     db: asset_subsystem
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: ~
     custom-where: ~
     absolute: false
@@ -48,7 +48,7 @@ fields:
     db: is_active
     pk: false
     req: false
-    none: "DEFAULT"
+    none: true
     diff: ~
     custom-where: ~
     absolute: false
