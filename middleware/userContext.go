@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"log/slog"
 
 	"lotusforge.au/api-server/models"
 )
@@ -15,6 +16,7 @@ type TaskContext struct {
 
 const userContextKey Contextkey = "user"
 const taskContextKey Contextkey = "task"
+const loggerContextKey Contextkey = "logger"
 
 func SetUser(ctx context.Context, user *models.User) context.Context {
 	return context.WithValue(ctx, userContextKey, user)
@@ -44,4 +46,13 @@ func GetTask(ctx context.Context) (TaskContext, bool) {
 		return task, true
 	}
 	return task, false
+}
+
+func SetLogger(ctx context.Context, logger *slog.Logger) context.Context {
+	return context.WithValue(ctx, loggerContextKey, logger)
+} 
+
+func GetLogger(ctx context.Context) (*slog.Logger, bool) {
+	user, ok := ctx.Value(loggerContextKey).(*slog.Logger)
+	return user, ok
 }

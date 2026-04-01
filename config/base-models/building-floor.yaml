@@ -1,0 +1,54 @@
+---
+name: Building Floor
+table-name: building_floor_combo
+end-point: bfloor
+allow-diff: false
+allow:
+  GET: true
+  PUT: true
+  POST: true
+  DELETE: true
+  PUT-GROUP: true
+  POST-GROUP: true
+  DELETE-GROUP: true
+fields:
+  bfloor_id:
+    type: int
+    json: bfloor_id
+    db: bfloor_id
+    pk: true
+    req: false
+    none: "DEFAULT"
+    diff: ~
+    custom-where: ~
+    absolute: false
+  building:
+    type: string
+    json: building
+    db: building
+    pk: false
+    req: true
+    none: ~
+    diff: ~
+    custom-where: ~
+    absolute: false
+  floor:
+    type: string
+    json: floor
+    db: floor
+    pk: false
+    req: true
+    none: ~
+    diff: ~
+    custom-where: ~
+    absolute: true
+  is_active:
+    type: bool
+    json: is_active
+    db: is_active
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: ~
+    custom-where: ~
+    absolute: false

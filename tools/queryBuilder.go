@@ -2,11 +2,14 @@ package tools
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
+
+	"lotusforge.au/api-server/models"
 )
 
 type QueryBuilder struct {
@@ -16,6 +19,7 @@ type QueryBuilder struct {
 	pos    uint
 	wheremod map[string]string
 	query  string
+	logger *slog.Logger
 }
 
 
@@ -26,7 +30,7 @@ type SetCallback interface {
 
 // Create a new blank query builder without a primary key where value.
 // Primarily used when there won't be a WHERE clause in the SQL (INSERT)
-func NewQueryBuilder() *QueryBuilder {
+func NewQueryBuilder(logger *slog.Logger) *QueryBuilder {
 	return &QueryBuilder{
 		values: make(map[string]uint),
 		where: make(map[string]uint),
@@ -34,6 +38,7 @@ func NewQueryBuilder() *QueryBuilder {
 		pos: 1,
 		wheremod: make(map[string]string),
 		query: "",
+		logger: logger,
 	}
 }
 
@@ -62,10 +67,6 @@ func (qb *QueryBuilder) GetArgsAsString() string {
 // Save a field and value into the query builder. Intended to use with
 // updating fields (set only the relevant fields)
 func (qb *QueryBuilder) SetValue(field string, value any) {
-	if value == nil {
-		return
-	}
-
 	// Check to make sure it isn't already in the updates
 	_, exists := qb.values[field]
  
@@ -100,19 +101,21 @@ func (qb *QueryBuilder) innerSetWhere(field string, value any, mod string) {
 		return
 	}
 
+	qb.logger.Debug("Setting where value. Will increment qb.args if it does not exist in eqisting where args", "field", field, "value", value)
 	_, exists := qb.where[field]
 
 	if !exists {
+		qb.logger.Debug("Doesn't exist currently in qb map!")
 		qb.where[field] = qb.pos
 		qb.wheremod[field] = mod
 		qb.args = append(qb.args, value)
 		qb.pos++
 	} else {
-		qb.args[qb.values[field]-1] = value
+		qb.logger.Debug("Exists in qb map!")
+		qb.args[qb.values[field]] = value
 		qb.wheremod[field] = mod
 	}
 }
-
 
 
 // Wrapper for directly interfacing with the innerSetWhere function
@@ -121,15 +124,18 @@ func (qb *QueryBuilder) SetWhereAbsolute(field string, value any) {
 		return
 	}
 
+	qb.logger.Debug("Setting absolute where value. Will increment qb.args if it does not exist in eqisting where args", "field", field, "value", value)
 	_, exists := qb.where[field]
 
 	if !exists {
+		qb.logger.Debug("Doesn't exist currently in qb map!")
 		qb.where[field] = qb.pos
 		qb.wheremod[field] = "="
 		qb.args = append(qb.args, value)
 		qb.pos++
 	} else {
-		qb.args[qb.values[field]-1] = value
+		qb.logger.Debug("Exists in qb map!")
+		qb.args[qb.values[field]] = value
 		qb.wheremod[field] = "="
 	}
 }
@@ -334,6 +340,7 @@ func (qb *QueryBuilder) BuildMultiInsert(table string, models []any) string {
 
 	// Early return
 	if qb.query != "" {
+		qb.logger.Warn("BuildMultiInsert called with a query already existing")
 		return qb.query
 	}
 
@@ -393,6 +400,82 @@ func (qb *QueryBuilder) BuildMultiInsert(table string, models []any) string {
 	return qb.query
 }
 
+func (qb *QueryBuilder) BuildMultiInsert_Dynamic(cfg *models.DataModel, data []map[string]any) string {
+
+	// Early return if query has already been built
+	if qb.query != "" {
+		qb.logger.Warn("Called BuildMultiInsert_Dynamic after a query had already been built")
+		return qb.query
+	}
+	
+	// BUILD MULTI INSERT QUERY //
+
+	// Initiate columns
+	c := []string{}
+	v := []string{}
+
+	// Iterate through each row to be inserted
+	for pos, row := range data {
+
+		qb.logger.Debug("Inserting row", "pos", pos, "row", fmt.Sprint(row))
+		local_values := []string{}
+
+		// Iterate through each column of the model
+		for field_name, field_cfg := range cfg.Fields {
+			
+			// Check if this is a valid field
+			if field_cfg.DB == nil || *field_cfg.DB == "" || *field_cfg.DB == "-" { 
+				qb.logger.Debug("Skipping non database field", "field", field_name)
+				continue 
+			}
+
+			// If this is the first row, add the column names to columns list
+			if pos == 0 { c = append(c, *field_cfg.DB) }
+
+			// Check if this column exists in map
+			qb.logger.Debug(fmt.Sprintf("Checking if field %s exists in passed data", *field_cfg.JSON))
+			val, ok := row[*field_cfg.JSON]; 
+			if ok {
+				// Value was supplied
+				qb.logger.Debug(fmt.Sprintf("Column %s found!", *field_cfg.JSON), "value", val)
+				local_values = append(local_values, fmt.Sprintf("$%d", qb.pos))
+				qb.pos++
+				qb.args = append(qb.args, val)
+			} else {
+				qb.logger.Debug(fmt.Sprintf("Column %s not found! Using data in field 'None'", *field_cfg.JSON))
+				local_values = append(local_values, fmt.Sprintf("$%d", qb.pos))
+				qb.pos++
+				if field_cfg.None == nil {
+					// No default specified — send NULL
+					qb.logger.Debug("'None' field was nil")
+					qb.args = append(qb.args, nil)
+				} else if *field_cfg.None == "" {
+					// Explicit blank string default
+					qb.logger.Debug("'None' field was a blank string")
+					qb.args = append(qb.args, "")
+				} else {
+					// Parse the none value to the correct type
+					qb.logger.Debug("'None' field has a value. Attempting to parse", "value", *field_cfg.None)
+					parsed, err := models.CoerceType(*field_cfg.None, *field_cfg.Type)
+					if err != nil {
+						qb.logger.Debug("Parse failed!")
+						qb.args = append(qb.args, nil)
+					} else {
+						qb.logger.Debug("Parse success!")
+						qb.args = append(qb.args, parsed)
+					}
+				}
+			}
+		}
+		// Append all the value positions and default values to the values slice
+		v = append(v, fmt.Sprintf(("(%s)"), strings.Join(local_values, ", ")))
+	}
+	// Build the query, save it into the query builder, and return it for use.
+	qb.query = fmt.Sprintf("INSERT INTO %s (%s) VALUES %s;", *cfg.Table_Name, strings.Join(c, ", "), fmt.Sprintf("%s",strings.Join(v, ", ")))
+	fmt.Println(qb.query)
+	return qb.query
+}
+
 
 // Build the query to select from the database.
 // Must supply the table name to be selected from and what fields are required. The fields must be in a slice, even if it is only one value.
@@ -415,57 +498,53 @@ func (qb *QueryBuilder) BuildSelect(table string, select_fields []string) string
 } 
 
 
-func (qb *QueryBuilder) BuildUpdateNoURLParams(table string, model any) string {
-	if qb.query != "" {
-		return qb.query
-	}
-
-	// Construct the where and value clauses, where must be an exact match
-	w := make([]string, 0)
-	v := make([]string, 0)
-
-	for key, val := range qb.where {
-		w = append(w, fmt.Sprintf("%s = $%d", key, val))
-	}
-
-	for key, val := range qb.values {
-		v = append(v, fmt.Sprintf("%s = $%d", key, val))
-	}
-
-	qb.query = fmt.Sprintf("UPDATE %s SET %s WHERE %s;", table, strings.Join(v, ", "), strings.Join(w, " AND "))
-	return qb.query
-}
-
-// Build the query to update a single field in the database
+// BuildUpdate builds a parameterized UPDATE query for a struct-typed model.
+// WHERE clauses are extracted from URL query parameters matching the model's primary key fields.
+// Returns an empty string if no primary key values are found in the URL.
 func (qb *QueryBuilder) BuildUpdate(table string, r *http.Request, model interface{}) string {
 	if qb.query != "" {
 		return qb.query
 	}
 
-	// Read the url and get the database columns that where is allowed on
 	whereFields := r.URL.Query()
 	prim_keys := GetPrimaryKeys(model)
-
-	// Search for any of the main keys from the URL query for the where clause. Soft fail on no keys
 	whereExists := false
 
 	for _, key := range prim_keys {
-		fmt.Println(key)
 		f, _ := reflect.TypeOf(model).FieldByName(key)
 		whereval := whereFields.Get(f.Tag.Get("db"))
-
 		if whereval != "" {
 			qb.innerSetWhere(f.Tag.Get("db"), whereval, "=")
 			whereExists = true
 		}
-
-		// Add where values from struct
 	}
 
 	if !whereExists {
 		return ""
 	}
 
+	w := make([]string, 0)
+	v := make([]string, 0)
+
+	for key, val := range qb.where {
+		w = append(w, fmt.Sprintf("%s = $%d", key, val))
+	}
+	for key, val := range qb.values {
+		v = append(v, fmt.Sprintf("%s = $%d", key, val))
+	}
+
+	qb.query = fmt.Sprintf("UPDATE %s SET %s WHERE %s;", table, strings.Join(v, ", "), strings.Join(w, " AND "))
+	return qb.query
+}
+
+// BuildUpdate_Dynamic builds a parameterized UPDATE query from the where and value clauses
+// already set on the query builder.
+func (qb *QueryBuilder) BuildUpdate_Dynamic(cfg *models.DataModel) string {
+	if qb.query != "" {
+		qb.logger.Warn("Called build update after query had already been built!")
+		return qb.query
+	}
+
 	// Construct the where and value clauses, where must be an exact match
 	w := make([]string, 0)
 	v := make([]string, 0)
@@ -478,31 +557,27 @@ func (qb *QueryBuilder) BuildUpdate(table string, r *http.Request, model interfa
 		v = append(v, fmt.Sprintf("%s = $%d", key, val))
 	}
 
-	qb.query = fmt.Sprintf("UPDATE %s SET %s WHERE %s;", table, strings.Join(v, ", "), strings.Join(w, " AND "))
-	return qb.query
-}
-
-
-// Build the query to delete a resource from the database
-func (qb *QueryBuilder) BuildDelete(table string, model interface{}) string {
-	if qb.query != "" {
-		return qb.query
-	}
-
-	// Load the where values from the struct
-	SetWhereFromStruct(qb, model)
-
-	// Build the where values for the query
-	w := make([]string, 0)
-
-	for key, val := range qb.where {
-		w = append(w, fmt.Sprintf("%s %s $%d", key, qb.wheremod[key], val))
-	}
-
-	qb.query = fmt.Sprintf("DELETE FROM %s WHERE %s;", table, strings.Join(w, " AND "))
+	qb.query = fmt.Sprintf("UPDATE %s SET %s WHERE %s;", *cfg.Table_Name, strings.Join(v, ", "), strings.Join(w, " AND "))
 	return qb.query
 }
 
 func (qb *QueryBuilder) HasUpdates() bool {
 	return len(qb.values) > 0
+}
+
+
+// Build a parameterized DELETE query using the where clauses already set on the query builder.
+func (qb *QueryBuilder) BuildDelete_Dynamic(cfg *models.DataModel) string {
+	if qb.query != "" {
+		qb.logger.Warn("Called build delete after query had already been built!")
+		return qb.query
+	}
+
+	w := make([]string, 0)
+	for key, val := range qb.where {
+		w = append(w, fmt.Sprintf("%s = $%d", key, val))
+	}
+
+	qb.query = fmt.Sprintf("DELETE FROM %s WHERE %s;", *cfg.Table_Name, strings.Join(w, " AND "))
+	return qb.query
 }

@@ -1,0 +1,74 @@
+---
+name: Department
+table-name: departments
+end-point: department
+allow-diff: false
+allow:
+  GET: true
+  PUT: true
+  POST: true
+  DELETE: true
+  PUT-GROUP: true
+  POST-GROUP: true
+  DELETE-GROUP: true
+fields:
+  dept_id:
+    type: int
+    json: dept_id
+    db: dept_id
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: ~
+    custom-where: ~
+    absolute: false
+  dept_code:
+    type: string
+    json: dept_code
+    db: dept_code
+    pk: true
+    req: true
+    none: ~
+    diff: ~
+    custom-where: ~
+    absolute: false
+  description:
+    type: string
+    json: dept_description
+    db: description
+    pk: false
+    req: false
+    none: ""
+    diff: ~
+    custom-where: ~
+    absolute: false
+  building:
+    type: string
+    json: building
+    db: building
+    pk: false
+    req: false
+    none: "NULL"
+    diff: ~
+    custom-where: ~
+    absolute: false
+  floor:
+    type: string
+    json: floor
+    db: floor
+    pk: false
+    req: false
+    none: "NULL"
+    diff: ~
+    custom-where: ~
+    absolute: true
+  is_active:
+    type: bool
+    json: is_active
+    db: is_active
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: ~
+    custom-where: ~
+    absolute: false

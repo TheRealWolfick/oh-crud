@@ -1,0 +1,64 @@
+---
+name: Building Floor Room
+table-name: building_floor_room_combo
+end-point: room
+allow-diff: false
+allow:
+  GET: true
+  PUT: true
+  POST: true
+  DELETE: true
+  PUT-GROUP: true
+  POST-GROUP: true
+  DELETE-GROUP: true
+fields:
+  bfroom_id:
+    type: int
+    json: bfroom_id
+    db: bfroom_id
+    pk: true
+    req: false
+    none: "DEFAULT"
+    diff: ~
+    custom-where: ~
+    absolute: false
+  building:
+    type: string
+    json: building
+    db: building
+    pk: false
+    req: true
+    none: ~
+    diff: ~
+    custom-where: ~
+    absolute: false
+  floor:
+    type: string
+    json: floor
+    db: floor
+    pk: false
+    req: true
+    none: ~
+    diff: ~
+    custom-where: ~
+    absolute: true
+  room:
+    type: string
+    json: room
+    db: room
+    pk: false
+    req: true
+    none: ~
+    diff: ~
+    custom-where: ~
+    absolute: false
+  room_description:
+    type: string
+    json: room_description
+    db: room_description
+    pk: false
+    req: false
+    none: "DEFAULT"
+    diff: ~
+    custom-where: ~
+    absolute: false

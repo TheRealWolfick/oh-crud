@@ -1,0 +1,229 @@
+---
+name: Unresolved Assets
+table-name: "items, jsonb_array_elements(items.failed_items)"
+end-point: asset/unresolved
+custom-with: "WITH items AS (SELECT DISTINCT event_log->'task'->'response'->'failed_items' as failed_items FROM events)"
+allow-diff: false
+default-where:
+  "value->>'rectified'": "false"
+overwrite-select:
+  - "DISTINCT value->'item'->>'asset_id' AS asset_id"
+  - "(value->'item'->>'added_date')::timestamp AS added_date"
+  - "value->'item'->>'additional_details' AS additional_details"
+  - "value->'item'->>'asset_category' AS asset_category"
+  - "value->'item'->>'asset_no' AS asset_no"
+  - "value->'item'->>'asset_status' AS asset_status"
+  - "value->'item'->>'building' AS building"
+  - "value->'item'->>'condition_rating' AS condition_rating"
+  - "value->'item'->>'condition_rating_date' AS condition_rating_date"
+  - "value->'item'->>'contact_ID' AS contact_ID"
+  - "value->'item'->>'department' AS department"
+  - "value->'item'->>'description' AS description"
+  - "(value->'item'->>'disposal_cost')::numeric AS disposal_cost"
+  - "(value->'item'->>'disposal_date')::timestamp AS disposal_date"
+  - "value->'item'->>'disposal_reason' AS disposal_reason"
+  - "value->'item'->>'domain' AS domain"
+  - "value->'item'->>'finance_group_code' AS finance_group_code"
+  - "value->'item'->>'floor' AS floor"
+  - "value->'item'->>'GL_asset_reference' AS GL_asset_reference"
+  - "(value->'item'->>'install_date')::timestamp AS install_date"
+  - "(value->'item'->>'installation_cost')::numeric AS installation_cost"
+  - "value->'item'->>'invoice_no' AS invoice_no"
+  - "(value->'item'->>'is_virtual_asset')::boolean AS is_virtual_asset"
+  - "value->'item'->>'label_location' AS label_location"
+  - "value->'item'->>'latitude' AS latitude"
+  - "value->'item'->>'location' AS location"
+  - "value->'item'->>'longitude' AS longitude"
+  - "value->'item'->>'make' AS make"
+  - "value->'item'->>'manufacturer' AS manufacturer"
+  - "value->'item'->>'model' AS model"
+  - "value->'item'->>'owning_cost_center' AS owning_cost_center"
+  - "(value->'item'->>'purchase_cost')::numeric AS purchase_cost"
+  - "(value->'item'->>'purchase_date')::timestamp AS purchase_date"
+  - "value->'item'->>'purchase_order_no' AS purchase_order_no"
+  - "value->'item'->>'purchasing_cost_center' AS purchasing_cost_center"
+  - "value->'item'->>'RFID_tag_ID' AS RFID_tag_ID"
+  - "value->'item'->>'room' AS room"
+  - "value->'item'->>'serial' AS serial"
+  - "value->'item'->>'service_agent' AS service_agent"
+  - "value->'item'->>'spare_parts' AS spare_parts"
+  - "value->'item'->>'spare_parts_bin_no' AS spare_parts_bin_no"
+  - "value->'item'->>'spare_parts_held' AS spare_parts_held"
+  - "value->'item'->>'supplier_code' AS supplier_code"
+  - "value->'item'->>'tech_manual_reference' AS tech_manual_reference"
+  - "value->'item'->>'user_defined_fields' AS user_defined_fields"
+  - "(value->'item'->>'warranty_period')::numeric AS warranty_period"
+  - "(value->'item'->>'working_life')::numeric AS working_life"
+  - "value->'item'->>'ownership_status' AS ownership_status"
+  - "value->'item'->>'altered_date' AS altered_date"
+  - "value->'error'->>'Detail' AS error"
+  - "value->'error'->>'Message' AS error_message"
+allow:
+  GET: true
+  PUT: false
+  POST: false
+  DELETE: false
+  PUT-GROUP: false
+  POST-GROUP: false
+  DELETE-GROUP: false
+fields:
+  asset_id:
+    type: string
+    json: asset_id
+    db: asset_id
+    pk: false
+    req: false
+    none: ~
+    diff: false
+    custom-where: "value->'item'->>'asset_id'"
+    absolute: false
+  asset_no:
+    type: string
+    json: asset_no
+    db: asset_no
+    pk: false
+    req: false
+    none: ~
+    diff: false
+    custom-where: "value->'item'->>'asset_no'"
+    absolute: false
+  asset_category:
+    type: string
+    json: asset_category
+    db: asset_category
+    pk: false
+    req: false
+    none: ~
+    diff: false
+    custom-where: "value->'item'->>'asset_category'"
+    absolute: false
+  asset_status:
+    type: string
+    json: asset_status
+    db: asset_status
+    pk: false
+    req: false
+    none: ~
+    diff: false
+    custom-where: "value->'item'->>'asset_status'"
+    absolute: false
+  building:
+    type: string
+    json: building
+    db: building
+    pk: false
+    req: false
+    none: ~
+    diff: false
+    custom-where: "value->'item'->>'building'"
+    absolute: false
+  condition_rating:
+    type: string
+    json: condition_rating
+    db: condition_rating
+    pk: false
+    req: false
+    none: ~
+    diff: false
+    custom-where: "value->'item'->>'condition_rating'"
+    absolute: false
+  department:
+    type: string
+    json: department
+    db: department
+    pk: false
+    req: false
+    none: ~
+    diff: false
+    custom-where: "value->'item'->>'department'"
+    absolute: false
+  description:
+    type: string
+    json: description
+    db: description
+    pk: false
+    req: false
+    none: ~
+    diff: false
+    custom-where: "value->'item'->>'description'"
+    absolute: false
+  domain:
+    type: string
+    json: domain
+    db: domain
+    pk: false
+    req: false
+    none: ~
+    diff: false
+    custom-where: "value->'item'->>'domain'"
+    absolute: false
+  floor:
+    type: string
+    json: floor
+    db: floor
+    pk: false
+    req: false
+    none: ~
+    diff: false
+    custom-where: "value->'item'->>'floor'"
+    absolute: true
+  room:
+    type: string
+    json: room
+    db: room
+    pk: false
+    req: false
+    none: ~
+    diff: false
+    custom-where: "value->'item'->>'room'"
+    absolute: false
+  make:
+    type: string
+    json: make
+    db: make
+    pk: false
+    req: false
+    none: ~
+    diff: false
+    custom-where: "value->'item'->>'make'"
+    absolute: false
+  model:
+    type: string
+    json: model
+    db: model
+    pk: false
+    req: false
+    none: ~
+    diff: false
+    custom-where: "value->'item'->>'model'"
+    absolute: false
+  serial:
+    type: string
+    json: serial
+    db: serial
+    pk: false
+    req: false
+    none: ~
+    diff: false
+    custom-where: "value->'item'->>'serial'"
+    absolute: false
+  error:
+    type: string
+    json: error
+    db: error
+    pk: false
+    req: false
+    none: ~
+    diff: false
+    custom-where: "value->'error'->>'Detail'"
+    absolute: false
+  error_message:
+    type: string
+    json: error_message
+    db: error_message
+    pk: false
+    req: false
+    none: ~
+    diff: false
+    custom-where: "value->'error'->>'Message'"
+    absolute: false

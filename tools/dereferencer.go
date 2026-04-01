@@ -22,3 +22,16 @@ func Deref(v reflect.Value) reflect.Value {
 	}
 	return v
 }
+
+func DynamicValueDeref(v any) reflect.Value {
+	val := reflect.ValueOf(v)
+
+	for val.Kind() == reflect.Ptr {
+		if val.IsNil() {
+			// Return zero value of the type the pointer points to
+			return reflect.Zero(val.Type().Elem())
+		}
+		return val.Elem()
+	}
+	return val
+}
