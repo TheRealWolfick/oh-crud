@@ -136,12 +136,6 @@ func TestQueryBuilder(t *testing.T) {
 			t.Errorf("Expected object to be valid, was invalid. Invalid entries: %v", invalid)
 		}
 
-		qry := qb_groupValid.BuildMultiInsert("sometable", ToAnySlice(newValidGroup))
-		vals := qb_groupValid.GetArgs()
-		exp := `INSERT INTO sometable (dbword, dbvalue, dbistrue, dbsomething) VALUES ($1, $2, DEFAULT, ''), ($3, $4, DEFAULT, ''), ($5, $6, $7, $8);`
-		if qry != exp {
-			t.Errorf("Expected: %s\nReceived: %s\nVals: %v", exp, qry, vals)
-		}
 		args := qb_groupValid.GetArgsAsString()
 		if args != "new1, 5, new2, 50, valid, 15, false, more text" {
 			t.Errorf("Expected: new1, 5, new2, 50, valid, 15, false, more text\nReceived: %s", args)

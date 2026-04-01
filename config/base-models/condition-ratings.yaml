@@ -13,7 +13,7 @@ allow:
   DELETE: true
   PUT-GROUP: true
   POST-GROUP: true
-  DELETE-GROUP: false
+  DELETE-GROUP: true
 fields:
   condition_rating:
     type: int

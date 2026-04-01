@@ -191,7 +191,7 @@ func recursiveBatchInsertProcess_Dynamic(
 
 	log, ok := middleware.GetLogger(ctx); if !ok { log = GetBasicLogger() }
 	qb := NewQueryBuilder(log)
-	query := qb.BuildMultiInsert_Dynamic(cfg, items)
+	query := qb.BuildMultiInsert(cfg, items)
 
 	cmdTag, err := db.Exec(ctx, query, qb.GetArgs()...)
 

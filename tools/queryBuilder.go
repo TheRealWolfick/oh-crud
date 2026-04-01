@@ -333,74 +333,7 @@ func (qb *QueryBuilder) BuildInsert(table string, mod any) string {
 }
 
 
-// Build a query to insert multiple entries. The slice of models must have all the keys as pointers and cannot omit fields. Instead,
-// the json tag none:"<string>" should be used to specify a default value (DEFAULT and NULL accepted as strings).
-// Default values are not inserted as arguements, but inserted into the query directly.
-func (qb *QueryBuilder) BuildMultiInsert(table string, models []any) string {
-
-	// Early return
-	if qb.query != "" {
-		qb.logger.Warn("BuildMultiInsert called with a query already existing")
-		return qb.query
-	}
-
-	// Initiate columns and values
-	c := make([]string, 0)
-	v := make([]string, 0)
-
-	// Iterate through each model
-	for model_pos, model := range models {
-
-		local_values := make([]string, 0)
-		typ := reflect.TypeOf(model)
-		vals := reflect.ValueOf(model)
-
-		if typ.Kind() == reflect.Ptr {
-			typ = typ.Elem()
-		}
-
-		// Iterate through each field of the model
-		for i := 0; i < typ.NumField(); i++ {
-			database_column_name := typ.Field(i).Tag.Get("db")
-			if database_column_name == "" || database_column_name == "-" {
-				continue
-			}
-
-			if model_pos == 0 {
-				c = append(c, database_column_name)
-			}
-
-			field_val := vals.Field(i)
-			if field_val.Kind() == reflect.Ptr {
-				field_val = field_val.Elem()
-			}
-
-			// Check if it is a valid value (exists)
-			if field_val.IsValid() {
-				local_values = append(local_values, fmt.Sprintf("$%d", qb.pos))
-				qb.pos++
-				qb.args = append(qb.args, vals.Field(i).Interface())
-			} else {
-				// Read model's "none" default
-				empty_value, exists := typ.Field(i).Tag.Lookup("none")
-				if exists {
-					if empty_value == "" {
-						local_values = append(local_values, "''")
-					} else {
-						local_values = append(local_values, empty_value)
-					}
-				}
-			}
-		} 
-
-		v = append(v, fmt.Sprintf(("(%s)"), strings.Join(local_values, ", ")))
-	}
-
-	qb.query = fmt.Sprintf("INSERT INTO %s (%s) VALUES %s;", table, strings.Join(c, ", "), fmt.Sprintf("%s",strings.Join(v, ", ")))
-	return qb.query
-}
-
-func (qb *QueryBuilder) BuildMultiInsert_Dynamic(cfg *models.DataModel, data []map[string]any) string {
+func (qb *QueryBuilder) BuildMultiInsert(cfg *models.DataModel, data []map[string]any) string {
 
 	// Early return if query has already been built
 	if qb.query != "" {
@@ -413,6 +346,7 @@ func (qb *QueryBuilder) BuildMultiInsert_Dynamic(cfg *models.DataModel, data []m
 	// Initiate columns
 	c := []string{}
 	v := []string{}
+	insert_time := time.Now().UTC()
 
 	// Iterate through each row to be inserted
 	for pos, row := range data {
@@ -425,6 +359,7 @@ func (qb *QueryBuilder) BuildMultiInsert_Dynamic(cfg *models.DataModel, data []m
 			
 			if field_cfg.Skip_Insert != nil && *field_cfg.Skip_Insert {
 				qb.logger.Debug("Field set to skip insert", "field", field_name)
+				continue
 			}
 			// Check if this is a valid field
 			if field_cfg.DB == nil || *field_cfg.DB == "" || *field_cfg.DB == "-" { 
@@ -436,38 +371,33 @@ func (qb *QueryBuilder) BuildMultiInsert_Dynamic(cfg *models.DataModel, data []m
 			if pos == 0 { c = append(c, *field_cfg.DB) }
 
 			// Check if this column exists in map
-			qb.logger.Debug(fmt.Sprintf("Checking if field %s exists in passed data", *field_cfg.JSON))
 			val, ok := row[*field_cfg.JSON]; 
 			if ok {
 				// Value was supplied
-				qb.logger.Debug(fmt.Sprintf("Column %s found!", *field_cfg.JSON), "value", val)
 				local_values = append(local_values, fmt.Sprintf("$%d", qb.pos))
 				qb.pos++
 				qb.args = append(qb.args, val)
 			} else {
-				qb.logger.Debug(fmt.Sprintf("Column %s not found! Using data in field 'None'", *field_cfg.JSON))
-				local_values = append(local_values, fmt.Sprintf("$%d", qb.pos))
-				qb.pos++
 				if field_cfg.None == nil {
 					// No default specified — send NULL
-					qb.logger.Debug("'None' field was nil")
 					qb.args = append(qb.args, nil)
 				} else if *field_cfg.None == "" {
 					// Explicit blank string default
-					qb.logger.Debug("'None' field was a blank string")
 					qb.args = append(qb.args, "")
+				} else if *field_cfg.None == "now()" {
+					qb.args = append(qb.args, insert_time.Format(time.RFC3339))
 				} else {
 					// Parse the none value to the correct type
-					qb.logger.Debug("'None' field has a value. Attempting to parse", "value", *field_cfg.None)
 					parsed, err := models.CoerceType(*field_cfg.None, *field_cfg.Type)
 					if err != nil {
-						qb.logger.Debug("Parse failed!")
+						qb.logger.Debug("Parse of none type failed in insert!", "field_name", field_name, "field_type", *field_cfg.Type)
 						qb.args = append(qb.args, nil)
 					} else {
-						qb.logger.Debug("Parse success!")
 						qb.args = append(qb.args, parsed)
 					}
 				}
+				local_values = append(local_values, fmt.Sprintf("$%d", qb.pos))
+				qb.pos++
 			}
 		}
 		// Append all the value positions and default values to the values slice

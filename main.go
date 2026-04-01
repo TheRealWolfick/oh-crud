@@ -57,7 +57,7 @@ func main() {
 
 	// Register config-driven routes
 	for _, dm := range all_models {
-		handlers.NewRegisterRoutes(&dm, mux, authMiddleware, qm)
+		handlers.RegisterRoutes(&dm, mux, authMiddleware, qm)
 	}
 
 	// Launch the server

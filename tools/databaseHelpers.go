@@ -84,7 +84,6 @@ func DynamicGetDatabaseColumns(cfg *models.DataModel, pk_only bool, req_only boo
 		} else {
 			database_columns = append(database_columns, *field_cfg.DB)
 		}
-		database_columns = append(database_columns, *field_cfg.DB)
 	}
 	return database_columns
 }

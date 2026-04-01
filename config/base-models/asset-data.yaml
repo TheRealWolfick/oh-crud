@@ -29,7 +29,7 @@ fields:
     db: added_date
     pk: false
     req: false
-    none: ~
+    none: now()
     diff: false
     custom-where: ~
     absolute: false
@@ -204,7 +204,7 @@ fields:
     json: floor
     db: floor
     pk: false
-    req: true
+    req: false
     none: ~
     diff: ~
     custom-where: ~
@@ -260,7 +260,7 @@ fields:
     db: is_virtual_asset
     pk: false
     req: false
-    none: ~
+    none: false
     diff: false
     custom-where: ~
     absolute: false
@@ -535,7 +535,7 @@ fields:
     db: ownership_status
     pk: false
     req: false
-    none: ~
+    none: "O"
     diff: ~
     custom-where: ~
     absolute: false
@@ -546,7 +546,7 @@ fields:
     db: altered_date
     pk: false
     req: false
-    none: ~
+    none: now()
     diff: false
     custom-where: ~
     absolute: false

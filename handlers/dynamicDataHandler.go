@@ -14,15 +14,15 @@ import (
 )
 
 
-func NewRegisterRoutes(cfg *models.DataModel, mux *http.ServeMux, auth func(http.Handler) http.Handler, qm *tools.QueueManager) {
+func RegisterRoutes(cfg *models.DataModel, mux *http.ServeMux, auth func(http.Handler) http.Handler, qm *tools.QueueManager) {
 	qm.Logger.Debug("Dynamic end point generating", "data-model", *cfg.Name)
 	mux.Handle(fmt.Sprintf("GET /%s", *cfg.End_Point), auth(handleGet(cfg, qm)))
 	mux.Handle(fmt.Sprintf("PUT /%s", *cfg.End_Point), auth(handleUpdate(cfg, qm)))
-	mux.Handle(fmt.Sprintf("PUT /%s/group", *cfg.End_Point), auth(handleDynamicMultiUpdate(cfg, qm)))
+	mux.Handle(fmt.Sprintf("PUT /%s/group", *cfg.End_Point), auth(handleUpdate_Group(cfg, qm)))
 	mux.Handle(fmt.Sprintf("POST /%s", *cfg.End_Point), auth(handleAddNew(cfg, qm)))
-	mux.Handle(fmt.Sprintf("POST /%s/group", *cfg.End_Point), auth(handleAddMulipleNew(cfg, qm)))
+	mux.Handle(fmt.Sprintf("POST /%s/group", *cfg.End_Point), auth(handleAddNew_Group(cfg, qm)))
 	mux.Handle(fmt.Sprintf("DELETE /%s", *cfg.End_Point), auth(handleDelete(cfg, qm)))
-	mux.Handle(fmt.Sprintf("DELETE /%s/group", *cfg.End_Point), auth(handleDynamicMultiDelete(cfg, qm)))
+	mux.Handle(fmt.Sprintf("DELETE /%s/group", *cfg.End_Point), auth(handleDelete_Group(cfg, qm)))
 
 	if cfg.Allow_Diff != nil && *cfg.Allow_Diff {
 		mux.Handle(fmt.Sprintf("GET /%s/diff", *cfg.End_Point), auth(dynamicGetDiff(cfg, qm)))
@@ -32,42 +32,42 @@ func NewRegisterRoutes(cfg *models.DataModel, mux *http.ServeMux, auth func(http
 }
 
 func handleGet(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
-	if cfg.Allow.Get { return dynamicGetResource(qm, cfg) }
-	return dynamicNotAllowed(*cfg.Allow)
+	if cfg.Allow.Get { return getResource(qm, cfg) }
+	return notAllowed(*cfg.Allow)
 }
 
 func handleAddNew(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
-	if cfg.Allow.Post { return dynamicAddNewResource(qm, cfg) }
-	return dynamicNotAllowed(*cfg.Allow)
+	if cfg.Allow.Post { return addNewResource(qm, cfg) }
+	return notAllowed(*cfg.Allow)
 }
 
-func handleAddMulipleNew(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
-	if cfg.Allow.Post_Group { return dynamicAddMultipleNewResources(qm, cfg) }
-	return dynamicNotAllowed(*cfg.Allow)
+func handleAddNew_Group(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
+	if cfg.Allow.Post_Group { return addNewResources_Group(qm, cfg) }
+	return notAllowed(*cfg.Allow)
 }
 
 func handleUpdate(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
-	if cfg.Allow.Put { return dynamicUpdateResource(qm, cfg) }
-	return dynamicNotAllowed(*cfg.Allow)
+	if cfg.Allow.Put { return updateResource(qm, cfg) }
+	return notAllowed(*cfg.Allow)
 }
 
-func handleDynamicMultiUpdate(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
-	if cfg.Allow.Put_Group { return dynamicMultiUpdateResource(qm, cfg) }
-	return dynamicNotAllowed(*cfg.Allow)
+func handleUpdate_Group(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
+	if cfg.Allow.Put_Group { return updateResource_Group(qm, cfg) }
+	return notAllowed(*cfg.Allow)
 }
 
 func handleDelete(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
-	if cfg.Allow.Delete { return dynamicDeleteResource(qm, cfg) }
-	return dynamicNotAllowed(*cfg.Allow)
+	if cfg.Allow.Delete { return deleteResource(qm, cfg) }
+	return notAllowed(*cfg.Allow)
 }
 
-func handleDynamicMultiDelete(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
-	if cfg.Allow.Delete_Group { return dynamicMultiDeleteResource(qm, cfg) }
-	return dynamicNotAllowed(*cfg.Allow)
+func handleDelete_Group(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
+	if cfg.Allow.Delete_Group { return deleteResource_Group(qm, cfg) }
+	return notAllowed(*cfg.Allow)
 }
 
 
-func dynamicAddNewResource(
+func addNewResource(
 	qm *tools.QueueManager,
 	cfg *models.DataModel,
 ) http.HandlerFunc {
@@ -130,7 +130,7 @@ func dynamicAddNewResource(
 }
 
 // Add multiple resources via the default path
-func dynamicAddMultipleNewResources(
+func addNewResources_Group(
 	qm *tools.QueueManager,
 	cfg *models.DataModel,
 ) http.HandlerFunc {
@@ -189,7 +189,7 @@ func dynamicAddMultipleNewResources(
 }
 
 // Get resources via the standard api
-func dynamicGetResource(
+func getResource(
 	qm *tools.QueueManager,
 	cfg *models.DataModel,
 ) http.HandlerFunc {
@@ -263,7 +263,7 @@ func dynamicGetResource(
 }
 
 // Update resource via the standard api
-func dynamicUpdateResource(
+func updateResource(
 	qm *tools.QueueManager,
 	cfg *models.DataModel,
 ) http.HandlerFunc {
@@ -341,7 +341,7 @@ func dynamicUpdateResource(
 	}
 }
 
-func dynamicMultiUpdateResource(
+func updateResource_Group(
 	qm *tools.QueueManager,
 	cfg *models.DataModel,
 ) http.HandlerFunc {
@@ -577,7 +577,7 @@ func dynamicActionDiff(
 }
 
 // Delete a single resource identified by its primary key in the request body
-func dynamicDeleteResource(
+func deleteResource(
 	qm *tools.QueueManager,
 	cfg *models.DataModel,
 ) http.HandlerFunc {
@@ -598,6 +598,7 @@ func dynamicDeleteResource(
 
 		var raw map[string]any
 		err = json.NewDecoder(r.Body).Decode(&raw)
+		log.Debug("Decoded", "read data", fmt.Sprint(raw))
 		if err != nil {
 			log.Error("REQUEST_ERROR", "error", err)
 			http.Error(w, fmt.Sprintf("Error decoding body: %v", err), http.StatusBadRequest)
@@ -606,6 +607,7 @@ func dynamicDeleteResource(
 
 		// Only enforce that the PK is present; other fields are ignored for delete
 		valid_resources, _ := tools.Validate_Map_AgainstConfig(cfg, raw, true, false)
+		log.Debug("validated", "valid resources", fmt.Sprint(valid_resources))
 		if len(valid_resources) < 1 {
 			log.Error("REQUEST_ERROR", "error", "missing primary key")
 			http.Error(w, "Primary key missing or invalid", http.StatusBadRequest)
@@ -620,8 +622,15 @@ func dynamicDeleteResource(
 		}
 
 		qb := tools.NewQueryBuilder(log)
-		if val, ok := valid_resources[0][prim_keys[0]]; ok {
-			qb.SetWhereAbsolute(prim_keys[0], val)
+		for _, k := range prim_keys {
+			if _, ok := valid_resources[0][k]; !ok {
+				log.Error("Not all primary keys were supplied in data!", "missing key", k)
+				http.Error(w, "Not all primary keys were supplied in data!", http.StatusBadRequest)
+				return
+			} 
+		}
+		for _, k := range prim_keys {
+			qb.SetWhereAbsolute(k, valid_resources[0][k])
 		}
 
 		query := qb.BuildDelete_Dynamic(cfg)
@@ -641,7 +650,7 @@ func dynamicDeleteResource(
 }
 
 // Delete multiple resources, each identified by its primary key
-func dynamicMultiDeleteResource(
+func deleteResource_Group(
 	qm *tools.QueueManager,
 	cfg *models.DataModel,
 ) http.HandlerFunc {
@@ -696,7 +705,7 @@ func dynamicMultiDeleteResource(
 }
 
 // Handle a disallowed endPoint
-func dynamicNotAllowed(
+func notAllowed(
 	allowed models.DataModelAllow,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
