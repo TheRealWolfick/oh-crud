@@ -22,7 +22,7 @@ fields:
     diff: ~
     custom-where: ~
     absolute: false
-    skip-insert: false
+    skip-insert: true
   floor:
     type: string
     json: floor
