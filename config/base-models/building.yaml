@@ -16,7 +16,7 @@ fields:
     type: int
     json: building_id
     db: building_id
-    pk: true
+    pk: false
     req: false
     none: ~
     diff: ~
@@ -27,7 +27,7 @@ fields:
     type: string
     json: building
     db: building
-    pk: false
+    pk: true
     req: true
     none: ~
     diff: ~

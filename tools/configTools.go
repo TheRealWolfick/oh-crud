@@ -47,13 +47,12 @@ func DecodeDynamicFieldType(typ string) (reflect.Kind, error) {
 	return reflect.Invalid, fmt.Errorf("Unsupported data format %s", typ)
 }
 
-// Returns the YAML field name (= DB column name) of the field marked diff:true.
-// Falls back to the first PK field if no diff comparator is explicitly set.
+// Returns the YAML field name (= DB column name) of the diff comparator.
+// Reads from the top-level diff-comparator config key.
+// Falls back to the first PK field if diff-comparator is not set.
 func GetDiffComparatorKey(cfg *models.DataModel) string {
-	for field_name, field_cfg := range cfg.Fields {
-		if field_cfg.Diff != nil && *field_cfg.Diff {
-			return field_name
-		}
+	if cfg.Diff_Comparator != nil && *cfg.Diff_Comparator != "" {
+		return *cfg.Diff_Comparator
 	}
 	// Fall back to first PK
 	for field_name, field_cfg := range cfg.Fields {

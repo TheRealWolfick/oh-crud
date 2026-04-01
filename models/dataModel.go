@@ -41,6 +41,7 @@ type DataModel struct {
 	Default_Where     map[string]any             `yaml:"default-where"`
 	Overwrite_Select  []string                   `yaml:"overwrite-select"`
 	Allow_Diff        *bool                      `yaml:"allow-diff"`
+	Diff_Comparator   *string                    `yaml:"diff-comparator"`
 	Custom_With       *string                    `yaml:"custom-with"`
 	Fields            map[string]DataModelField  `yaml:"fields"`
 }

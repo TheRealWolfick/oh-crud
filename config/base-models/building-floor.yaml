@@ -18,7 +18,7 @@ fields:
     db: bfloor_id
     pk: true
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: ~
     custom-where: ~
     absolute: false
@@ -51,7 +51,7 @@ fields:
     db: is_active
     pk: false
     req: false
-    none: "DEFAULT"
+    none: true
     diff: ~
     custom-where: ~
     absolute: false
