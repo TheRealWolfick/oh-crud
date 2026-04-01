@@ -15,10 +15,10 @@ fields:
   asset_id:
     type: int
     json: asset_id
-    db: asset_id
+    db: "-"
     pk: false
     req: false
-    none: "DEFAULT"
+    none: ~
     diff: false
     custom-where: ~
     absolute: false
