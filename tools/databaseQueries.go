@@ -74,13 +74,16 @@ func createDiff_Dynamic(
 	}
 	coerced_stored := []map[string]any{}
 	for _, row := range stored {
-		coerced_row, err := models.DecodeAndCoerceFromDB(row, cfg)
+		coerced_row, err := models.DecodeAndCoerceFromDB(row, cfg, comparatorKey)
 		if err != nil { continue }
 		coerced_stored = append(coerced_stored, coerced_row)
 	}
 
 	diff_struct := DiffMapSlices(supplied, coerced_stored, comparatorKey, excludeKeys)
 	if diff_struct == nil {
+		log.Debug("Supplied[0:10]", "data", supplied[0:10])
+		log.Debug("Stored[0:10]", "data", stored[0:10])
+		log.Debug("Coerced[0:10]", "data", coerced_stored[0:10])
 		return map[string]any{
 			"table":        *cfg.Table_Name,
 			"rows_affected": 0,
