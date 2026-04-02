@@ -445,12 +445,23 @@ func DiffMap(
 		Stored:     &storedDiff,
 	}
 }
-
 func normalizeVal(v any, exists bool) string {
-	if !exists || v == nil {
-		return ""
-	}
-	return fmt.Sprintf("%v", v)
+    if !exists || v == nil {
+        return ""
+    }
+    switch val := v.(type) {
+    case time.Time:
+        return val.UTC().Format(time.RFC3339)
+    case float64:
+        // Avoids scientific notation and trailing zeros
+        return strconv.FormatFloat(val, 'f', -1, 64)
+    case float32:
+        return strconv.FormatFloat(float64(val), 'f', -1, 32)
+    case int, int32, int64, uint, uint32, uint64:
+        return fmt.Sprintf("%d", val)
+    default:
+        return fmt.Sprintf("%v", val)
+    }
 }
 
 // DiffMapSlices compares two slices of maps using comparatorKey to match rows.
