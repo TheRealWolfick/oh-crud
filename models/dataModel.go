@@ -3,6 +3,9 @@ package models
 import (
 	"fmt"
 	"strconv"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // DataModelField describes the schema for a single field within a DataModel.
@@ -117,6 +120,11 @@ func CoerceType(raw any, type_name string) (any, error) {
 		case string:
 			if v == "" { return nil, nil }
 			return strconv.Atoi(v)
+		case pgtype.Numeric:
+			if !v.Valid { return nil, nil }
+			f, err := v.Float64Value()
+			if err != nil || !f.Valid { return nil, nil }
+			return int(f.Float64), nil
 		}
 	case "float":
 		switch v := raw.(type) {
@@ -127,11 +135,24 @@ func CoerceType(raw any, type_name string) (any, error) {
 		case string:
 			if v == "" { return nil, nil }
 			return strconv.ParseFloat(v, 64)
+		case pgtype.Numeric:
+			if !v.Valid { return nil, nil }
+			f, err := v.Float64Value()
+			if err != nil || !f.Valid { return nil, nil }
+			return f.Float64, nil
 		}
 	case "string":
 		switch v := raw.(type) {
 		case string:
 			return v, nil
+		case pgtype.Text:
+			if !v.Valid { return nil, nil }
+			return v.String, nil
+		case pgtype.Timestamptz:
+			if !v.Valid { return nil, nil }
+			return v.Time.UTC().Format(time.RFC3339), nil
+		case time.Time:
+			return v.UTC().Format(time.RFC3339), nil
 		default:
 			return fmt.Sprintf("%v", v), nil
 		}
