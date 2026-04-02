@@ -422,7 +422,7 @@ func dynamicGetDiff(
 		}
 
 		query := qb.BuildSelect("diffs", diffCols)
-		rows, err := qm.Db.Query(r.Context(), query, qb.GetArgs()...)
+		rows, err := qm.Db.Query(r.Context(), fmt.Sprintf("%s LIMIT 1;", strings.TrimRight(query, "; ")), qb.GetArgs()...)
 		if err != nil {
 			log.Error("GET_ERROR", "error", err)
 			http.Error(w, fmt.Sprintf("Error querying diffs: %v", err), http.StatusInternalServerError)
