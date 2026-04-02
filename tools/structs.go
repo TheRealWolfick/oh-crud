@@ -424,8 +424,10 @@ func DiffMap(
 
 	for k := range allKeys {
 		if k == comparatorKey || excludeKeys[k] { continue }
-		sVal := fmt.Sprintf("%v", supplied[k])
-		stVal := fmt.Sprintf("%v", stored[k])
+		supplied_value, supplied_exists := supplied[k]
+		stored_value, stored_exists := stored[k]
+		sVal := fmt.Sprintf("%v", normalizeVal(supplied_value, supplied_exists))
+		stVal := fmt.Sprintf("%v", normalizeVal(stored_value, stored_exists))
 		if sVal != stVal {
 			suppliedDiff[k] = supplied[k]
 			storedDiff[k] = stored[k]
@@ -442,6 +444,13 @@ func DiffMap(
 		Supplied:   &suppliedDiff,
 		Stored:     &storedDiff,
 	}
+}
+
+func normalizeVal(v any, exists bool) string {
+	if !exists || v == nil {
+		return ""
+	}
+	return fmt.Sprintf("%v", v)
 }
 
 // DiffMapSlices compares two slices of maps using comparatorKey to match rows.
@@ -501,7 +510,7 @@ func DiffStructSlices[T any](left []T, right []T) *models.Diff[T] {
 	}
 
 	comparator_field := GetDiffFieldName(left[0])
-	
+
 	if comparator_field == "" {
 		return nil
 	}
@@ -521,7 +530,7 @@ func DiffStructSlices[T any](left []T, right []T) *models.Diff[T] {
 		comparator_prep = comparator_prep.FieldByName(comparator_field)
 		if comparator_prep.Kind() == reflect.Ptr {comparator_prep = comparator_prep.Elem()}
 		comparator := comparator_prep.Interface().(string)
-		
+
 		// Check if comparator is in right slice
 		right_index, found := BinarySearch(comparator, right, comparator_field)
 
