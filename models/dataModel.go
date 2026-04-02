@@ -77,6 +77,32 @@ func DecodeAndCoerce(raw map[string]any, cfg *DataModel, enforce_req bool, enfor
 	return row_data, nil
 }
 
+
+func DecodeAndCoerceFromDB(raw map[string]any, cfg *DataModel) (map[string]any, error) {
+    row_data := map[string]any{}
+
+    for field_name, field_cfg := range cfg.Fields {
+        if field_cfg.DB == nil || *field_cfg.DB == "" || *field_cfg.DB == "-" {
+            continue
+        }
+
+        // Look up by DB column name, not JSON name
+        val, exists := raw[*field_cfg.DB]
+        if !exists {
+            continue
+        }
+
+        coerced_val, err := CoerceType(val, *field_cfg.Type)
+        if err != nil {
+            return nil, err
+        }
+
+        // Key the output by field_name (DB column) to match stored map keys
+        row_data[field_name] = coerced_val
+    }
+    return row_data, nil
+}
+
 // CoerceType converts a raw value to the named Go type ("int", "float", "string", "bool").
 // Returns nil for nil inputs and an error if the conversion fails.
 func CoerceType(raw any, type_name string) (any, error) {

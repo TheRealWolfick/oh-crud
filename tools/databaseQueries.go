@@ -74,7 +74,7 @@ func createDiff_Dynamic(
 	}
 	coerced_stored := []map[string]any{}
 	for _, row := range stored {
-		coerced_row, err := models.DecodeAndCoerce(row, cfg, false, false)
+		coerced_row, err := models.DecodeAndCoerceFromDB(row, cfg)
 		if err != nil { continue }
 		coerced_stored = append(coerced_stored, coerced_row)
 	}
