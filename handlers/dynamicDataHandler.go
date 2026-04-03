@@ -434,6 +434,7 @@ func dynamicGetDiff(
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+
 		json.NewEncoder(w).Encode(result)
 	}
 }
@@ -514,10 +515,11 @@ func dynamicActionDiff(
 			http.Error(w, "Checksum was not provided", http.StatusBadRequest)
 			return
 		}
+		log.Debug("Cecksum decoded", "checksum", checksum)
 
 		// Read the diff row as a raw map so JSONB columns come back as []byte
 		rows, err := qm.Db.Query(r.Context(),
-		`SELECT * FROM diffs WHERE diff_type = $1 AND checksum = $2;`,
+		`SELECT * FROM diffs WHERE diff_type = $1 AND checksum = $2 LIMIT 1;`,
 		*cfg.Table_Name, checksum,
 	)
 	if err != nil {
@@ -534,11 +536,16 @@ func dynamicActionDiff(
 
 	// Helper to decode a JSONB column from []byte into a target
 	decodeJSONB := func(col string, target any) {
+		log.Debug("attenpting to identify type", "col", col)
 		switch v := row[col].(type) {
 		case []byte:
 			json.Unmarshal(v, target)
 		case string:
 			json.Unmarshal([]byte(v), target)
+		default:
+			b, err := json.Marshal(v)
+			if err != nil { return }
+			json.Unmarshal(b, target)
 		}
 	}
 
@@ -553,31 +560,30 @@ func dynamicActionDiff(
 	var batchCode string
 	batchRow := qm.Db.QueryRow(r.Context(),
 	`SELECT generate_batch_num($1, $2, $3)`,
-	req_username, *cfg.Table_Name, checksum,
-)
-if err := batchRow.Scan(&batchCode); err != nil {
-	log.Error("BATCH_CODE_ERROR", "error", err)
-	http.Error(w, "Error generating batch code", http.StatusInternalServerError)
-	return
-}
-
-// Build sync arrays from diffs
-syncStored := make([]map[string]any, 0)
-syncSupplied := make([]map[string]any, 0)
-for _, d := range diffs {
-	if d.Supplied != nil { syncStored = append(syncStored, *d.Supplied) }
-	if d.Stored != nil   { syncSupplied = append(syncSupplied, *d.Stored) }
-}
-
-response := map[string]any{
-	"batch_code":            batchCode,
-	"missing_from_supplied": missingFromSupplied,
-	"missing_from_stored":   missingFromStored,
-	"sync_stored":           syncStored,
-	"sync_supplied":         syncSupplied,
-}
-json.NewEncoder(w).Encode(response)
+	req_username, *cfg.Table_Name, checksum)
+	if err := batchRow.Scan(&batchCode); err != nil {
+		log.Error("BATCH_CODE_ERROR", "error", err)
+		http.Error(w, "Error generating batch code", http.StatusInternalServerError)
+		return
 	}
+
+	// Build sync arrays from diffs
+	syncStored := make([]map[string]any, 0)
+	syncSupplied := make([]map[string]any, 0)
+	for _, d := range diffs {
+		if d.Supplied != nil { syncStored = append(syncStored, *d.Supplied) }
+		if d.Stored != nil   { syncSupplied = append(syncSupplied, *d.Stored) }
+	}
+
+	response := map[string]any{
+		"batch_code":            "testing",
+		"missing_from_supplied": missingFromSupplied,
+		"missing_from_stored":   missingFromStored,
+		"sync_stored":           syncStored,
+		"sync_supplied":         syncSupplied,
+	}
+	json.NewEncoder(w).Encode(response)
+}
 }
 
 // Delete a single resource identified by its primary key in the request body
