@@ -1,5 +1,6 @@
 ---
 name: Floor
+version: 1.0.0
 table-name: floors
 end-point: floor
 allow-diff: false

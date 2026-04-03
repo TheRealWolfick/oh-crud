@@ -38,6 +38,7 @@ type DataModelAllow struct {
 // Each file in config/base-models/ and config/special-models/ is loaded into one of these.
 type DataModel struct {
 	Name              *string                    `yaml:"name"`
+	Version           *string                    `yaml:"version"`
 	Table_Name        *string                    `yaml:"table-name"`
   End_Point         *string                    `yaml:"end-point"`
 	Allow             *DataModelAllow            `yaml:"allow"`

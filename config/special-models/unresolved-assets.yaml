@@ -1,5 +1,6 @@
 ---
 name: Unresolved Assets
+version: 1.0.0
 table-name: "items, jsonb_array_elements(items.failed_items)"
 end-point: asset/unresolved
 custom-with: "WITH items AS (SELECT DISTINCT event_log->'task'->'response'->'failed_items' as failed_items FROM events)"

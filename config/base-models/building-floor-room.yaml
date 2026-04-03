@@ -1,5 +1,6 @@
 ---
 name: Building Floor Room
+version: 1.0.0
 table-name: building_floor_room_combo
 end-point: room
 allow-diff: false

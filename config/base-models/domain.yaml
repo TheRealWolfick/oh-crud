@@ -1,5 +1,6 @@
 ---
 name: Domain
+version: 1.0.0
 table-name: domains
 end-point: domain
 allow-diff: false

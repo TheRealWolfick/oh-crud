@@ -1,5 +1,6 @@
 ---
 name: Building Floor
+version: 1.0.0
 table-name: building_floor_combo
 end-point: bfloor
 allow-diff: false
