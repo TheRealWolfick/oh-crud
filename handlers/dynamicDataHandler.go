@@ -13,23 +13,23 @@ import (
 	"lotusforge.au/api-server/tools"
 )
 
-
-func RegisterRoutes(cfg *models.DataModel, mux *http.ServeMux, auth func(http.Handler) http.Handler, qm *tools.QueueManager) {
+func RegisterRoutes(cfg *models.DataModel, handlerRegistry *models.HandlerRegistry, auth func(http.Handler) http.Handler, qm *tools.QueueManager) {
 	qm.Logger.Debug("Dynamic end point generating", "data-model", *cfg.Name)
-	mux.Handle(fmt.Sprintf("GET /%s", *cfg.End_Point), auth(handleGet(cfg, qm)))
-	mux.Handle(fmt.Sprintf("PUT /%s", *cfg.End_Point), auth(handleUpdate(cfg, qm)))
-	mux.Handle(fmt.Sprintf("PUT /%s/group", *cfg.End_Point), auth(handleUpdate_Group(cfg, qm)))
-	mux.Handle(fmt.Sprintf("POST /%s", *cfg.End_Point), auth(handleAddNew(cfg, qm)))
-	mux.Handle(fmt.Sprintf("POST /%s/group", *cfg.End_Point), auth(handleAddNew_Group(cfg, qm)))
-	mux.Handle(fmt.Sprintf("DELETE /%s", *cfg.End_Point), auth(handleDelete(cfg, qm)))
-	mux.Handle(fmt.Sprintf("DELETE /%s/group", *cfg.End_Point), auth(handleDelete_Group(cfg, qm)))
+  handlerRegistry.Register(fmt.Sprintf("GET /%s", *cfg.End_Point), auth(handleGet(cfg, qm)), qm.Logger)
+	handlerRegistry.Register(fmt.Sprintf("PUT /%s", *cfg.End_Point), auth(handleUpdate(cfg, qm)), qm.Logger)
+	handlerRegistry.Register(fmt.Sprintf("PUT /%s/group", *cfg.End_Point), auth(handleUpdate_Group(cfg, qm)), qm.Logger)
+	handlerRegistry.Register(fmt.Sprintf("POST /%s", *cfg.End_Point), auth(handleAddNew(cfg, qm)), qm.Logger)
+	handlerRegistry.Register(fmt.Sprintf("POST /%s/group", *cfg.End_Point), auth(handleAddNew_Group(cfg, qm)), qm.Logger)
+	handlerRegistry.Register(fmt.Sprintf("DELETE /%s", *cfg.End_Point), auth(handleDelete(cfg, qm)), qm.Logger)
+	handlerRegistry.Register(fmt.Sprintf("DELETE /%s/group", *cfg.End_Point), auth(handleDelete_Group(cfg, qm)), qm.Logger)
 
 	if cfg.Allow_Diff != nil && *cfg.Allow_Diff {
-		mux.Handle(fmt.Sprintf("GET /%s/diff", *cfg.End_Point), auth(dynamicGetDiff(cfg, qm)))
-		mux.Handle(fmt.Sprintf("POST /%s/diff", *cfg.End_Point), auth(dynamicCreateDiff(cfg, qm)))
-		mux.Handle(fmt.Sprintf("PUT /%s/diff", *cfg.End_Point), auth(dynamicActionDiff(cfg, qm)))
+		handlerRegistry.Register(fmt.Sprintf("GET /%s/diff", *cfg.End_Point), auth(dynamicGetDiff(cfg, qm)), qm.Logger)
+		handlerRegistry.Register(fmt.Sprintf("POST /%s/diff", *cfg.End_Point), auth(dynamicCreateDiff(cfg, qm)), qm.Logger)
+		handlerRegistry.Register(fmt.Sprintf("PUT /%s/diff", *cfg.End_Point), auth(dynamicActionDiff(cfg, qm)), qm.Logger)
 	}
 }
+
 
 func handleGet(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
 	if cfg.Allow.Get { return getResource(qm, cfg) }

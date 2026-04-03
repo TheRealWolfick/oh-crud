@@ -1,9 +1,10 @@
 ---
 name: Condition Ratings
-version: 1.0.0
+version: 1.0.2
 table-name: condition_ratings
 end-point: condition/rating
-default-where: 
+default-where:
+  condition_rating: 3
 overwrite-select:
 custon-with: ~
 allow-diff: false

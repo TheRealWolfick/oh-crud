@@ -11,6 +11,7 @@ import (
 	"lotusforge.au/api-server/handlers"
 	"lotusforge.au/api-server/middleware"
 	"lotusforge.au/api-server/models"
+	"lotusforge.au/api-server/monitors"
 	"lotusforge.au/api-server/tools"
 )
 
@@ -56,9 +57,13 @@ func main() {
 	mux.Handle("PUT /user", authMiddleware(http.HandlerFunc(userHandler.UpdateUserInfo)))
 
 	// Register config-driven routes
+	handlerRegister := models.NewHandlerRegistry(mux)
 	for _, dm := range all_models {
-		handlers.RegisterRoutes(&dm, mux, authMiddleware, qm)
+		handlers.RegisterRoutes(&dm, handlerRegister, authMiddleware, qm)
 	}
+	
+	// Load the file watcher
+	go monitors.ModelsMonitor(handlerRegister, authMiddleware, qm)
 
 	// Launch the server
 	http.ListenAndServe(":8080", mux)
@@ -95,3 +100,6 @@ func loadModelsFromDir(dir string, logger interface{ Warn(string, ...any); Error
 
 	return result
 }
+
+
+

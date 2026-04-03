@@ -27,6 +27,8 @@ func LoadModel_YAML(path string) (*models.DataModel, error) {
 		if err != nil {
 			return nil, err
 		}
+		
+		// Need to do checks on if this is a valid config file
 
 		return model, nil
 	}
@@ -96,3 +98,5 @@ func GetRequiredJSONFields_FromConfig(cfg *models.DataModel, enforce_pk bool) []
 
 	return req_fields
 }
+
+
