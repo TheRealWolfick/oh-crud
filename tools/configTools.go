@@ -99,4 +99,23 @@ func GetRequiredJSONFields_FromConfig(cfg *models.DataModel, enforce_pk bool) []
 	return req_fields
 }
 
+func CheckConfigIsValid(cfg models.DataModel) (bool, []models.ConfigError) {
+	errors := []models.ConfigError{}
+
+	if cfg.Name == nil || *cfg.Name == "" { errors = append(errors, models.ConfigError{Field: "Name", Message: "Missing 'name'"})} 
+	if cfg.Version == nil { errors = append(errors, models.ConfigError{Field: "Version", Message: "Missing 'version'"})} 
+	if cfg.Table_Name == nil { errors = append(errors, models.ConfigError{Field: "Table Name", Message: "Missing 'table-name'"})} 
+	if cfg.End_Point == nil { errors = append(errors, models.ConfigError{Field: "End Point", Message: "Missing 'end-point'"})} 
+	if cfg.Allow == nil { errors = append(errors, models.ConfigError{Field: "Allow", Message: "Missing 'allow' end points parameters"})} 
+	if cfg.Fields == nil { errors = append(errors, models.ConfigError{Field: "Fields", Message: "Missing 'fields'"})} 
+	
+	// Diff validation
+	if cfg.Allow_Diff != nil && *cfg.Allow_Diff == true {
+		if cfg.Diff_Comparator == nil || *cfg.Diff_Comparator == "" {errors = append(errors, models.ConfigError{Field: "Diff Comparator", Message: "Diff allowed without a comparator"})}
+	}
+
+	// Return any errors if they exist
+	if len(errors) > 0 { return false, errors}
+	return true, nil
+}
 

@@ -17,7 +17,7 @@ fields:
   asset_id:
     type: int
     json: asset_id
-    db: "asset_id"
+    db: asset_id
     pk: false
     req: false
     none: ~

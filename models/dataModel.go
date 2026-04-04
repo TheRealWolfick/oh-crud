@@ -9,6 +9,12 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+
+type ConfigError struct {
+	Field    string
+	Message  string
+}
+
 // DataModelField describes the schema for a single field within a DataModel.
 // Values are populated from the corresponding YAML config file.
 type DataModelField struct {
@@ -204,5 +210,5 @@ func CheckVersionIncrease(old string, now string) (bool, error) {
 	if new_major > old_major { return true, nil }
 	if new_major == old_major && new_minor > old_minor { return true, nil }
 	if new_major == old_major && new_minor == old_minor && new_incremental > old_incremental { return true, nil }
-	return false, fmt.Errorf("No updates to version number detected.")
+	return false, fmt.Errorf("New version number is not greater than the current version number.")
 }

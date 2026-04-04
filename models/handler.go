@@ -24,22 +24,24 @@ func NewHandlerRegistry(mux *http.ServeMux) *HandlerRegistry {
 	}
 }
 
-func (s *HandlerRegistry) Register(route string, handler http.Handler, version string) {
+func (s *HandlerRegistry) Register(route string, handler http.Handler, version string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	cur, exists := s.Handlers[route]; if exists {
-		updated, _ := CheckVersionIncrease(cur.version, version) 
+		updated, err := CheckVersionIncrease(cur.version, version) 
 		if updated {
 			cur.Swap(handler) 
 			cur.version = version
 		}
-		return
+		if err != nil { return err }
+		return nil
 	}
 
 	sh := &SwappableHandler{current: handler, version: version}
 	s.Handlers[route] = sh
 	s.mux.Handle(route, sh)
+	return nil
 }
 
 func (h *SwappableHandler) Swap(handler http.Handler) {

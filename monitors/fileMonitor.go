@@ -1,6 +1,7 @@
 package monitors
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/fsnotify/fsnotify"
@@ -29,14 +30,21 @@ func ModelsMonitor(handlerRegistry *models.HandlerRegistry, auth func(http.Handl
 				if !ok {
 					return
 				}
-				qm.Logger.Debug("event registered", "event", event)
 				if event.Has(fsnotify.Write) {
-					qm.Logger.Debug("Update detected, proceed to register route")
 					updated_config, err := tools.LoadModel_YAML(event.Name)
 					if err != nil {
 						qm.Logger.Error("Updated YAML failed to load. Skipping updating routes", "error", err)
 					} else {
-						handlers.RegisterRoutes(updated_config, handlerRegistry, auth, qm)
+						qm.Logger.Debug("Update detected to config file", "config", *updated_config.Name)
+						is_valid, errors := tools.CheckConfigIsValid(*updated_config)
+						if is_valid {
+							handlers.RegisterRoutes(updated_config, handlerRegistry, auth, qm)
+						} else {
+							qm.Logger.Error("Updated YAML was not valid. Errors:")
+							for pos, err := range errors {
+								qm.Logger.Error(fmt.Sprintf("Error #%v", pos), "Field", err.Field, "Error", err.Message)
+							}
+						}
 					}
 				}
 			case err, ok := <- watcher.Errors:

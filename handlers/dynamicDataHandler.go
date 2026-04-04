@@ -14,8 +14,16 @@ import (
 )
 
 func RegisterRoutes(cfg *models.DataModel, handlerRegistry *models.HandlerRegistry, auth func(http.Handler) http.Handler, qm *tools.QueueManager) {
+	var err error
 	qm.Logger.Debug("Dynamic end point generating", "data-model", *cfg.Name)
-  handlerRegistry.Register(fmt.Sprintf("GET /%s", *cfg.End_Point), auth(handleGet(cfg, qm)), *cfg.Version)
+
+	// Perform error check on first handler and soft cancel on error
+  err = handlerRegistry.Register(fmt.Sprintf("GET /%s", *cfg.End_Point), auth(handleGet(cfg, qm)), *cfg.Version)
+	if err != nil {
+		qm.Logger.Error("Failed to load model", "error", err)
+		return
+	}
+
 	handlerRegistry.Register(fmt.Sprintf("PUT /%s", *cfg.End_Point), auth(handleUpdate(cfg, qm)), *cfg.Version)
 	handlerRegistry.Register(fmt.Sprintf("PUT /%s/group", *cfg.End_Point), auth(handleUpdate_Group(cfg, qm)), *cfg.Version)
 	handlerRegistry.Register(fmt.Sprintf("POST /%s", *cfg.End_Point), auth(handleAddNew(cfg, qm)), *cfg.Version)

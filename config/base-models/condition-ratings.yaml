@@ -1,6 +1,6 @@
 ---
 name: Condition Ratings
-version: 1.0.0
+version: 1.0.3
 table-name: condition_ratings
 end-point: condition/rating
 default-where: ~
@@ -8,7 +8,7 @@ overwrite-select: ~
 custon-with: ~
 allow-diff: false
 allow:
-  GET: true
+  GET: false
   PUT: true
   POST: true
   DELETE: true
