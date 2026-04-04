@@ -1,7 +1,6 @@
 package models
 
 import (
-	"log/slog"
 	"net/http"
 	"sync"
 )
@@ -9,6 +8,7 @@ import (
 type SwappableHandler struct {
 	current http.Handler
 	mu sync.RWMutex
+	version string
 }
 
 type HandlerRegistry struct {
@@ -24,16 +24,20 @@ func NewHandlerRegistry(mux *http.ServeMux) *HandlerRegistry {
 	}
 }
 
-func (s *HandlerRegistry) Register(route string, handler http.Handler, logger *slog.Logger) {
+func (s *HandlerRegistry) Register(route string, handler http.Handler, version string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	cur, exists := s.Handlers[route]; if exists {
-		cur.Swap(handler) 
+		updated, _ := CheckVersionIncrease(cur.version, version) 
+		if updated {
+			cur.Swap(handler) 
+			cur.version = version
+		}
 		return
 	}
 
-	sh := &SwappableHandler{current: handler}
+	sh := &SwappableHandler{current: handler, version: version}
 	s.Handlers[route] = sh
 	s.mux.Handle(route, sh)
 }

@@ -40,6 +40,7 @@ type DataModelAllow struct {
 type DataModel struct {
 	Name              *string                    `yaml:"name"`
 	Version           *string                    `yaml:"version"`
+	Version_Memory    *string                    `yaml:"version-memory"`
 	Table_Name        *string                    `yaml:"table-name"`
   End_Point         *string                    `yaml:"end-point"`
 	Allow             *DataModelAllow            `yaml:"allow"`
@@ -184,25 +185,25 @@ func CoerceType(raw any, type_name string) (any, error) {
 func CheckVersionIncrease(old string, now string) (bool, error) {
 	// Existing version is assumed to have passed previously and is currently valid
 	left := strings.Split(old, ".")
-	left_major, _ := strconv.Atoi(left[0])
-	left_minor, _ := strconv.Atoi(left[1])
-	left_incremental, _ := strconv.Atoi(left[2])
+	old_major, _ := strconv.Atoi(left[0])
+	old_minor, _ := strconv.Atoi(left[1])
+	old_incremental, _ := strconv.Atoi(left[2])
 
 	// Read and convert the new version
 	right := strings.Split(now, ".")
 	if len(right) != 3 {
 		return false, fmt.Errorf("Invalid new version number")
 	}
-	right_major, err1 := strconv.Atoi(right[0])
-	right_minor, err2 := strconv.Atoi(right[1])
-	right_incremental, err3 := strconv.Atoi(right[2])
+	new_major, err1 := strconv.Atoi(right[0])
+	new_minor, err2 := strconv.Atoi(right[1])
+	new_incremental, err3 := strconv.Atoi(right[2])
 	if err1 != nil || err2 != nil || err3 != nil {
 		return false, fmt.Errorf("Invalid new version number")
 	}
 
 	// Incrementally check for a version increase.
-	if right_major > left_major { return true, nil }
-	if right_major == left_major && right_minor > left_minor { return true, nil }
-	if right_major == left_major && right_minor > left_minor && right_incremental > left_incremental { return true, nil }
+	if new_major > old_major { return true, nil }
+	if new_major == old_major && new_minor > old_minor { return true, nil }
+	if new_major == old_major && new_minor == old_minor && new_incremental > old_incremental { return true, nil }
 	return false, fmt.Errorf("No updates to version number detected.")
 }

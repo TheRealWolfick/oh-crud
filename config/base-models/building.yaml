@@ -1,6 +1,7 @@
 ---
 name: Building
 version: 1.0.0
+version-memory: ~
 table-name: buildings
 end-point: building
 allow-diff: false

@@ -1,6 +1,7 @@
 ---
 name: Building Floor
 version: 1.0.0
+version-memory: ~
 table-name: building_floor_combo
 end-point: bfloor
 allow-diff: false

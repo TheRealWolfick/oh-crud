@@ -15,18 +15,18 @@ import (
 
 func RegisterRoutes(cfg *models.DataModel, handlerRegistry *models.HandlerRegistry, auth func(http.Handler) http.Handler, qm *tools.QueueManager) {
 	qm.Logger.Debug("Dynamic end point generating", "data-model", *cfg.Name)
-  handlerRegistry.Register(fmt.Sprintf("GET /%s", *cfg.End_Point), auth(handleGet(cfg, qm)), qm.Logger)
-	handlerRegistry.Register(fmt.Sprintf("PUT /%s", *cfg.End_Point), auth(handleUpdate(cfg, qm)), qm.Logger)
-	handlerRegistry.Register(fmt.Sprintf("PUT /%s/group", *cfg.End_Point), auth(handleUpdate_Group(cfg, qm)), qm.Logger)
-	handlerRegistry.Register(fmt.Sprintf("POST /%s", *cfg.End_Point), auth(handleAddNew(cfg, qm)), qm.Logger)
-	handlerRegistry.Register(fmt.Sprintf("POST /%s/group", *cfg.End_Point), auth(handleAddNew_Group(cfg, qm)), qm.Logger)
-	handlerRegistry.Register(fmt.Sprintf("DELETE /%s", *cfg.End_Point), auth(handleDelete(cfg, qm)), qm.Logger)
-	handlerRegistry.Register(fmt.Sprintf("DELETE /%s/group", *cfg.End_Point), auth(handleDelete_Group(cfg, qm)), qm.Logger)
+  handlerRegistry.Register(fmt.Sprintf("GET /%s", *cfg.End_Point), auth(handleGet(cfg, qm)), *cfg.Version)
+	handlerRegistry.Register(fmt.Sprintf("PUT /%s", *cfg.End_Point), auth(handleUpdate(cfg, qm)), *cfg.Version)
+	handlerRegistry.Register(fmt.Sprintf("PUT /%s/group", *cfg.End_Point), auth(handleUpdate_Group(cfg, qm)), *cfg.Version)
+	handlerRegistry.Register(fmt.Sprintf("POST /%s", *cfg.End_Point), auth(handleAddNew(cfg, qm)), *cfg.Version)
+	handlerRegistry.Register(fmt.Sprintf("POST /%s/group", *cfg.End_Point), auth(handleAddNew_Group(cfg, qm)), *cfg.Version)
+	handlerRegistry.Register(fmt.Sprintf("DELETE /%s", *cfg.End_Point), auth(handleDelete(cfg, qm)), *cfg.Version)
+	handlerRegistry.Register(fmt.Sprintf("DELETE /%s/group", *cfg.End_Point), auth(handleDelete_Group(cfg, qm)), *cfg.Version)
 
 	if cfg.Allow_Diff != nil && *cfg.Allow_Diff {
-		handlerRegistry.Register(fmt.Sprintf("GET /%s/diff", *cfg.End_Point), auth(dynamicGetDiff(cfg, qm)), qm.Logger)
-		handlerRegistry.Register(fmt.Sprintf("POST /%s/diff", *cfg.End_Point), auth(dynamicCreateDiff(cfg, qm)), qm.Logger)
-		handlerRegistry.Register(fmt.Sprintf("PUT /%s/diff", *cfg.End_Point), auth(dynamicActionDiff(cfg, qm)), qm.Logger)
+		handlerRegistry.Register(fmt.Sprintf("GET /%s/diff", *cfg.End_Point), auth(dynamicGetDiff(cfg, qm)), *cfg.Version)
+		handlerRegistry.Register(fmt.Sprintf("POST /%s/diff", *cfg.End_Point), auth(dynamicCreateDiff(cfg, qm)), *cfg.Version)
+		handlerRegistry.Register(fmt.Sprintf("PUT /%s/diff", *cfg.End_Point), auth(dynamicActionDiff(cfg, qm)), *cfg.Version)
 	}
 }
 
