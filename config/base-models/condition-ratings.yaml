@@ -1,7 +1,6 @@
 ---
 name: Condition Ratings
 version: 1.0.0
-version-memory: ~
 table-name: condition_ratings
 end-point: condition/rating
 default-where: ~

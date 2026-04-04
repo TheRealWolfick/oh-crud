@@ -1,7 +1,6 @@
 ---
 name: Asset Categories
 version: 1.0.0
-version-memory: ~
 table-name: asset_categories
 end-point: asset/category
 allow-diff: false

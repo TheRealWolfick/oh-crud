@@ -1,7 +1,6 @@
 ---
 name: Floor
 version: 1.0.0
-version-memory: ~
 table-name: floors
 end-point: floor
 allow-diff: false

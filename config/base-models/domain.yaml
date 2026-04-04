@@ -1,7 +1,6 @@
 ---
 name: Domain
 version: 1.0.0
-version-memory: ~
 table-name: domains
 end-point: domain
 allow-diff: false
