@@ -335,10 +335,10 @@ func describeDestructive(changes []schema.Change) string {
 				case *schema.DropColumn:
 					lines = append(lines, fmt.Sprintf("DROP COLUMN %q.%q", v.T.Name, col.C.Name))
 				case *schema.ModifyColumn:
-					if col.Change.Is(schema.ChangeType) {
+					if col.Change.Is(schema.ChangeType) && !isVarcharWidening(col.From, col.To) {
 						lines = append(lines,
-							fmt.Sprintf("ALTER COLUMN %q.%q TYPE (was %s)",
-								v.T.Name, col.From.Name, col.From.Type.Raw))
+							fmt.Sprintf("ALTER COLUMN %q.%q TYPE (was %s, now %s)",
+								v.T.Name, col.From.Name, col.From.Type.Raw, col.To.Type.Raw))
 					}
 				case *schema.DropIndex:
 					lines = append(lines, fmt.Sprintf("DROP INDEX %q on %q", col.I.Name, v.T.Name))
@@ -350,6 +350,27 @@ func describeDestructive(changes []schema.Change) string {
 		return ""
 	}
 	return strings.Join(lines, "\n")
+}
+
+// isVarcharWidening returns true when both columns are character varying and the
+// new size is >= the old size. PostgreSQL can widen varchar in-place without a
+// table rewrite, so this is safe and should not require manual approval.
+func isVarcharWidening(from, to *schema.Column) bool {
+	ft, ok1 := from.Type.Type.(*schema.StringType)
+	tt, ok2 := to.Type.Type.(*schema.StringType)
+	if !ok1 || !ok2 {
+		return false
+	}
+	if ft.T != "character varying" || tt.T != "character varying" {
+		return false
+	}
+	// Size 0 means unbounded (text / varchar without limit) — treat as max.
+	fromSize := ft.Size
+	toSize := tt.Size
+	if toSize == 0 || toSize >= fromSize {
+		return true
+	}
+	return false
 }
 
 // ---------------------------------------------------------------------------

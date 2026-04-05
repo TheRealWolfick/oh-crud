@@ -1,11 +1,16 @@
 ---
 name: Floor
-version: 1.1.0
+version: 1.1.1
 table-name: floors
 end-point: floor
 allow-diff: false
 
-primary-key: floor
+primary-key: floor_id
+
+unique-keys:
+  uk_floors_floor:
+    unique-key-fields:
+      - floor
 
 end-points-allowed:
   GET: true
@@ -21,7 +26,6 @@ fields:
     type: int
     json: floor_id
     db-type: smallserial
-    nullable: true
     skip-insert: true
   floor:
     type: string

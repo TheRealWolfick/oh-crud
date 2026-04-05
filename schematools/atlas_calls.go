@@ -232,6 +232,11 @@ func BootstrapModels(ctx context.Context, pool *pgxpool.Pool, loadedModels []mod
 	logger.Info("Syncing all schemas", "tables", tableNames)
 	if err := gen.applyAllSchemas(ctx, tableNames, combinedHCL); err != nil {
 		logger.Warn("Schema sync failed", "error", err)
+		if gate != nil {
+			for _, p := range gate.Pending() {
+				logger.Warn("Blocked destructive changes", "trigger_table", p.TableName, "changes", p.Changes)
+			}
+		}
 		return
 	}
 
@@ -323,6 +328,11 @@ func syncModel(ctx context.Context, pool *pgxpool.Pool, model *models.DataModel,
 	logger.Info("Syncing schema", "table", tableName, "version", versionStr(model))
 	if err := gen.applyAllSchemas(ctx, tableNames, combinedHCL); err != nil {
 		logger.Warn("Schema sync failed", "table", tableName, "error", err)
+		if gate != nil {
+			for _, p := range gate.Pending() {
+				logger.Warn("Blocked destructive changes", "trigger_table", p.TableName, "changes", p.Changes)
+			}
+		}
 		return
 	}
 
