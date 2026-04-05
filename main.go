@@ -12,6 +12,7 @@ import (
 	"lotusforge.au/api-server/middleware"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/monitors"
+	"lotusforge.au/api-server/schematools"
 	"lotusforge.au/api-server/tools"
 )
 
@@ -44,6 +45,12 @@ func main() {
 	// Load config-driven models from special-models dir
 	all_models = append(all_models, loadModelsFromDir(special_models_dir, logger)...)
 
+	// Sync database schema for all loaded models.
+	// Destructive changes are recorded in the gate and blocked until manually approved.
+	// Pass nil instead of gate to auto-approve destructive changes (dev mode only).
+	gate := schematools.NewPendingApprovalGate()
+	schematools.BootstrapModels(context.Background(), pool, all_models, logger, gate)
+
 	// Make the handlers
 	authMiddleware := middleware.RequireAuth(pool)
 	userHandler := handlers.NewUserHandler(logger, pool)
@@ -58,12 +65,14 @@ func main() {
 
 	// Register config-driven routes
 	handlerRegister := models.NewHandlerRegistry(mux)
+	modelRegister := models.NewModelRegistry()
 	for _, dm := range all_models {
 		handlers.RegisterRoutes(&dm, handlerRegister, authMiddleware, qm)
+		modelRegister.Register(&dm)
 	}
-	
+
 	// Load the file watcher
-	go monitors.ModelsMonitor(handlerRegister, authMiddleware, qm)
+	go monitors.ModelsMonitor(handlerRegister, modelRegister, authMiddleware, qm, gate)
 
 	// Launch the server
 	http.ListenAndServe(":8080", mux)

@@ -1,27 +1,24 @@
 package monitors
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/fsnotify/fsnotify"
 	"lotusforge.au/api-server/handlers"
 	"lotusforge.au/api-server/models"
+	"lotusforge.au/api-server/schematools"
 	"lotusforge.au/api-server/tools"
 )
 
-
-func ModelsMonitor(handlerRegistry *models.HandlerRegistry, auth func(http.Handler) http.Handler, qm *tools.QueueManager) {
-	// create the watcher
+func ModelsMonitor(handlerRegistry *models.HandlerRegistry, modelRegistry *models.ModelRegistry, auth func(http.Handler) http.Handler, qm *tools.QueueManager, gate *schematools.PendingApprovalGate) {
 	watcher, err := fsnotify.NewWatcher()
-
 	if err != nil {
 		qm.Logger.Error("Failed to load watcher, config will not update live", "error", err)
 		return
 	}
-
 	defer watcher.Close()
 
-	// Monitor for events
 	go func() {
 		for {
 			select {
@@ -38,11 +35,13 @@ func ModelsMonitor(handlerRegistry *models.HandlerRegistry, auth func(http.Handl
 						if err := models.ValidateDataModel(*updated_config); err != nil {
 							qm.Logger.Error("Updated YAML failed validation, routes not updated", "error", err)
 						} else {
+							modelRegistry.Register(updated_config)
 							handlers.RegisterRoutes(updated_config, handlerRegistry, auth, qm)
+							schematools.SyncModelIfNeeded(context.Background(), qm.Db, updated_config, modelRegistry.All(), qm.Logger, gate)
 						}
 					}
 				}
-			case err, ok := <- watcher.Errors:
+			case err, ok := <-watcher.Errors:
 				if !ok {
 					return
 				}
@@ -52,12 +51,13 @@ func ModelsMonitor(handlerRegistry *models.HandlerRegistry, auth func(http.Handl
 	}()
 
 	paths := []string{"./config/base-models", "./config/special-models"}
-
 	for _, p := range paths {
 		err = watcher.Add(p)
-		if err != nil { qm.Logger.Error("Failed to load monitoring for folder", "dir", p) }
+		if err != nil {
+			qm.Logger.Error("Failed to load monitoring for folder", "dir", p)
+		}
 	}
 
-	// Block go routine
+	// Block goroutine
 	<-make(chan struct{})
 }
