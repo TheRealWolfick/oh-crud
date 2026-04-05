@@ -1,10 +1,13 @@
 ---
 name: Asset Categories
-version: 1.0.0
+version: 1.1.0
 table-name: asset_categories
 end-point: asset/category
 allow-diff: false
-allow:
+
+primary-key: cat_code
+
+end-points-allowed:
   GET: true
   PUT: true
   POST: true
@@ -12,59 +15,30 @@ allow:
   PUT-GROUP: true
   POST-GROUP: true
   DELETE-GROUP: true
+
 fields:
   cat_code:
     type: string
     json: cat_code
-    db: cat_code
-    pk: true
-    req: true
-    none: ~
-    diff: ~
-    custom-where: ~
-    absolute: false
-    skip-insert: false
+    db-type: text
+    required-on-insert: true
   asset_system:
     type: string
     json: asset_system
-    db: asset_system
-    pk: false
-    req: false
-    none: ~
-    diff: ~
-    custom-where: ~
-    absolute: false
-    skip-insert: false
+    db-type: text
+    nullable: true
   asset_subsystem:
     type: string
     json: asset_subsystem
-    db: asset_subsystem
-    pk: false
-    req: false
-    none: ~
-    diff: ~
-    custom-where: ~
-    absolute: false
-    skip-insert: false
+    db-type: text
+    nullable: true
   is_active:
     type: bool
     json: is_active
-    db: is_active
-    pk: false
-    req: false
-    none: true
-    diff: ~
-    custom-where: ~
-    absolute: false
-    skip-insert: false
+    db-type: boolean
+    default: "true"
   description:
     type: string
     json: description
-    db: description
-    pk: false
-    req: false
-    none: ""
-    diff: ~
-    custom-where: ~
-    absolute: false
-    skip-insert: false
+    db-type: text
+    default: ""

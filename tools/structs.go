@@ -19,76 +19,6 @@ func StructIsEmpty[T any](s *T) bool {
 	return v.IsZero()
 }
 
-
-// This function takes a slice of any struct and will return it as valid and invalid slices.
-// Validation is done via the "req" tag which are extracted from the first struct being
-// passed to GetRequiredFields.
-// 
-// Return: []valid, []invalid
-func ValidateMultiStruct[T any](s []T) ([]T, []T) {
-	if len(s) < 1 {
-		return make([]T, 0), make([]T, 0)
-	}
-	if reflect.TypeOf(s[0]).Kind() != reflect.Struct && reflect.TypeOf(s[0]).Kind() != reflect.Ptr {
-		return make([]T, 0), make([]T, 0)
-	}
-
-	req_fields := GetRequiredFields(s[0]) // struct field names
-	valid_structs := make([]T, 0)
-	invalid_structs := make([]T, 0)
-	is_valid := true
-
-	// For each struct
-	for _, m := range s {	
-
-		// Reflect the struct
-		vals := reflect.ValueOf(m)
-
-		if vals.Kind() == reflect.Ptr {
-			vals = vals.Elem()
-		}
-		
-		// For each required field name
-		for _, fieldName := range req_fields {
-			field := vals.FieldByName(fieldName)
-			if field.Kind() == reflect.Ptr {
-				field = field.Elem()
-			}
-
-			if !field.IsValid() {
-				invalid_structs = append(invalid_structs, m)
-				is_valid = false
-				break
-			}
-
-			// Handle pointer fields and add to invalid if it is an invalid struct
-			if field.Kind() == reflect.Ptr {
-				if field.IsNil() || field.Elem().IsZero() {
-					invalid_structs = append(invalid_structs, m)
-					is_valid = false
-					break
-				}
-			} else {
-				if field.IsZero() {
-					invalid_structs = append(invalid_structs, m)
-					is_valid = false
-					break
-				}
-			}
-		}
-
-		// Was it a valid struct
-		if is_valid {
-			valid_structs = append(valid_structs, m)
-		}
-
-		// Reset valid status
-		is_valid = true
-	}
-
-	return valid_structs, invalid_structs
-}
-
 func ToAnySlice[T any](slice []T) []any {
 	var result []any
 	for _, item := range slice {
@@ -404,18 +334,18 @@ func DiffMap(
 	comparatorKey string,
 	excludeKeys map[string]bool,
 ) models.Item_Diff[map[string]any] {
-	sv, ok1 := supplied[comparatorKey]
-	stv, ok2 := stored[comparatorKey]
-	if !ok1 || !ok2 {
+	supplied_comparator, ok1 := supplied[comparatorKey]
+	stored_comparator, ok2 := stored[comparatorKey]
+	if !ok1 || !ok2 || supplied_comparator != stored_comparator {
 		return models.Item_Diff[map[string]any]{}
 	}
-	comp := fmt.Sprintf("%v", sv)
-	if comp != fmt.Sprintf("%v", stv) || comp == "" {
+	comp := fmt.Sprintf("%v", supplied_comparator)
+	if comp != fmt.Sprintf("%v", stored_comparator) || comp == "" {
 		return models.Item_Diff[map[string]any]{}
 	}
 
-	suppliedDiff := map[string]any{comparatorKey: sv}
-	storedDiff := map[string]any{comparatorKey: stv}
+	suppliedDiff := map[string]any{comparatorKey: supplied_comparator}
+	storedDiff := map[string]any{comparatorKey: stored_comparator}
 	hasDiffs := false
 
 	// Collect all keys from both maps
@@ -423,12 +353,16 @@ func DiffMap(
 	for k := range supplied { allKeys[k] = struct{}{} }
 	for k := range stored   { allKeys[k] = struct{}{} }
 
+	// For each key
 	for k := range allKeys {
+		// Skip keys not to be checked
 		if k == comparatorKey || excludeKeys[k] { continue }
+		// Extract the value of the keys and normalize the values to ensure they are the same type
 		supplied_value, supplied_exists := supplied[k]
 		stored_value, stored_exists := stored[k]
 		sVal := fmt.Sprintf("%v", normalizeVal(supplied_value, supplied_exists))
 		stVal := fmt.Sprintf("%v", normalizeVal(stored_value, stored_exists))
+		// Compare the values
 		if sVal != stVal {
 			suppliedDiff[k] = supplied[k]
 			storedDiff[k] = stored[k]
@@ -482,28 +416,40 @@ func DiffMapSlices(
 	copy(rightRemaining, right)
 	diffs := make([]models.Item_Diff[map[string]any], 0)
 
+	// For each row on the left
 	for _, l := range left {
+		// Get the comparatorKey value from the row
 		lval, ok := l[comparatorKey]
+		// If there was no comparatorKey, mark it as left only as it can't be matched to the right
 		if !ok {
 			leftOnly = append(leftOnly, l)
 			continue
 		}
+		// Coerce the comparatorKey into a string
 		lStr := fmt.Sprintf("%v", lval)
 
+		// Pre set the found tag to false
 		found := false
+		// For each row on the right
 		for i, r := range rightRemaining {
+			// Check if a matching row exists on the right
 			rval, ok2 := r[comparatorKey]
+			// No match, search next row
 			if !ok2 { continue }
+			// match
 			if fmt.Sprintf("%v", rval) == lStr {
 				found = true
 				d := DiffMap(l, r, comparatorKey, excludeKeys)
+				// If a diff was found, add it to the diffs slice
 				if d.Comparator != nil {
 					diffs = append(diffs, d)
 				}
+				// Remove this key from the right and break the loop to go to the next key on the left
 				rightRemaining = append(rightRemaining[:i], rightRemaining[i+1:]...)
 				break
 			}
 		}
+		// If it was not found, it must be in the left only
 		if !found {
 			leftOnly = append(leftOnly, l)
 		}
@@ -516,6 +462,10 @@ func DiffMapSlices(
 	}
 }
 
+// DiffStructSlices performs a diff between two structs of the same type. This function
+// is currently deprecated due to moving to dynamic config driven maps.
+// 
+// May be reinstated in the future 
 func DiffStructSlices[T any](left []T, right []T) *models.Diff[T] {
 	if len(left) < 1 || len(right) < 1 {
 		return nil
@@ -566,7 +516,9 @@ func DiffStructSlices[T any](left []T, right []T) *models.Diff[T] {
 	}
 }
 
-
+// SortSliceOfStructs is a deprecated function which would sort a slic of structs based
+// on a field name. It's primary use is as a part of the diff functionality to allow
+// binary searching.
 func SortSliceOfStructs[T any](arr []T, field_name string) {
 	sort.Slice(arr, func(i, j int) bool {
 		i_val := reflect.ValueOf(arr[i])

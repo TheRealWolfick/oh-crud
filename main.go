@@ -95,6 +95,10 @@ func loadModelsFromDir(dir string, logger interface{ Warn(string, ...any); Error
 			logger.Warn(fmt.Sprintf("Failed to load config file: %s", info.Name()), "error", err)
 			continue
 		}
+		if err := models.ValidateDataModel(*data); err != nil {
+			logger.Warn(fmt.Sprintf("Config file failed validation: %s", info.Name()), "error", err)
+			continue
+		}
 		result = append(result, *data)
 	}
 

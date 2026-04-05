@@ -18,60 +18,73 @@ func RegisterRoutes(cfg *models.DataModel, handlerRegistry *models.HandlerRegist
 	qm.Logger.Debug("Dynamic end point generating", "data-model", *cfg.Name)
 
 	// Perform error check on first handler and soft cancel on error
-  err = handlerRegistry.Register(fmt.Sprintf("GET /%s", *cfg.End_Point), auth(handleGet(cfg, qm)), *cfg.Version)
+	err = handlerRegistry.Register(fmt.Sprintf("GET /%s", *cfg.End_point), auth(handleGet(cfg, qm)), *cfg.Version)
 	if err != nil {
 		qm.Logger.Error("Failed to load model", "error", err)
 		return
 	}
 
-	handlerRegistry.Register(fmt.Sprintf("PUT /%s", *cfg.End_Point), auth(handleUpdate(cfg, qm)), *cfg.Version)
-	handlerRegistry.Register(fmt.Sprintf("PUT /%s/group", *cfg.End_Point), auth(handleUpdate_Group(cfg, qm)), *cfg.Version)
-	handlerRegistry.Register(fmt.Sprintf("POST /%s", *cfg.End_Point), auth(handleAddNew(cfg, qm)), *cfg.Version)
-	handlerRegistry.Register(fmt.Sprintf("POST /%s/group", *cfg.End_Point), auth(handleAddNew_Group(cfg, qm)), *cfg.Version)
-	handlerRegistry.Register(fmt.Sprintf("DELETE /%s", *cfg.End_Point), auth(handleDelete(cfg, qm)), *cfg.Version)
-	handlerRegistry.Register(fmt.Sprintf("DELETE /%s/group", *cfg.End_Point), auth(handleDelete_Group(cfg, qm)), *cfg.Version)
+	handlerRegistry.Register(fmt.Sprintf("PUT /%s", *cfg.End_point), auth(handleUpdate(cfg, qm)), *cfg.Version)
+	handlerRegistry.Register(fmt.Sprintf("PUT /%s/group", *cfg.End_point), auth(handleUpdate_Group(cfg, qm)), *cfg.Version)
+	handlerRegistry.Register(fmt.Sprintf("POST /%s", *cfg.End_point), auth(handleAddNew(cfg, qm)), *cfg.Version)
+	handlerRegistry.Register(fmt.Sprintf("POST /%s/group", *cfg.End_point), auth(handleAddNew_Group(cfg, qm)), *cfg.Version)
+	handlerRegistry.Register(fmt.Sprintf("DELETE /%s", *cfg.End_point), auth(handleDelete(cfg, qm)), *cfg.Version)
+	handlerRegistry.Register(fmt.Sprintf("DELETE /%s/group", *cfg.End_point), auth(handleDelete_Group(cfg, qm)), *cfg.Version)
 
-	if cfg.Allow_Diff != nil && *cfg.Allow_Diff {
-		handlerRegistry.Register(fmt.Sprintf("GET /%s/diff", *cfg.End_Point), auth(dynamicGetDiff(cfg, qm)), *cfg.Version)
-		handlerRegistry.Register(fmt.Sprintf("POST /%s/diff", *cfg.End_Point), auth(dynamicCreateDiff(cfg, qm)), *cfg.Version)
-		handlerRegistry.Register(fmt.Sprintf("PUT /%s/diff", *cfg.End_Point), auth(dynamicActionDiff(cfg, qm)), *cfg.Version)
+	if cfg.Allow_diff != nil && *cfg.Allow_diff {
+		handlerRegistry.Register(fmt.Sprintf("GET /%s/diff", *cfg.End_point), auth(dynamicGetDiff(cfg, qm)), *cfg.Version)
+		handlerRegistry.Register(fmt.Sprintf("POST /%s/diff", *cfg.End_point), auth(dynamicCreateDiff(cfg, qm)), *cfg.Version)
+		handlerRegistry.Register(fmt.Sprintf("PUT /%s/diff", *cfg.End_point), auth(dynamicActionDiff(cfg, qm)), *cfg.Version)
 	}
 }
 
-
 func handleGet(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
-	if cfg.Allow.Get { return getResource(qm, cfg) }
-	return notAllowed(*cfg.Allow)
+	if cfg.End_points_allowed != nil && cfg.End_points_allowed.GET != nil && *cfg.End_points_allowed.GET {
+		return getResource(qm, cfg)
+	}
+	return notAllowed(cfg.End_points_allowed)
 }
 
 func handleAddNew(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
-	if cfg.Allow.Post { return addNewResource(qm, cfg) }
-	return notAllowed(*cfg.Allow)
+	if cfg.End_points_allowed != nil && cfg.End_points_allowed.POST != nil && *cfg.End_points_allowed.POST {
+		return addNewResource(qm, cfg)
+	}
+	return notAllowed(cfg.End_points_allowed)
 }
 
 func handleAddNew_Group(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
-	if cfg.Allow.Post_Group { return addNewResources_Group(qm, cfg) }
-	return notAllowed(*cfg.Allow)
+	if cfg.End_points_allowed != nil && cfg.End_points_allowed.POST_GROUP != nil && *cfg.End_points_allowed.POST_GROUP {
+		return addNewResources_Group(qm, cfg)
+	}
+	return notAllowed(cfg.End_points_allowed)
 }
 
 func handleUpdate(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
-	if cfg.Allow.Put { return updateResource(qm, cfg) }
-	return notAllowed(*cfg.Allow)
+	if cfg.End_points_allowed != nil && cfg.End_points_allowed.PUT != nil && *cfg.End_points_allowed.PUT {
+		return updateResource(qm, cfg)
+	}
+	return notAllowed(cfg.End_points_allowed)
 }
 
 func handleUpdate_Group(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
-	if cfg.Allow.Put_Group { return updateResource_Group(qm, cfg) }
-	return notAllowed(*cfg.Allow)
+	if cfg.End_points_allowed != nil && cfg.End_points_allowed.PUT_GROUP != nil && *cfg.End_points_allowed.PUT_GROUP {
+		return updateResource_Group(qm, cfg)
+	}
+	return notAllowed(cfg.End_points_allowed)
 }
 
 func handleDelete(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
-	if cfg.Allow.Delete { return deleteResource(qm, cfg) }
-	return notAllowed(*cfg.Allow)
+	if cfg.End_points_allowed != nil && cfg.End_points_allowed.DELETE != nil && *cfg.End_points_allowed.DELETE {
+		return deleteResource(qm, cfg)
+	}
+	return notAllowed(cfg.End_points_allowed)
 }
 
 func handleDelete_Group(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
-	if cfg.Allow.Delete_Group { return deleteResource_Group(qm, cfg) }
-	return notAllowed(*cfg.Allow)
+	if cfg.End_points_allowed != nil && cfg.End_points_allowed.DELETE_GROUP != nil && *cfg.End_points_allowed.DELETE_GROUP {
+		return deleteResource_Group(qm, cfg)
+	}
+	return notAllowed(cfg.End_points_allowed)
 }
 
 
@@ -86,7 +99,7 @@ func addNewResource(
 		req_id, err := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
 		note := r.Header.Get("X-User-Note")
-		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "end_point", *cfg.End_Point, "table", *cfg.Table_Name, "request_id", req_id)
+		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
 		ctx := middleware.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -95,30 +108,27 @@ func addNewResource(
 		response := map[string]any{"task_type": "CREATE"}
 		w.Header().Set("Content-Type", "application/json")
 
-		// Read and coerce incoming data
+		// Read incoming data
 		var raw map[string]any
 		err = json.NewDecoder(r.Body).Decode(&raw)
-		log.Debug("Decoding and coercing raw data", "data", fmt.Sprint(raw))
-		resource, err := models.DecodeAndCoerce(raw, cfg, true, true)
-
-		// Validation and errors
 		if err != nil {
 			log.Error("REQUEST_ERROR", "error", err)
 			http.Error(w, fmt.Sprintf("Could not decode body. Error: %v", err), http.StatusInternalServerError)
 			return
 		}
-		if len(resource) == 0 {
+		if len(raw) == 0 {
 			http.Error(w, "No valid json supplied", http.StatusBadRequest)
-			log.Error("REQUEST_ERROR", "error", "no valid json supplied")		
-			return
-		}
-		valid_resources, _ := tools.Validate_Map_AgainstConfig(cfg, resource, false, true)
-		if len(valid_resources) < 1 {
-			log.Error("REQUEST_ERROR", "error", "resource invalid", "resource", raw)
-			http.Error(w, "No valid domains", http.StatusBadRequest)
+			log.Error("REQUEST_ERROR", "error", "no valid json supplied")
 			return
 		}
 
+		log.Debug("Decoding and coercing raw data", "data", fmt.Sprint(raw))
+		valid_resources, _ := tools.Validate_Map_AgainstConfig(cfg, raw, false, true)
+		if len(valid_resources) < 1 {
+			log.Error("REQUEST_ERROR", "error", "resource invalid", "resource", raw)
+			http.Error(w, "No valid resources", http.StatusBadRequest)
+			return
+		}
 
 		// Extract context and queue action
 		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type))
@@ -149,7 +159,7 @@ func addNewResources_Group(
 		req_id, err := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
 		note := r.Header.Get("X-User-Note")
-		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "end_point", *cfg.End_Point, "table", *cfg.Table_Name, "request_id", req_id)
+		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
 		ctx := middleware.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -169,7 +179,7 @@ func addNewResources_Group(
 		}
 
 		log.Debug("Decoding and coercing raw data", "data", fmt.Sprint(raw))
-		valid_resources, invalid_resources := tools.Validate_SliceOfMaps_AgainstConfig(cfg, raw, true, true)
+		valid_resources, invalid_resources := tools.Validate_SliceOfMaps_AgainstConfig(cfg, raw, false, true)
 		if len(valid_resources) < 1 {
 			log.Error("REQUEST_ERROR", "error", "no valid resources")
 			http.Error(w, "No valid resources", http.StatusBadRequest)
@@ -207,44 +217,24 @@ func getResource(
 		req_ip := tools.GetIP(r)
 		req_id, err := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
-		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "end_point", *cfg.End_Point, "table", *cfg.Table_Name, "request_id", req_id)
+		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
 		ctx := middleware.SetLogger(r.Context(), log)
-		
+
 		log.Info("REQUEST_RECEIVED")
 
 		// Response intialization
 		w.Header().Set("Content-Type", "application/json")
 
-		var query string
-
 		// Create new query builder and save it into the context of the request
 		qb := tools.NewQueryBuilder(log)
 
-		// Load where vals
-		log.Debug("Read default where in dynamicgetresource", "value", cfg.Default_Where)
-		if cfg.Default_Where != nil {
-			for key, _ := range cfg.Default_Where {
-				qb.SetWhereAbsolute(key, cfg.Default_Where[key])
-			}
-		}
 		if err := tools.DynamicSetWhereFromURL(qb, r, cfg); err != nil {
 			log.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", err)
 			http.Error(w, "Error in parsing where clauses", http.StatusBadRequest)
 			return
 		}
 
-		// Build the query
-		log.Debug("Read overwrite select in dynamicgetresource", "value", cfg.Overwrite_Select)
-		if cfg.Overwrite_Select == nil {
-			query = qb.BuildSelect(*cfg.Table_Name, tools.DynamicGetDatabaseColumns(cfg, false, false))
-		} else {
-			query = qb.BuildSelect(*cfg.Table_Name, cfg.Overwrite_Select)
-		}
-
-		log.Debug("Loading custom with in dynamicgetresource", "pointer", cfg.Custom_With)
-		if cfg.Custom_With != nil {
-			query = fmt.Sprintf("%s %s", *cfg.Custom_With, query)
-		}
+		query := qb.BuildSelect(*cfg.Table_name, tools.DynamicGetDatabaseColumns(cfg, false, false))
 
 		// Get the rows
 		rows, err := qm.Db.Query(ctx, query, qb.GetArgs()...)
@@ -282,7 +272,7 @@ func updateResource(
 		req_id, err := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
 		note := r.Header.Get("X-User-Note")
-		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "end_point", *cfg.End_Point, "table", *cfg.Table_Name, "request_id", req_id)
+		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
 		ctx := middleware.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -300,9 +290,9 @@ func updateResource(
 			return
 		}
 
-		// Coerce data into map
+		// Coerce data into map — enforce key presence (PK or unique key), not required-on-insert
 		valid_resources, invalid_resources := tools.Validate_Map_AgainstConfig(cfg, raw, true, false)
-		if len(invalid_resources) > 0 { 
+		if len(invalid_resources) > 0 {
 			log.Warn("Request with no valid resources for update")
 			response["successful_submission"] = false
 			response["rows_received"] = len(raw)
@@ -314,16 +304,17 @@ func updateResource(
 			return
 		}
 
+		// Determine which key fields (PK or unique key) are present — they become the WHERE clause
+		where_fields, ok := tools.FindRowKeyFields(valid_resources[0], cfg)
+		if !ok {
+			log.Error("No key fields found for update")
+			http.Error(w, "No identifying key (primary key or unique key) supplied for update", http.StatusBadRequest)
+			return
+		}
+
 		// Create new query builder
 		qb := tools.NewQueryBuilder(log)
-
-		// Set values from the struct
-		prim_keys := tools.DynamicGetDatabaseColumns(cfg, true, false)
-		if len(prim_keys) < 1 {
-			log.Error("Error reading the primary key from config")
-			http.Error(w, "Error reading primary key from config", http.StatusBadRequest)
-		}
-		tools.SetValueAndWhereFromMap(qb, valid_resources[0], prim_keys[0])
+		tools.SetValueAndWhereFromMap(qb, valid_resources[0], where_fields)
 
 		// Build the query
 		query := qb.BuildUpdate_Dynamic(cfg)
@@ -360,7 +351,7 @@ func updateResource_Group(
 		req_id, err := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
 		note := r.Header.Get("X-User-Note")
-		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "end_point", *cfg.End_Point, "table", *cfg.Table_Name, "request_id", req_id)
+		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
 		ctx := middleware.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -369,7 +360,7 @@ func updateResource_Group(
 		response := map[string]any{"task_type": "BULK_UPDATE"}
 		w.Header().Set("Content-Type", "application/json")
 
-		var raw []map[string]any 
+		var raw []map[string]any
 		err = json.NewDecoder(r.Body).Decode(&raw)
 		valid_resources, invalid_resources := tools.Validate_SliceOfMaps_AgainstConfig(cfg, raw, true, false)
 
@@ -411,14 +402,14 @@ func dynamicGetDiff(
 		req_ip := tools.GetIP(r)
 		req_id, _ := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
-		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", "Get Diff", "end_point", *cfg.End_Point, "table", *cfg.Table_Name, "request_id", req_id)
+		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", "Get Diff", "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
 
 		log.Info("REQUEST_RECEIVED")
 		w.Header().Set("Content-Type", "application/json")
 
 		diffCols := []string{"diff_id", "diff_type", "task_id", "missing_from_supplied", "missing_from_stored", "diffs", "generated_by_user", "checksum", "created", "note", "batched", "batched_date"}
 		qb := tools.NewQueryBuilder(log)
-		qb.SetWhereAbsolute("diff_type", *cfg.Table_Name)
+		qb.SetWhereAbsolute("diff_type", *cfg.Table_name)
 
 		taskID := r.URL.Query().Get("task_id")
 		if taskID != "" {
@@ -459,7 +450,7 @@ func dynamicCreateDiff(
 		req_id, err := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
 		note := r.Header.Get("X-User-Note")
-		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "table", *cfg.Table_Name, "request_id", req_id)
+		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "table", *cfg.Table_name, "request_id", req_id)
 		ctx := middleware.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -513,7 +504,7 @@ func dynamicActionDiff(
 		req_ip := tools.GetIP(r)
 		req_id, _ := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
-		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "end_point", *cfg.End_Point, "table", *cfg.Table_Name, "request_id", req_id)
+		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
 
 		log.Info("REQUEST_RECEIVED")
 		w.Header().Set("Content-Type", "application/json")
@@ -523,75 +514,81 @@ func dynamicActionDiff(
 			http.Error(w, "Checksum was not provided", http.StatusBadRequest)
 			return
 		}
-		log.Debug("Cecksum decoded", "checksum", checksum)
+		log.Debug("Checksum decoded", "checksum", checksum)
 
 		// Read the diff row as a raw map so JSONB columns come back as []byte
 		rows, err := qm.Db.Query(r.Context(),
-		`SELECT * FROM diffs WHERE diff_type = $1 AND checksum = $2 LIMIT 1;`,
-		*cfg.Table_Name, checksum,
-	)
-	if err != nil {
-		log.Error("DATA_READ_ERROR", "error", err)
-		http.Error(w, "Error reading diff", http.StatusInternalServerError)
-		return
-	}
-	rawRows, err := pgx.CollectRows(rows, pgx.RowToMap)
-	if err != nil || len(rawRows) == 0 {
-		http.Error(w, "Invalid checksum provided", http.StatusBadRequest)
-		return
-	}
-	row := rawRows[0]
-
-	// Helper to decode a JSONB column from []byte into a target
-	decodeJSONB := func(col string, target any) {
-		log.Debug("attenpting to identify type", "col", col)
-		switch v := row[col].(type) {
-		case []byte:
-			json.Unmarshal(v, target)
-		case string:
-			json.Unmarshal([]byte(v), target)
-		default:
-			b, err := json.Marshal(v)
-			if err != nil { return }
-			json.Unmarshal(b, target)
+			`SELECT * FROM diffs WHERE diff_type = $1 AND checksum = $2 LIMIT 1;`,
+			*cfg.Table_name, checksum,
+		)
+		if err != nil {
+			log.Error("DATA_READ_ERROR", "error", err)
+			http.Error(w, "Error reading diff", http.StatusInternalServerError)
+			return
 		}
-	}
+		rawRows, err := pgx.CollectRows(rows, pgx.RowToMap)
+		if err != nil || len(rawRows) == 0 {
+			http.Error(w, "Invalid checksum provided", http.StatusBadRequest)
+			return
+		}
+		row := rawRows[0]
 
-	var missingFromSupplied []map[string]any
-	var missingFromStored []map[string]any
-	var diffs []models.Item_Diff[map[string]any]
-	decodeJSONB("missing_from_supplied", &missingFromSupplied)
-	decodeJSONB("missing_from_stored", &missingFromStored)
-	decodeJSONB("diffs", &diffs)
+		// Helper to decode a JSONB column from []byte into a target
+		decodeJSONB := func(col string, target any) {
+			log.Debug("attempting to identify type", "col", col)
+			switch v := row[col].(type) {
+			case []byte:
+				json.Unmarshal(v, target)
+			case string:
+				json.Unmarshal([]byte(v), target)
+			default:
+				b, err := json.Marshal(v)
+				if err != nil {
+					return
+				}
+				json.Unmarshal(b, target)
+			}
+		}
 
-	// Generate batch code
-	var batchCode string
-	batchRow := qm.Db.QueryRow(r.Context(),
-	`SELECT generate_batch_num($1, $2, $3)`,
-	req_username, *cfg.Table_Name, checksum)
-	if err := batchRow.Scan(&batchCode); err != nil {
-		log.Error("BATCH_CODE_ERROR", "error", err)
-		http.Error(w, "Error generating batch code", http.StatusInternalServerError)
-		return
-	}
+		var missingFromSupplied []map[string]any
+		var missingFromStored []map[string]any
+		var diffs []models.Item_Diff[map[string]any]
+		decodeJSONB("missing_from_supplied", &missingFromSupplied)
+		decodeJSONB("missing_from_stored", &missingFromStored)
+		decodeJSONB("diffs", &diffs)
 
-	// Build sync arrays from diffs
-	syncStored := make([]map[string]any, 0)
-	syncSupplied := make([]map[string]any, 0)
-	for _, d := range diffs {
-		if d.Supplied != nil { syncStored = append(syncStored, *d.Supplied) }
-		if d.Stored != nil   { syncSupplied = append(syncSupplied, *d.Stored) }
-	}
+		// Generate batch code
+		var batchCode string
+		batchRow := qm.Db.QueryRow(r.Context(),
+			`SELECT generate_batch_num($1, $2, $3)`,
+			req_username, *cfg.Table_name, checksum)
+		if err := batchRow.Scan(&batchCode); err != nil {
+			log.Error("BATCH_CODE_ERROR", "error", err)
+			http.Error(w, "Error generating batch code", http.StatusInternalServerError)
+			return
+		}
 
-	response := map[string]any{
-		"batch_code":            "testing",
-		"missing_from_supplied": missingFromSupplied,
-		"missing_from_stored":   missingFromStored,
-		"sync_stored":           syncStored,
-		"sync_supplied":         syncSupplied,
+		// Build sync arrays from diffs
+		syncStored := make([]map[string]any, 0)
+		syncSupplied := make([]map[string]any, 0)
+		for _, d := range diffs {
+			if d.Supplied != nil {
+				syncStored = append(syncStored, *d.Supplied)
+			}
+			if d.Stored != nil {
+				syncSupplied = append(syncSupplied, *d.Stored)
+			}
+		}
+
+		response := map[string]any{
+			"batch_code":            batchCode,
+			"missing_from_supplied": missingFromSupplied,
+			"missing_from_stored":   missingFromStored,
+			"sync_stored":           syncStored,
+			"sync_supplied":         syncSupplied,
+		}
+		json.NewEncoder(w).Encode(response)
 	}
-	json.NewEncoder(w).Encode(response)
-}
 }
 
 // Delete a single resource identified by its primary key in the request body
@@ -606,7 +603,7 @@ func deleteResource(
 		req_id, err := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
 		note := r.Header.Get("X-User-Note")
-		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "end_point", *cfg.End_Point, "table", *cfg.Table_Name, "request_id", req_id)
+		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
 		ctx := middleware.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -623,31 +620,24 @@ func deleteResource(
 			return
 		}
 
-		// Only enforce that the PK is present; other fields are ignored for delete
+		// Enforce that at least one key (PK or unique key) is present; other fields are ignored
 		valid_resources, _ := tools.Validate_Map_AgainstConfig(cfg, raw, true, false)
 		log.Debug("validated", "valid resources", fmt.Sprint(valid_resources))
 		if len(valid_resources) < 1 {
-			log.Error("REQUEST_ERROR", "error", "missing primary key")
-			http.Error(w, "Primary key missing or invalid", http.StatusBadRequest)
+			log.Error("REQUEST_ERROR", "error", "no key field found for delete")
+			http.Error(w, "No identifying key (primary key or unique key) supplied for delete", http.StatusBadRequest)
 			return
 		}
 
-		prim_keys := tools.DynamicGetDatabaseColumns(cfg, true, false)
-		if len(prim_keys) < 1 {
-			log.Error("Error reading the primary key from config")
-			http.Error(w, "Error reading primary key from config", http.StatusInternalServerError)
+		where_fields, ok := tools.FindRowKeyFields(valid_resources[0], cfg)
+		if !ok {
+			log.Error("No key fields found for delete")
+			http.Error(w, "No identifying key (primary key or unique key) supplied for delete", http.StatusBadRequest)
 			return
 		}
 
 		qb := tools.NewQueryBuilder(log)
-		for _, k := range prim_keys {
-			if _, ok := valid_resources[0][k]; !ok {
-				log.Error("Not all primary keys were supplied in data!", "missing key", k)
-				http.Error(w, "Not all primary keys were supplied in data!", http.StatusBadRequest)
-				return
-			} 
-		}
-		for _, k := range prim_keys {
+		for _, k := range where_fields {
 			qb.SetWhereAbsolute(k, valid_resources[0][k])
 		}
 
@@ -679,7 +669,7 @@ func deleteResource_Group(
 		req_id, err := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
 		note := r.Header.Get("X-User-Note")
-		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "end_point", *cfg.End_Point, "table", *cfg.Table_Name, "request_id", req_id)
+		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
 		ctx := middleware.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -722,16 +712,20 @@ func deleteResource_Group(
 	}
 }
 
-// Handle a disallowed endPoint
+// notAllowed returns a 405 handler listing which methods are enabled for this endpoint.
 func notAllowed(
-	allowed models.DataModelAllow,
+	allowed *models.End_pointsAllowed,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var allowed_methods []string
-		for key, allow := range tools.GetStructAsDict(allowed) {
-			if allow == true {
-				allowed_methods = append(allowed_methods, key)
-			}
+		if allowed != nil {
+			if allowed.GET != nil && *allowed.GET           { allowed_methods = append(allowed_methods, "GET") }
+			if allowed.POST != nil && *allowed.POST         { allowed_methods = append(allowed_methods, "POST") }
+			if allowed.PUT != nil && *allowed.PUT           { allowed_methods = append(allowed_methods, "PUT") }
+			if allowed.DELETE != nil && *allowed.DELETE     { allowed_methods = append(allowed_methods, "DELETE") }
+			if allowed.POST_GROUP != nil && *allowed.POST_GROUP     { allowed_methods = append(allowed_methods, "POST-GROUP") }
+			if allowed.PUT_GROUP != nil && *allowed.PUT_GROUP       { allowed_methods = append(allowed_methods, "PUT-GROUP") }
+			if allowed.DELETE_GROUP != nil && *allowed.DELETE_GROUP { allowed_methods = append(allowed_methods, "DELETE-GROUP") }
 		}
 		if len(allowed_methods) > 0 {
 			w.Header().Set("Allow", strings.Join(allowed_methods, ", "))
@@ -741,4 +735,3 @@ func notAllowed(
 		http.Error(w, "Not allowed", http.StatusMethodNotAllowed)
 	}
 }
-

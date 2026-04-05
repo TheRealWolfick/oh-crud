@@ -1,68 +1,112 @@
 package tools
 
 import (
-
 	"lotusforge.au/api-server/models"
 )
 
-// This function takes a map and will return it inside a valid or invalid slice. This
-// is just a wrapper for Validate_SliceOfMaps_AgainstConfig.
-// Validation is done via the "Req" or "PK" config option. This is used when you want to separate
-// valid rows from invalid rows without an automatic fail on the first invalid row.
+// Validate_Map_AgainstConfig is a single-row wrapper around Validate_SliceOfMaps_AgainstConfig.
 //
 // Return: []valid, []invalid
-func Validate_Map_AgainstConfig(cfg *models.DataModel, m map[string]any, enforce_pk bool, enforce_req bool) ([]map[string]any, []map[string]any) {
-	asSlice := []map[string]any{m}
-	return Validate_SliceOfMaps_AgainstConfig(cfg, asSlice, enforce_pk, enforce_req)
+func Validate_Map_AgainstConfig(cfg *models.DataModel, m map[string]any, require_key_fields bool, require_insert_fields bool) ([]map[string]any, []map[string]any) {
+	return Validate_SliceOfMaps_AgainstConfig(cfg, []map[string]any{m}, require_key_fields, require_insert_fields)
 }
 
-
-// This function takes a slice of map[string]any and will return it as valid and invalid slices. 
-// Validation is done via the "Req" and "PK" config options which are extracted from the first config struct
-// Each row will also be coerced based on the config and anything that fails is an invalid row.
-// 
-// Return: []valid, []invalid
-func Validate_SliceOfMaps_AgainstConfig(cfg *models.DataModel, rows []map[string]any, enforce_pk bool, enforce_req bool) ([]map[string]any, []map[string]any) {
+// Validate_SliceOfMaps_AgainstConfig validates and coerces a slice of raw JSON maps against
+// the DataModel config. Each row is checked for:
+//   - require_key_fields: presence of at least one complete key (PK or any unique key)
+//   - require_insert_fields: presence of all required-on-insert fields
+//
+// Required-field checking respects json_alias: a field is considered present if either its
+// primary JSON key or any of its aliases is found in the row.
+//
+// Rows that pass both checks are coerced via DecodeAndCoerceFromUser; coercion failure = invalid.
+//
+// Return: []valid (coerced, keyed by field name), []invalid (original raw maps)
+func Validate_SliceOfMaps_AgainstConfig(cfg *models.DataModel, rows []map[string]any, require_identify_unique bool, require_insert_fields bool) ([]map[string]any, []map[string]any) {
 	if len(rows) < 1 {
 		return []map[string]any{}, []map[string]any{}
 	}
 
-	// Get the required fields and early return if there are none, enforce_pk means only the primary key is enforced
-	req_fields := GetRequiredJSONFields_FromConfig(cfg, enforce_pk)
+	unique_idenifiers := [][]string{}
+	if require_identify_unique {
+		unique_idenifiers = GetUpdateKeyOptions(cfg)
+	}
+
+	// Build required field entries: each entry holds the primary json key + aliases.
+	type requiredField struct {
+		json_key string
+		aliases  []string
+	}
+	insert_required := []requiredField{}
+	if require_insert_fields {
+		for _, field_cfg := range cfg.Fields {
+			if field_cfg.Required_on_insert != nil && *field_cfg.Required_on_insert && field_cfg.JSON != nil {
+				insert_required = append(insert_required, requiredField{
+					json_key: *field_cfg.JSON,
+					aliases:  field_cfg.JSON_alias,
+				})
+			}
+		}
+	}
+
 	valid_structs := []map[string]any{}
 	invalid_structs := []map[string]any{}
-	is_valid := true
 
-	// For each map
-	for _, row := range rows {	
+	for _, row := range rows {
+		is_valid := true
 
-		if len(req_fields) > 0 {
-			// For each required field name
-			for _, fieldName := range req_fields {
-
-				// Check if the value exists
-				_, exists := row[fieldName]
-				if !exists {
-					invalid_structs = append(invalid_structs, row)
+		// Check required-on-insert fields (primary key or any alias satisfies the check)
+		if require_insert_fields {
+			for _, req := range insert_required {
+				found := false
+				if _, exists := row[req.json_key]; exists {
+					found = true
+				} else {
+					for _, alias := range req.aliases {
+						if _, exists := row[alias]; exists {
+							found = true
+							break
+						}
+					}
+				}
+				if !found {
 					is_valid = false
 					break
 				}
 			}
 		}
-		// Was it a valid struct
+
+		// Check that at least one key set (PK or unique key) is fully present
+		if is_valid && require_identify_unique {
+			key_found := false
+			for _, option := range unique_idenifiers {
+				all_present := true
+				for _, json_key := range option {
+					if _, exists := row[json_key]; !exists {
+						all_present = false
+						break
+					}
+				}
+				if all_present {
+					key_found = true
+					break
+				}
+			}
+			if !key_found {
+				is_valid = false
+			}
+		}
+
 		if is_valid {
-			// Attempt to decode and coerce the values into their proper type
-			coerced_vals, err := models.DecodeAndCoerce(row, cfg, enforce_req, enforce_pk)
-			// Test is coercion works correctly. If yes, it was a valid struct
+			coerced_vals, err := models.DecodeAndCoerceFromUser(row, cfg)
 			if err != nil {
 				invalid_structs = append(invalid_structs, row)
 			} else {
 				valid_structs = append(valid_structs, coerced_vals)
 			}
+		} else {
+			invalid_structs = append(invalid_structs, row)
 		}
-
-		// Reset valid status
-		is_valid = true
 	}
 
 	return valid_structs, invalid_structs
@@ -72,9 +116,15 @@ func SetValueFromMap(qb *QueryBuilder, m map[string]any) {
 	setFromMap(m, qb.SetValue)
 }
 
-func SetValueAndWhereFromMap(qb *QueryBuilder, m map[string]any, where string) {
+// SetValueAndWhereFromMap sets fields into the query builder.
+// Fields whose names appear in where_fields go to SetWhereAbsolute; all others go to SetValue.
+func SetValueAndWhereFromMap(qb *QueryBuilder, m map[string]any, where_fields []string) {
+	where_set := map[string]bool{}
+	for _, f := range where_fields {
+		where_set[f] = true
+	}
 	for k, v := range m {
-		if k == where {
+		if where_set[k] {
 			qb.SetWhereAbsolute(k, v)
 		} else {
 			qb.SetValue(k, v)
@@ -82,10 +132,9 @@ func SetValueAndWhereFromMap(qb *QueryBuilder, m map[string]any, where string) {
 	}
 }
 
-// Save the struct fields into the query builder values data
+// setFromMap is an internal helper that calls setFunc for every key-value pair in m.
 func setFromMap(m map[string]any, setFunc func(string, any)) {
 	for k, v := range m {
 		setFunc(k, v)
 	}
 }
-
