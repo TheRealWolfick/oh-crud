@@ -20,25 +20,25 @@ fields:
   cat_code:
     type: string
     json: cat_code
-    db-type: text
+    db-type: character varying(20)
     required-on-insert: true
   asset_system:
     type: string
     json: asset_system
-    db-type: text
+    db-type: character varying(76)
     nullable: true
   asset_subsystem:
     type: string
     json: asset_subsystem
-    db-type: text
+    db-type: character varying(76)
     nullable: true
   is_active:
     type: bool
     json: is_active
     db-type: boolean
-    default: "true"
+    default: true
   description:
     type: string
     json: description
-    db-type: text
+    db-type: character varying(60)
     default: ""

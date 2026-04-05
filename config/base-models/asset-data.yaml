@@ -6,7 +6,48 @@ end-point: asset/data
 allow-diff: true
 diff-comparator: asset_no
 
-primary-key: asset_no
+primary-key: asset_id
+
+foreign-keys:
+  fk_asset_assetcategory:
+    foreign-key-fields:
+      - asset_category
+    foreign-key-target-table: asset_categories
+    foreign-key-target-fields:
+      - cat_code
+    foreign-key-on-update: CASCADE
+  fk_asset_bfroom_combo:
+    foreign-key-fields:
+      - building
+      - floor
+      - room
+    foreign-key-target-table: building_floor_room_combo
+    foreign-key-target-fields:
+      - building
+      - floor
+      - room
+    foreign-key-on-update: CASCADE
+  fk_asset_building_domain:
+    foreign-key-fields:
+      - building
+      - domain
+    foreign-key-target-table: buildings
+    foreign-key-target-fields:
+      - building
+      - db_domain
+    foreign-key-on-update: CASCADE
+  fk_asset_conditionrating:
+    foreign-key-fields:
+      - condition_rating
+    foreign-key-target-table: condition_ratings
+    foreign-key-target-fields:
+      - condition_rating
+    foreign-key-on-update: CASCADE
+
+unique-keys:
+  uk_asset_asset_no:
+    unique-key-fields:
+      - asset_no
 
 end-points-allowed:
   GET: true
@@ -21,14 +62,13 @@ fields:
   asset_id:
     type: int
     json: asset_id
-    db-type: int
-    nullable: true
+    db-type: serial
     skip-insert: true
     include-in-diff: false
   added_date:
     type: string
     json: added_date
-    db-type: text
+    db-type: timestamp without time zone
     default: "now()"
     include-in-diff: false
   additional_details:
@@ -36,75 +76,77 @@ fields:
     json: additional_details
     db-type: text
     default: ""
-    include-in-diff: true
+    include-in-diff: false
   asset_category:
     type: string
     json: asset_category
-    db-type: text
+    db-type: character varying(20)
     required-on-insert: true
     nullable: true
     include-in-diff: true
   asset_no:
     type: string
     json: asset_no
-    db-type: text
+    db-type: character varying(20)
     required-on-insert: true
     include-in-diff: false
   asset_status:
     type: string
     json: asset_status
-    db-type: text
+    db-type: char(1)
     default: "A"
     include-in-diff: true
   building:
     type: string
     json: building
-    db-type: text
+    db-type: character varying(15)
     required-on-insert: true
     nullable: true
     include-in-diff: true
   condition_rating:
     type: int
     json: condition_rating
-    db-type: int
+    db-type: smallint
     nullable: true
     include-in-diff: true
   condition_rating_date:
     type: string
     json: condition_rating_date
-    db-type: text
+    db-type: date
     nullable: true
     include-in-diff: true
   contact_id:
     type: string
     json: contact_ID
-    db-type: text
+    json-alias:
+      - contact_id
+    db-type: character varying(32)
     nullable: true
     include-in-diff: false
   department:
     type: string
     json: department
-    db-type: text
+    db-type: character varying(15)
     required-on-insert: true
     nullable: true
     include-in-diff: true
   description:
     type: string
     json: description
-    db-type: text
+    db-type: character varying(150)
     required-on-insert: true
     nullable: true
     include-in-diff: true
   disposal_cost:
     type: float
     json: disposal_cost
-    db-type: numeric
+    db-type: numeric(10,2)
     nullable: true
     include-in-diff: true
   disposal_date:
     type: string
     json: disposal_date
-    db-type: text
+    db-type: date
     nullable: true
     include-in-diff: true
   disposal_reason:
@@ -116,45 +158,45 @@ fields:
   domain:
     type: string
     json: domain
-    db-type: text
+    db-type: character varying(3)
     required-on-insert: true
     nullable: true
     include-in-diff: true
   finance_group_code:
     type: string
     json: finance_group_code
-    db-type: text
+    db-type: character varying(5)
     nullable: true
     include-in-diff: false
   floor:
     type: string
     json: floor
-    db-type: text
+    db-type: character varying(4)
     nullable: true
     absolute-match: true
     include-in-diff: true
   gl_asset_reference:
     type: string
     json: GL_asset_reference
-    db-type: text
+    db-type: character varying(50)
     nullable: true
     include-in-diff: false
   install_date:
     type: string
     json: install_date
-    db-type: text
+    db-type: date
     nullable: true
     include-in-diff: true
   installation_cost:
     type: float
     json: installation_cost
-    db-type: numeric
+    db-type: numeric(10,2)
     nullable: true
     include-in-diff: true
   invoice_no:
     type: string
     json: invoice_no
-    db-type: text
+    db-type: character varying(20)
     nullable: true
     include-in-diff: true
   is_virtual_asset:
@@ -166,156 +208,156 @@ fields:
   label_location:
     type: string
     json: label_location
-    db-type: text
+    db-type: character varying(200)
     nullable: true
     include-in-diff: false
   latitude:
     type: float
     json: latitude
-    db-type: numeric
+    db-type: numeric(9,6)
     nullable: true
     include-in-diff: true
   location:
     type: string
     json: location
-    db-type: text
+    db-type: character varying(200)
     nullable: true
     include-in-diff: false
   longitude:
     type: float
     json: longitude
-    db-type: numeric
+    db-type: numeric(9,6)
     nullable: true
     include-in-diff: true
   make:
     type: string
     json: make
-    db-type: text
+    db-type: character varying(40)
     nullable: true
     include-in-diff: true
   manufacturer:
     type: string
     json: manufacturer
-    db-type: text
+    db-type: character varying(40)
     nullable: true
     include-in-diff: false
   model:
     type: string
     json: model
-    db-type: text
+    db-type: character varying(40)
     nullable: true
     include-in-diff: true
   owning_cost_center:
     type: string
     json: owning_cost_center
-    db-type: text
+    db-type: character varying(10)
     nullable: true
     include-in-diff: true
   purchase_cost:
     type: float
     json: purchase_cost
-    db-type: numeric
+    db-type: numeric(10,2)
     nullable: true
     include-in-diff: true
   purchase_date:
     type: string
     json: purchase_date
-    db-type: text
+    db-type: date
     nullable: true
     include-in-diff: true
   purchase_order_no:
     type: string
     json: purchase_order_no
-    db-type: text
+    db-type: character varying(20)
     nullable: true
     include-in-diff: true
   purchasing_cost_center:
     type: string
     json: purchasing_cost_center
-    db-type: text
+    db-type: character varying(10)
     nullable: true
     include-in-diff: true
   rfid_tag_id:
     type: string
     json: RFID_tag_ID
-    db-type: text
+    db-type: character varying(36)
     nullable: true
     include-in-diff: false
   room:
     type: string
     json: room
-    db-type: text
+    db-type: character varying(15)
     nullable: true
     include-in-diff: true
   serial:
     type: string
     json: serial
-    db-type: text
+    db-type: character varying(40)
     nullable: true
     include-in-diff: true
   service_agent:
     type: string
     json: service_agent
-    db-type: text
+    db-type: character varying(40)
     nullable: true
     include-in-diff: false
   spare_parts:
     type: string
     json: spare_parts
-    db-type: text
+    db-type: character varying(100)
     nullable: true
     include-in-diff: false
   spare_parts_bin_no:
     type: string
     json: spare_parts_bin_no
-    db-type: text
+    db-type: character varying(20)
     nullable: true
     include-in-diff: false
   spare_parts_held:
     type: string
     json: spare_parts_held
-    db-type: text
+    db-type: character varying(200)
     nullable: true
     include-in-diff: false
   supplier_code:
     type: string
     json: supplier_code
-    db-type: text
+    db-type: character varying(20)
     nullable: true
     include-in-diff: true
   tech_manual_reference:
     type: string
     json: tech_manual_reference
-    db-type: text
+    db-type: character varying(50)
     nullable: true
-    include-in-diff: true
+    include-in-diff: false
   user_defined_fields:
-    type: string
+    type: json
     json: user_defined_fields
-    db-type: text
+    db-type: jsonb
     nullable: true
     include-in-diff: false
   warranty_period:
     type: int
     json: warranty_period
-    db-type: int
-    default: "12"
+    db-type: smallint
+    default: 12
     include-in-diff: true
   working_life:
     type: int
     json: working_life
-    db-type: int
+    db-type: smallint
     nullable: true
     include-in-diff: true
   ownership_status:
     type: string
     json: ownership_status
-    db-type: text
+    db-type: character(1)
     default: "O"
     include-in-diff: true
   altered_date:
     type: string
     json: altered_date
-    db-type: text
+    db-type: timestamp without time zone
     default: "now()"
     include-in-diff: false

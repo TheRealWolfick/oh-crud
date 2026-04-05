@@ -227,25 +227,10 @@ func TestValidateDataModel(t *testing.T) {
 		}
 	})
 
-	t.Run("foreign-key missing table", func(t *testing.T) {
-		m := basicModel()
-		m.Foreign_keys = map[string]models.ForeignKey{
-			"fk_test": {
-				Fields:        []string{"id"},
-				Target_table:  ptr("other_table"),
-				Target_fields: []string{"other_id"},
-			},
-		}
-		if err := models.ValidateDataModel(m); err == nil {
-			t.Error("expected error for foreign-key missing table")
-		}
-	})
-
 	t.Run("foreign-key field count mismatch", func(t *testing.T) {
 		m := basicModel()
 		m.Foreign_keys = map[string]models.ForeignKey{
 			"fk_test": {
-				Table:         ptr("test_table"),
 				Fields:        []string{"id", "code"},
 				Target_table:  ptr("other_table"),
 				Target_fields: []string{"other_id"},

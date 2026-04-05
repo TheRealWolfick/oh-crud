@@ -7,6 +7,24 @@ allow-diff: false
 
 primary-key: bfroom_id
 
+foreign-keys:
+  fk_building_floor_room_bfloor:
+    foreign-key-fields:
+      - building
+      - floor
+    foreign-key-target-table: building_floor_combo
+    foreign-key-target-fields:
+      - building
+      - floor
+    foreign-key-on-update: CASCADE
+
+unique-keys:
+  uk_building_floor_room_bfroom:
+    unique-key-fields:
+      - building
+      - floor
+      - room
+
 end-points-allowed:
   GET: true
   PUT: true
@@ -20,26 +38,26 @@ fields:
   bfroom_id:
     type: int
     json: bfroom_id
-    db-type: int
+    db-type: smallserial
     skip-insert: true
   building:
     type: string
     json: building
-    db-type: text
+    db-type: character varying(15)
     required-on-insert: true
   floor:
     type: string
     json: floor
-    db-type: text
+    db-type: character varying(4)
     required-on-insert: true
     absolute-match: true
   room:
     type: string
     json: room
-    db-type: text
+    db-type: character varying(15)
     required-on-insert: true
   room_description:
     type: string
     json: room_description
-    db-type: text
+    db-type: character varying(100)
     default: ""

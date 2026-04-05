@@ -1,0 +1,95 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DataModel",
+  "type": "object",
+  "required": ["name", "version", "table-name", "end-point", "primary-key", "fields"],
+  "additionalProperties": false,
+  "properties": {
+    "name":       { "type": "string" },
+    "version":    { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "table-name": { "type": "string" },
+    "end-point":  { "type": "string" },
+    "allow-diff": { "type": "boolean" },
+    "diff-comparator": { "type": "string" },
+    "primary-key": { "type": "string" },
+
+    "end-points-allowed": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "GET":          { "type": "boolean" },
+        "POST":         { "type": "boolean" },
+        "POST-GROUP":   { "type": "boolean" },
+        "PUT":          { "type": "boolean" },
+        "PUT-GROUP":    { "type": "boolean" },
+        "DELETE":       { "type": "boolean" },
+        "DELETE-GROUP": { "type": "boolean" }
+      }
+    },
+
+    "foreign-keys": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["foreign-key-fields", "foreign-key-target-table", "foreign-key-target-fields"],
+        "additionalProperties": false,
+        "properties": {
+          "foreign-key-fields":        { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+          "foreign-key-target-table":  { "type": "string" },
+          "foreign-key-target-fields": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+          "foreign-key-on-update": {
+            "type": "string",
+            "enum": ["CASCADE", "SET NULL", "SET DEFAULT", "RESTRICT", "NO ACTION"]
+          },
+          "foreign-key-on-delete": {
+            "type": "string",
+            "enum": ["CASCADE", "SET NULL", "SET DEFAULT", "RESTRICT", "NO ACTION"]
+          }
+        }
+      }
+    },
+
+    "unique-keys": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["unique-key-fields"],
+        "additionalProperties": false,
+        "properties": {
+          "unique-key-fields": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+        }
+      }
+    },
+
+    "fields": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["type", "json", "db-type"],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["int", "float", "string", "bool", "json", "time", "uuid"]
+          },
+          "json": { "type": "string" },
+          "json-alias": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "include-in-diff":   { "type": "boolean" },
+          "required-on-insert": { "type": "boolean" },
+          "absolute-match":    { "type": "boolean" },
+          "skip-insert":       { "type": "boolean" },
+          "db-type":  { "type": "string" },
+          "nullable": { "type": "boolean" },
+          "default":  { "type": ["string", "number", "boolean"] },
+          "migration": {
+            "type": "string",
+            "enum": ["alter", "skip", "recreate"]
+          }
+        }
+      }
+    }
+  }
+}

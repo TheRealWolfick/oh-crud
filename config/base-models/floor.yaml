@@ -20,12 +20,12 @@ fields:
   floor_id:
     type: int
     json: floor_id
-    db-type: int
+    db-type: smallserial
     nullable: true
     skip-insert: true
   floor:
     type: string
     json: floor
-    db-type: text
+    db-type: character varying(4)
     required-on-insert: true
     absolute-match: true

@@ -20,7 +20,7 @@ fields:
   domain_code:
     type: string
     json: domain_code
-    db-type: text
+    db-type: character varying(3)
     required-on-insert: true
   domain_description:
     type: string

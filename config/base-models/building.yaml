@@ -5,7 +5,21 @@ table-name: buildings
 end-point: building
 allow-diff: false
 
-primary-key: building
+primary-key: building_id
+
+foreign-keys:
+  fk_buildings_domain:
+    foreign-key-fields:
+      - db_domain
+    foreign-key-target-table: domains
+    foreign-key-target-fields:
+      - domain_code
+    foreign-key-on-update: CASCADE
+
+unique-keys:
+  uk_buildings_building:
+    unique-key-fields:
+      - building
 
 end-points-allowed:
   GET: true
@@ -20,41 +34,40 @@ fields:
   building_id:
     type: int
     json: building_id
-    db-type: int
-    nullable: true
+    db-type: smallserial
     skip-insert: true
   building:
     type: string
     json: building
-    db-type: text
+    db-type: character varying(15)
     required-on-insert: true
   db_domain:
     type: string
     json: db_domain
-    db-type: text
+    db-type: character varying(3)
     required-on-insert: true
   building_description:
     type: string
     json: building_description
-    db-type: text
+    db-type: character varying(200)
     nullable: true
   building_address:
     type: string
     json: building_address
-    db-type: text
+    db-type: character varying(200)
     nullable: true
   building_suburb:
     type: string
     json: building_suburb
-    db-type: text
+    db-type: character varying(40)
     nullable: true
   building_state:
     type: string
     json: building_state
-    db-type: text
+    db-type: character varying(4)
     nullable: true
   is_active:
     type: bool
     json: is_active
     db-type: boolean
-    nullable: true
+    default: true
