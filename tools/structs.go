@@ -399,8 +399,21 @@ func normalizeVal(v any, exists bool) string {
     }
 }
 
+// SortMapSlice sorts a []map[string]any in-place by the string representation of key.
+// Entries missing key are placed at the end.
+func SortMapSlice(slice []map[string]any, key string) {
+	sort.Slice(slice, func(i, j int) bool {
+		ival, iok := slice[i][key]
+		jval, jok := slice[j][key]
+		if !iok { return false }
+		if !jok { return true }
+		return normalizeVal(ival, true) < normalizeVal(jval, true)
+	})
+}
+
 // DiffMapSlices compares two slices of maps using comparatorKey to match rows.
 // excludeKeys lists fields that should not be compared per-field.
+// Both slices are sorted in-place by comparatorKey before the merge walk.
 func DiffMapSlices(
 	left []map[string]any,
 	right []map[string]any,
@@ -412,47 +425,56 @@ func DiffMapSlices(
 	}
 
 	leftOnly := make([]map[string]any, 0)
-	rightRemaining := make([]map[string]any, len(right))
-	copy(rightRemaining, right)
+	rightRemaining := make([]map[string]any, 0)
 	diffs := make([]models.Item_Diff[map[string]any], 0)
 
-	// For each row on the left
-	for _, l := range left {
-		// Get the comparatorKey value from the row
-		lval, ok := l[comparatorKey]
-		// If there was no comparatorKey, mark it as left only as it can't be matched to the right
-		if !ok {
-			leftOnly = append(leftOnly, l)
+	// Sort both slices so matched rows are adjacent, enabling a single merge walk
+	SortMapSlice(left, comparatorKey)
+	SortMapSlice(right, comparatorKey)
+
+	i, j := 0, 0
+	for i < len(left) && j < len(right) {
+		lval, lok := left[i][comparatorKey]
+		rval, rok := right[j][comparatorKey]
+
+		// Rows missing the comparator key cannot be matched; drain them individually
+		if !lok {
+			leftOnly = append(leftOnly, left[i])
+			i++
 			continue
 		}
-		// Coerce the comparatorKey into a string
-		lStr := fmt.Sprintf("%v", lval)
+		if !rok {
+			rightRemaining = append(rightRemaining, right[j])
+			j++
+			continue
+		}
 
-		// Pre set the found tag to false
-		found := false
-		// For each row on the right
-		for i, r := range rightRemaining {
-			// Check if a matching row exists on the right
-			rval, ok2 := r[comparatorKey]
-			// No match, search next row
-			if !ok2 { continue }
-			// match
-			if fmt.Sprintf("%v", rval) == lStr {
-				found = true
-				d := DiffMap(l, r, comparatorKey, excludeKeys)
-				// If a diff was found, add it to the diffs slice
-				if d.Comparator != nil {
-					diffs = append(diffs, d)
-				}
-				// Remove this key from the right and break the loop to go to the next key on the left
-				rightRemaining = append(rightRemaining[:i], rightRemaining[i+1:]...)
-				break
+		lStr := normalizeVal(lval, true)
+		rStr := normalizeVal(rval, true)
+
+		switch {
+		case lStr == rStr:
+			d := DiffMap(left[i], right[j], comparatorKey, excludeKeys)
+			if d.Comparator != nil {
+				diffs = append(diffs, d)
 			}
+			i++
+			j++
+		case lStr < rStr:
+			leftOnly = append(leftOnly, left[i])
+			i++
+		default:
+			rightRemaining = append(rightRemaining, right[j])
+			j++
 		}
-		// If it was not found, it must be in the left only
-		if !found {
-			leftOnly = append(leftOnly, l)
-		}
+	}
+
+	// Drain any remaining unmatched entries
+	for ; i < len(left); i++ {
+		leftOnly = append(leftOnly, left[i])
+	}
+	for ; j < len(right); j++ {
+		rightRemaining = append(rightRemaining, right[j])
 	}
 
 	return &models.Diff[map[string]any]{
