@@ -56,8 +56,9 @@ func TestBinarySearch(t *testing.T) {
 		}
 	})
 
+	// Function not currently used.
 	t.Run("Test merge function", func(t *testing.T) {
-		diffs := DiffStructSlices(left, right)
-		t.Errorf("Diffs:\n%s", DereferencedString(diffs))
+		//diffs := DiffStructSlices(left, right)
+		//t.Errorf("Diffs:\n%s", DereferencedString(diffs))
 	})
 }

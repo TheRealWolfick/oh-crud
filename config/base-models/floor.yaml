@@ -1,10 +1,13 @@
 ---
 name: Floor
-version: 1.0.0
+version: 1.1.0
 table-name: floors
 end-point: floor
 allow-diff: false
-allow:
+
+primary-key: floor
+
+end-points-allowed:
   GET: true
   PUT: true
   POST: true
@@ -12,26 +15,17 @@ allow:
   PUT-GROUP: true
   POST-GROUP: true
   DELETE-GROUP: false
+
 fields:
   floor_id:
     type: int
     json: floor_id
-    db: floor_id
-    pk: false
-    req: false
-    none: ~
-    diff: ~
-    custom-where: ~
-    absolute: false
+    db-type: smallserial
+    nullable: true
     skip-insert: true
   floor:
     type: string
     json: floor
-    db: floor
-    pk: true
-    req: true
-    none: ~
-    diff: ~
-    custom-where: ~
-    absolute: true
-    skip-insert: false
+    db-type: character varying(4)
+    required-on-insert: true
+    absolute-match: true

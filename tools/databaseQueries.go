@@ -50,19 +50,17 @@ func createDiff_Dynamic(
 
 	comparatorKey := GetDiffComparatorKey(cfg)
 	if comparatorKey == "" {
-		return nil, fmt.Errorf("no diff comparator field found in config for table %s", *cfg.Table_Name)
+		return nil, fmt.Errorf("no diff comparator field found in config for table %s", *cfg.Table_name)
 	}
 	excludeKeys := BuildExcludeKeysFromConfig(cfg)
 
-	// Build select of all DB columns
+	// Build select of all DB columns (field name = DB column name)
 	cols := []string{}
-	for _, field_cfg := range cfg.Fields {
-		if field_cfg.DB != nil && *field_cfg.DB != "" && *field_cfg.DB != "-" {
-			cols = append(cols, *field_cfg.DB)
-		}
+	for field_name := range cfg.Fields {
+		cols = append(cols, field_name)
 	}
 	qb := NewQueryBuilder(log)
-	query := qb.BuildSelect(*cfg.Table_Name, cols)
+	query := qb.BuildSelect(*cfg.Table_name, cols)
 
 	rows, err := db.Query(ctx, query)
 	if err != nil {
@@ -85,7 +83,7 @@ func createDiff_Dynamic(
 		log.Debug("Stored[0:10]", "data", stored[0:10])
 		log.Debug("Coerced[0:10]", "data", coerced_stored[0:10])
 		return map[string]any{
-			"table":        *cfg.Table_Name,
+			"table":        *cfg.Table_name,
 			"rows_affected": 0,
 			"error":        "no differences found or invalid comparator",
 		}, fmt.Errorf("no valid diff created")
@@ -95,7 +93,7 @@ func createDiff_Dynamic(
 	if totalDiffs == 0 {
 		return map[string]any{
 			"action":       "diff",
-			"on_table":     *cfg.Table_Name,
+			"on_table":     *cfg.Table_name,
 			"rows_affected": 0,
 			"message":      "no differences found between supplied and stored data",
 		}, nil
@@ -112,7 +110,7 @@ func createDiff_Dynamic(
 	tempjson := DereferencedString(diff_struct)
 	h.Write([]byte(tempjson))
 	checksum := fmt.Sprintf("%x", h.Sum(nil))
-	tableName := *cfg.Table_Name
+	tableName := *cfg.Table_name
 
 	diff_struct.Checksum = &checksum
 	diff_struct.UserGenerated = &user.Username
@@ -125,7 +123,7 @@ func createDiff_Dynamic(
 	cmdtag, err := db.Exec(ctx, insertQuery, insertQb.GetArgs()...)
 
 	ret_map := map[string]any{
-		"table":        *cfg.Table_Name,
+		"table":        *cfg.Table_name,
 		"rows_affected": cmdtag.RowsAffected(),
 	}
 	if err != nil {
@@ -250,18 +248,22 @@ func multiUpdate_Dynamic(
 
 	log, ok := middleware.GetLogger(ctx); if !ok { log = GetBasicLogger() }
 
-	prim_keys := GetRequiredJSONFields_FromConfig(cfg, true)
-	if len(prim_keys) < 1 {
-		log.Error("Multi Update: Could not extract primary key from config")
-		return nil, fmt.Errorf("Multi Update: Could not extract primary key from config")
-	}
-	prim_key := prim_keys[0]
-
 	for idx, row := range supplied {
-		qb := NewQueryBuilder(log.With("primary_key", row[prim_key]))
+		where_fields, ok := FindRowKeyFields(row, cfg)
+		if !ok {
+			log.Error("Multi Update: no key fields found in row", "idx", idx)
+			report.Errors = append(report.Errors, models.MultiUpdateError{ID: idx, Error: fmt.Errorf("no identifying key (PK or unique key) found in row")})
+			continue
+		}
 
+		where_set := map[string]bool{}
+		for _, f := range where_fields {
+			where_set[f] = true
+		}
+
+		qb := NewQueryBuilder(log.With("key_fields", where_fields))
 		for k, v := range row {
-			if k == prim_key {
+			if where_set[k] {
 				qb.SetWhereAbsolute(k, v)
 			} else {
 				qb.SetValue(k, v)
@@ -301,22 +303,18 @@ func multiDelete_Dynamic(
 		log = GetBasicLogger()
 	}
 
-	prim_keys := GetRequiredJSONFields_FromConfig(cfg, true)
-	if len(prim_keys) < 1 {
-		log.Error("Multi Delete: Could not extract primary key from config")
-		return nil, fmt.Errorf("Multi Delete: Could not extract primary key from config")
-	}
-	prim_key := prim_keys[0]
-
 	for idx, row := range supplied {
-		qb := NewQueryBuilder(log.With("primary_key", row[prim_key]))
-
-		val, ok := row[prim_key]
+		where_fields, ok := FindRowKeyFields(row, cfg)
 		if !ok {
-			report.Errors = append(report.Errors, models.MultiUpdateError{ID: idx, Error: fmt.Errorf("missing primary key %s", prim_key)})
+			log.Error("Multi Delete: no key fields found in row", "idx", idx)
+			report.Errors = append(report.Errors, models.MultiUpdateError{ID: idx, Error: fmt.Errorf("no identifying key (PK or unique key) found in row")})
 			continue
 		}
-		qb.SetWhereAbsolute(prim_key, val)
+
+		qb := NewQueryBuilder(log.With("key_fields", where_fields))
+		for _, f := range where_fields {
+			qb.SetWhereAbsolute(f, row[f])
+		}
 
 		query := qb.BuildDelete_Dynamic(cfg)
 		cmdtag, err := db.Exec(ctx, query, qb.GetArgs()...)

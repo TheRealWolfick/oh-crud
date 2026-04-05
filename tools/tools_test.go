@@ -103,8 +103,6 @@ func TestQueryBuilder(t *testing.T) {
 	var newInvalidGroup []testingStruct
 	var newValidGroup []testingStruct
 	qb_singleValid := NewQueryBuilder(GetBasicLogger())
-	qb_groupValid := NewQueryBuilder(GetBasicLogger())
-
 	// Read the data into the variables
 	json.Unmarshal([]byte(new1json), &new1)
 	json.Unmarshal([]byte(newgroupinvalidjson), &newInvalidGroup)
@@ -121,27 +119,6 @@ func TestQueryBuilder(t *testing.T) {
 		if args != "new1, 5" {
 			t.Errorf("Expected: new1 5\nReceived: %s", args)
 		}
-	})
-
-	t.Run("Test multi insert - Invalid", func(t *testing.T) {
-		valid, invalid := ValidateMultiStruct(newInvalidGroup)
-		if len(valid) != 1 || len(invalid) != 2 {
-			t.Error("Expected object to be invalid, was valid")
-		}
-	})
-
-	t.Run("Test multi insert - valid", func(t *testing.T) {
-		valid, invalid := ValidateMultiStruct(newValidGroup)
-		if len(valid) != 3 {
-			t.Errorf("Expected object to be valid, was invalid. Invalid entries: %v", invalid)
-		}
-
-		args := qb_groupValid.GetArgsAsString()
-		if args != "new1, 5, new2, 50, valid, 15, false, more text" {
-			t.Errorf("Expected: new1, 5, new2, 50, valid, 15, false, more text\nReceived: %s", args)
-		}
-
-
 	})
 }
 

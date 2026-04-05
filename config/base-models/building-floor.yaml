@@ -1,10 +1,35 @@
 ---
 name: Building Floor
-version: 1.0.0
+version: 1.1.0
 table-name: building_floor_combo
 end-point: bfloor
 allow-diff: false
-allow:
+
+primary-key: bfloor_id
+
+foreign-keys:
+  fk_building_floor_building:
+    foreign-key-fields:
+      - building
+    foreign-key-target-table: buildings
+    foreign-key-target-fields:
+      - building
+    foreign-key-on-update: CASCADE
+  fk_building_floor_floor:
+    foreign-key-fields:
+      - floor
+    foreign-key-target-table: floors
+    foreign-key-target-fields:
+      - floor
+    foreign-key-on-update: CASCADE
+
+unique-keys:
+  uk_building_floor_bfloor:
+    unique-key-fields:
+      - building
+      - floor
+
+end-points-allowed:
   GET: true
   PUT: true
   POST: true
@@ -12,48 +37,26 @@ allow:
   PUT-GROUP: true
   POST-GROUP: true
   DELETE-GROUP: true
+
 fields:
   bfloor_id:
     type: int
     json: bfloor_id
-    db: bfloor_id
-    pk: true
-    req: false
-    none: ~
-    diff: ~
-    custom-where: ~
-    absolute: false
+    db-type: smallserial
     skip-insert: true
   building:
     type: string
     json: building
-    db: building
-    pk: false
-    req: true
-    none: ~
-    diff: ~
-    custom-where: ~
-    absolute: false
-    skip-insert: false
+    db-type: character varying(15)
+    required-on-insert: true
   floor:
     type: string
     json: floor
-    db: floor
-    pk: false
-    req: true
-    none: ~
-    diff: ~
-    custom-where: ~
-    absolute: true
-    skip-insert: false
+    db-type: character varying(4)
+    required-on-insert: true
+    absolute-match: true
   is_active:
     type: bool
     json: is_active
-    db: is_active
-    pk: false
-    req: false
-    none: true
-    diff: ~
-    custom-where: ~
-    absolute: false
-    skip-insert: false
+    db-type: boolean
+    default: true

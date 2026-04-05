@@ -1,10 +1,31 @@
 ---
 name: Building
-version: 1.0.0
+version: 1.1.1
 table-name: buildings
 end-point: building
 allow-diff: false
-allow:
+
+primary-key: building_id
+
+foreign-keys:
+  fk_buildings_domain:
+    foreign-key-fields:
+      - db_domain
+    foreign-key-target-table: domains
+    foreign-key-target-fields:
+      - domain_code
+    foreign-key-on-update: CASCADE
+
+unique-keys:
+  uk_buildings_building:
+    unique-key-fields:
+      - building
+  uk_buildings_building_domain:
+    unique-key-fields:
+      - building
+      - db_domain
+
+end-points-allowed:
   GET: true
   PUT: true
   POST: true
@@ -12,92 +33,45 @@ allow:
   PUT-GROUP: true
   POST-GROUP: true
   DELETE-GROUP: true
+
 fields:
   building_id:
     type: int
     json: building_id
-    db: building_id
-    pk: false
-    req: false
-    none: ~
-    diff: ~
-    custom-where: ~
-    absolute: false
+    db-type: smallserial
     skip-insert: true
   building:
     type: string
     json: building
-    db: building
-    pk: true
-    req: true
-    none: ~
-    diff: ~
-    custom-where: ~
-    absolute: false
-    skip-insert: false
+    db-type: character varying(15)
+    required-on-insert: true
   db_domain:
     type: string
     json: db_domain
-    db: db_domain
-    pk: false
-    req: true
-    none: ~
-    diff: ~
-    custom-where: ~
-    absolute: false
-    skip-insert: false
+    db-type: character varying(3)
+    required-on-insert: true
   building_description:
     type: string
     json: building_description
-    db: building_description
-    pk: false
-    req: false
-    none: ~
-    diff: ~
-    custom-where: ~
-    absolute: false
-    skip-insert: false
+    db-type: character varying(200)
+    nullable: true
   building_address:
     type: string
     json: building_address
-    db: building_address
-    pk: false
-    req: false
-    none: ~
-    diff: ~
-    custom-where: ~
-    absolute: false
-    skip-insert: false
+    db-type: character varying(200)
+    nullable: true
   building_suburb:
     type: string
     json: building_suburb
-    db: building_suburb
-    pk: false
-    req: false
-    none: ~
-    diff: ~
-    custom-where: ~
-    absolute: false
-    skip-insert: false
+    db-type: character varying(40)
+    nullable: true
   building_state:
     type: string
     json: building_state
-    db: building_state
-    pk: false
-    req: false
-    none: ~
-    diff: ~
-    custom-where: ~
-    absolute: false
-    skip-insert: false
+    db-type: character varying(4)
+    nullable: true
   is_active:
     type: bool
     json: is_active
-    db: is_active
-    pk: false
-    req: false
-    none: ~
-    diff: ~
-    custom-where: ~
-    absolute: false
-    skip-insert: false
+    db-type: boolean
+    default: true

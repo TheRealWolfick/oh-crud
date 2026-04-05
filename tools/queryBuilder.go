@@ -356,39 +356,35 @@ func (qb *QueryBuilder) BuildMultiInsert(cfg *models.DataModel, data []map[strin
 
 		// Iterate through each column of the model
 		for field_name, field_cfg := range cfg.Fields {
-			
-			if field_cfg.Skip_Insert != nil && *field_cfg.Skip_Insert {
+
+			if field_cfg.Skip_insert != nil && *field_cfg.Skip_insert {
 				qb.logger.Debug("Field set to skip insert", "field", field_name)
 				continue
 			}
-			// Check if this is a valid field
-			if field_cfg.DB == nil || *field_cfg.DB == "" || *field_cfg.DB == "-" { 
-				qb.logger.Debug("Skipping non database field", "field", field_name)
-				continue 
-			}
 
 			// If this is the first row, add the column names to columns list
-			if pos == 0 { c = append(c, *field_cfg.DB) }
+			// field_name is the DB column name in the new structure
+			if pos == 0 { c = append(c, field_name) }
 
-			// Check if this column exists in map
-			val, ok := row[*field_cfg.JSON]; 
+			// Coerced rows are keyed by field_name (= DB column name)
+			val, ok := row[field_name]
 			if ok {
 				// Value was supplied
 				local_values = append(local_values, fmt.Sprintf("$%d", qb.pos))
 				qb.pos++
 				qb.args = append(qb.args, val)
 			} else {
-				if field_cfg.None == nil {
+				if field_cfg.Default == nil {
 					// No default specified — send NULL
 					qb.args = append(qb.args, nil)
-				} else if *field_cfg.None == "" {
+				} else if *field_cfg.Default == "" {
 					// Explicit blank string default
 					qb.args = append(qb.args, "")
-				} else if *field_cfg.None == "now()" {
+				} else if *field_cfg.Default == "now()" {
 					qb.args = append(qb.args, insert_time.Format(time.RFC3339))
 				} else {
 					// Parse the none value to the correct type
-					parsed, err := models.CoerceType(*field_cfg.None, *field_cfg.Type)
+					parsed, err := models.CoerceType(*field_cfg.Default, *field_cfg.Type)
 					if err != nil {
 						qb.logger.Debug("Parse of none type failed in insert!", "field_name", field_name, "field_type", *field_cfg.Type)
 						qb.args = append(qb.args, nil)
@@ -404,7 +400,7 @@ func (qb *QueryBuilder) BuildMultiInsert(cfg *models.DataModel, data []map[strin
 		v = append(v, fmt.Sprintf(("(%s)"), strings.Join(local_values, ", ")))
 	}
 	// Build the query, save it into the query builder, and return it for use.
-	qb.query = fmt.Sprintf("INSERT INTO %s (%s) VALUES %s;", *cfg.Table_Name, strings.Join(c, ", "), fmt.Sprintf("%s",strings.Join(v, ", ")))
+	qb.query = fmt.Sprintf("INSERT INTO %s (%s) VALUES %s;", *cfg.Table_name, strings.Join(c, ", "), fmt.Sprintf("%s",strings.Join(v, ", ")))
 	fmt.Println(qb.query)
 	return qb.query
 }
@@ -490,7 +486,7 @@ func (qb *QueryBuilder) BuildUpdate_Dynamic(cfg *models.DataModel) string {
 		v = append(v, fmt.Sprintf("%s = $%d", key, val))
 	}
 
-	qb.query = fmt.Sprintf("UPDATE %s SET %s WHERE %s;", *cfg.Table_Name, strings.Join(v, ", "), strings.Join(w, " AND "))
+	qb.query = fmt.Sprintf("UPDATE %s SET %s WHERE %s;", *cfg.Table_name, strings.Join(v, ", "), strings.Join(w, " AND "))
 	return qb.query
 }
 
@@ -511,6 +507,6 @@ func (qb *QueryBuilder) BuildDelete_Dynamic(cfg *models.DataModel) string {
 		w = append(w, fmt.Sprintf("%s = $%d", key, val))
 	}
 
-	qb.query = fmt.Sprintf("DELETE FROM %s WHERE %s;", *cfg.Table_Name, strings.Join(w, " AND "))
+	qb.query = fmt.Sprintf("DELETE FROM %s WHERE %s;", *cfg.Table_name, strings.Join(w, " AND "))
 	return qb.query
 }

@@ -1,51 +1,38 @@
 ---
 name: Condition Ratings
-version: 1.0.3
+version: 1.1.0
 table-name: condition_ratings
 end-point: condition/rating
-default-where: ~
-overwrite-select: ~
-custon-with: ~
 allow-diff: false
-allow:
-  GET: false
+
+primary-key: condition_rating
+
+end-points-allowed:
+  GET: true
   PUT: true
   POST: true
   DELETE: true
   PUT-GROUP: true
   POST-GROUP: true
   DELETE-GROUP: true
+
 fields:
   condition_rating:
     type: int
     json: condition_rating
-    db: condition_rating
-    pk: true
-    req: true
-    none: ~
-    diff: false
-    custom-where: ~
-    absolute: false
-    skip-insert: false
+    db-type: smallint
+    required-on-insert: true
+    include-in-diff: false
   description:
     type: string
     json: description
-    db: description
-    pk: false
-    req: true
-    none: ""
-    diff: true
-    custom-where: ~
-    absolute: false
-    skip-insert: false
+    db-type: character varying(50)
+    required-on-insert: true
+    default: ""
+    include-in-diff: true
   long_description:
     type: string
     json: long_description
-    db: long_description
-    pk: false
-    req: false
-    none: ""
-    diff: true
-    custom-where: ~
-    absolute: false
-    skip-insert: false
+    db-type: character varying(500)
+    default: ""
+    include-in-diff: true
