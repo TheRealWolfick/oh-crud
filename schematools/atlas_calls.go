@@ -23,7 +23,7 @@ const hclDir = "./config/database"
 
 // hclPathFor returns the HCL file path for a given table.
 func hclPathFor(tableName string) string {
-	return filepath.Join(hclDir, tableName+".hcl")
+	return filepath.Join(hclDir, tableName+"pg.hcl")
 }
 
 // hclVersionPath returns the sidecar file that stores the last-applied version
@@ -226,7 +226,7 @@ func BootstrapModels(ctx context.Context, pool *pgxpool.Pool, loadedModels []mod
 
 	gen := NewSchemaGenerator(pool)
 	if gate != nil {
-		gen.Approval = gate.ApprovalFuncFor("_bootstrap_")
+		gen.Approval = gate.ApprovalFuncFor("_startup_")
 	}
 
 	logger.Info("Syncing all schemas", "tables", tableNames)
