@@ -23,7 +23,7 @@ const hclDir = "./config/database"
 
 // hclPathFor returns the HCL file path for a given table.
 func hclPathFor(tableName string) string {
-	return filepath.Join(hclDir, tableName+"pg.hcl")
+	return filepath.Join(hclDir, tableName+".pg.hcl")
 }
 
 // hclVersionPath returns the sidecar file that stores the last-applied version
