@@ -242,7 +242,7 @@ func getResource(
 
 		// Get the rows
 		rows, err := qm.Db.Query(ctx, query, qb.GetArgs()...)
-		count := qm.Db.QueryRow(ctx, qb.BuildCount(*cfg.Table_name))
+		count, err := qm.Db.Query(ctx, qb.BuildCount(*cfg.Table_name))
 
 		if err != nil {
 			log.Error("GET_ERROR", "error", err)
@@ -252,8 +252,9 @@ func getResource(
 
 		// Handle the rows
 		defer rows.Close()
+		defer count.Close()
 		response["data"], err = pgx.CollectRows(rows, pgx.RowToMap)
-		err = count.Scan(response["count"])
+		response["count"], err = pgx.CollectOneRow(count, pgx.RowTo[int])
 
 		// Handle error
 		if err != nil {
