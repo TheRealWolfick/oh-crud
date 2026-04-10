@@ -224,6 +224,7 @@ func getResource(
 
 		// Response intialization
 		w.Header().Set("Content-Type", "application/json")
+		response := map[string]any{"task_type": "GET"}
 
 		// Create new query builder and save it into the context of the request
 		qb := tools.NewQueryBuilder(log)
@@ -235,9 +236,13 @@ func getResource(
 		}
 
 		query := qb.BuildSelect(*cfg.Table_name, tools.DynamicGetDatabaseColumns(cfg, false, false))
+		// Save the page data into the response
+		response["page"] = qb.GetPage()
+		response["page_size"] = qb.GetPageSize()
 
 		// Get the rows
 		rows, err := qm.Db.Query(ctx, query, qb.GetArgs()...)
+		count := qm.Db.QueryRow(ctx, qb.BuildCount(*cfg.Table_name))
 
 		if err != nil {
 			log.Error("GET_ERROR", "error", err)
@@ -247,7 +252,8 @@ func getResource(
 
 		// Handle the rows
 		defer rows.Close()
-		response, err := pgx.CollectRows(rows, pgx.RowToMap)
+		response["data"], err = pgx.CollectRows(rows, pgx.RowToMap)
+		err = count.Scan(response["count"])
 
 		// Handle error
 		if err != nil {

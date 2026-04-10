@@ -20,6 +20,8 @@ type QueryBuilder struct {
 	wheremod map[string]string
 	query  string
 	logger *slog.Logger
+	limit  int
+	offset int
 }
 
 
@@ -39,6 +41,8 @@ func NewQueryBuilder(logger *slog.Logger) *QueryBuilder {
 		wheremod: make(map[string]string),
 		query: "",
 		logger: logger,
+		limit: 0,
+		offset: 0,
 	}
 }
 
@@ -48,6 +52,11 @@ func (qb *QueryBuilder) GetArgs() []any {
 	return qb.args
 }
 
+func (qb *QueryBuilder) GetPage() int { 
+	if qb.offset == 0 { return 1 }
+	return qb.offset / qb.limit + 1
+}
+func (qb *QueryBuilder) GetPageSize() int { return qb.offset }
 
 // Return all the args as a string (debugging)
 func (qb *QueryBuilder) GetArgsAsString() string {
@@ -63,6 +72,15 @@ func (qb *QueryBuilder) GetArgsAsString() string {
 	return strings.Join(args_string, ", ")
 }
 
+// Save the limit for the query
+func (qb *QueryBuilder) SetLimit(i int) {
+	qb.limit = i
+}
+
+// Save the offset / page for the query
+func (qb *QueryBuilder) SetOffset(i int) {
+	if i > 0 {qb.offset = i}
+}
 
 // Save a field and value into the query builder. Intended to use with
 // updating fields (set only the relevant fields)
@@ -410,6 +428,11 @@ func (qb *QueryBuilder) BuildMultiInsert(cfg *models.DataModel, data []map[strin
 // Must supply the table name to be selected from and what fields are required. The fields must be in a slice, even if it is only one value.
 func (qb *QueryBuilder) BuildSelect(table string, select_fields []string) string {
 	if len(qb.where) < 1 {
+		qb.logger.Debug(fmt.Sprintf("Limit: %v", qb.limit))
+		qb.logger.Debug(fmt.Sprintf("Offset: %v", qb.offset))
+		if qb.limit != 0 { 
+			if qb.offset != 0 {return fmt.Sprintf("SELECT %s FROM %s LIMIT %v OFFSET %v;", strings.Join(select_fields, ", "), table, qb.limit, qb.offset)}
+			return fmt.Sprintf("SELECT %s FROM %s LIMIT %v;", strings.Join(select_fields, ", "), table, qb.limit) }
 		return fmt.Sprintf("SELECT %s FROM %s;", strings.Join(select_fields, ", "), table)
 	}
 	// Initiate slice for where values. Default will be primary key
@@ -423,8 +446,19 @@ func (qb *QueryBuilder) BuildSelect(table string, select_fields []string) string
 		}
 	}
 
+	if qb.limit != 0 { 
+		if qb.offset != 0 {return fmt.Sprintf( "SELECT %s FROM %s LIMIT %v OFFSET %v;", strings.Join(select_fields, ", "), table, qb.limit, qb.offset) }
+		return fmt.Sprintf("SELECT %s FROM %s LIMIT %v;", strings.Join(select_fields, ", "), table, qb.limit)
+	}
+	qb.logger.Debug(fmt.Sprintf("Limit: %v", qb.limit))
+	qb.logger.Debug(fmt.Sprintf("Offset: %v", qb.offset))
 	return fmt.Sprintf("SELECT %s FROM %s WHERE %s;", strings.Join(select_fields, ", "), table, strings.Join(w, " AND "))
 } 
+
+
+func (qb *QueryBuilder) BuildCount(table string) string {
+	return fmt.Sprintf("SELECT COUNT(*) FROM %s;", table)
+}
 
 
 // BuildUpdate builds a parameterized UPDATE query for a struct-typed model.

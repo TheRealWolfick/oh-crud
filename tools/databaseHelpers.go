@@ -3,6 +3,7 @@ package tools
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"lotusforge.au/api-server/models"
 )
@@ -28,8 +29,31 @@ func DynamicSetWhereFromURL(qb *QueryBuilder, r *http.Request, cfg *models.DataM
 		return err
 	}
 
-	if len(r.URL.Query()) < 1 {
-		qb.logger.Debug("No valid URL values passed")
+
+	// Read pagination details first, error early. Set limits for GET queries
+	// Check if page and pagerows present
+	var page_int int
+	var page_size_int int
+	page := r.FormValue("page")
+	page_size := r.FormValue("page_size")
+	if page == "" || page == "0" || IsInt(page) == false { 
+		page_int = 1 
+		qb.logger.Debug("Set page_int to default value of 1")
+	} else { page_int = ConvertToInt(page)}
+	if page_size == "" || page_size == "0" || IsInt(page_size) == false {
+		page_size_int = 25
+		qb.logger.Debug("Set page_size_int to default value of 25")
+	} else { page_size_int = ConvertToInt(page_size) }
+	if page_size_int < 0 {page_size_int = 0}
+	if page_int < 0 {page_int = 0}
+	if strings.ToLower(page) != "all" {
+		qb.SetLimit(page_size_int)
+		qb.SetOffset(page_size_int * (page_int - 1))
+	}
+	
+
+	if len(r.URL.Query()) < 1 && page == "" && page_size == "" {
+		qb.logger.Debug("No valid URL values passed skipping checks for fields")
 		return nil
 	}
 

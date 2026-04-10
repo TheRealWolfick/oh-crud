@@ -26,3 +26,15 @@ func ConvertURLValToAny(val []string) any {
 	if len(returns) > 1 {return returns}
 	return returns[0]
 }
+
+func IsInt(val string) bool {
+	_, err := strconv.Atoi(val)
+	if err != nil { return false } 
+	return true
+}
+
+// To ONLY be used when 100% confident it is a string. i.e after IsInt
+func ConvertToInt(val string) int {
+	i, _ := strconv.Atoi(val)
+	return i
+}
