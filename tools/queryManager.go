@@ -325,7 +325,7 @@ func (qb *QueryBuilder) BuildMultiInsert(cfg *models.DataModel, data []map[strin
 				} else if *field_cfg.Default == "now()" {
 					qb.args = append(qb.args, insert_time.Format(time.RFC3339))
 				} else {
-					parsed, err := models.CoerceType(*field_cfg.Default, *field_cfg.Type)
+					parsed, err := CoerceType(*field_cfg.Default, *field_cfg.Type)
 					if err != nil {
 						qb.logger.Debug("Parse of default value failed", "field_name", field_name, "field_type", *field_cfg.Type)
 						qb.args = append(qb.args, nil)
