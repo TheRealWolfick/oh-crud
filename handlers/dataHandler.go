@@ -229,7 +229,7 @@ func getResource(
 		// Create new query builder and save it into the context of the request
 		qb := tools.NewQueryBuilder(log)
 
-		if err := tools.DynamicSetWhereFromURL(qb, r, cfg); err != nil {
+		if err := tools.ProcessURLParams(qb, r, cfg); err != nil {
 			log.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", err)
 			http.Error(w, "Error in parsing where clauses", http.StatusBadRequest)
 			return

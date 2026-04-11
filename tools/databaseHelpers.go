@@ -20,15 +20,14 @@ func GetChecksum(r *http.Request) string {
 	return r.URL.Query().Get("checksum")
 }
 
-// DynamicSetWhereFromURL reads URL query parameters and applies matching WHERE clauses
+// ProcessURLParams reads URL query parameters and applies matching WHERE clauses
 // to the query builder based on the DataModel field config.
 // Absolute fields use SetWhereAbsolute; all others use the typed SetWhere.
-func DynamicSetWhereFromURL(qb *QueryBuilder, r *http.Request, cfg *models.DataModel) error {
+func ProcessURLParams(qb *QueryBuilder, r *http.Request, cfg *models.DataModel) error {
 	qb.logger.Debug("Setting where values from URL")
 	if err := r.ParseForm(); err != nil {
 		return err
 	}
-
 
 	// Read pagination details first, error early. Set limits for GET queries
 	// Check if page and pagerows present
