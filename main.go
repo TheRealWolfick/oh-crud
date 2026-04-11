@@ -47,7 +47,6 @@ func main() {
 
 	// Sync database schema for all loaded models.
 	// Destructive changes are recorded in the gate and blocked until manually approved.
-	// Pass nil instead of gate to auto-approve destructive changes (dev mode only).
 	gate := schematools.NewPendingApprovalGate()
 	schematools.BootstrapModels(context.Background(), pool, all_models, logger, gate)
 
@@ -64,12 +63,15 @@ func main() {
 	mux.Handle("PUT /user", authMiddleware(http.HandlerFunc(userHandler.UpdateUserInfo)))
 
 	// Register config-driven routes
-	handlerRegister := models.NewHandlerRegistry(mux)
-	modelRegister := models.NewModelRegistry()
+	handlerRegister := tools.NewHandlerRegistry(mux)
+	modelRegister := tools.NewModelRegistry()
 	for _, dm := range all_models {
 		handlers.RegisterRoutes(&dm, handlerRegister, authMiddleware, qm)
 		modelRegister.Register(&dm)
 	}
+
+	// OpenAPI spec endpoint
+	mux.Handle("GET /openapi.json", handlers.NewOpenAPIHandler(modelRegister))
 
 	// Load the file watcher
 	go monitors.ModelsMonitor(handlerRegister, modelRegister, authMiddleware, qm, gate)
@@ -104,7 +106,7 @@ func loadModelsFromDir(dir string, logger interface{ Warn(string, ...any); Error
 			logger.Warn(fmt.Sprintf("Failed to load config file: %s", info.Name()), "error", err)
 			continue
 		}
-		if err := models.ValidateDataModel(*data); err != nil {
+		if err := tools.ValidateDataModel(*data); err != nil {
 			logger.Warn(fmt.Sprintf("Config file failed validation: %s", info.Name()), "error", err)
 			continue
 		}
@@ -113,6 +115,3 @@ func loadModelsFromDir(dir string, logger interface{ Warn(string, ...any); Error
 
 	return result
 }
-
-
-

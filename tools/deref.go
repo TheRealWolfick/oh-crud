@@ -6,16 +6,15 @@ import (
 )
 
 func DereferencedString[T any](model T) string {
-    data, _ := json.MarshalIndent(model, "", "  ")
-    return string(data)
+	data, _ := json.MarshalIndent(model, "", "  ")
+	return string(data)
 }
 
-// Supply a reflect.value object and it will return a dereferenced version of that value
-// If it is a nil reference, it will return the zero value of the type.
+// Deref dereferences a reflect.Value pointer, returning the zero value of the pointed-to type
+// if the pointer is nil.
 func Deref(v reflect.Value) reflect.Value {
 	if v.Kind() == reflect.Ptr {
 		if v.IsNil() {
-			// Return zero value of the type the pointer points to
 			return reflect.Zero(v.Type().Elem())
 		}
 		return v.Elem()
@@ -23,12 +22,12 @@ func Deref(v reflect.Value) reflect.Value {
 	return v
 }
 
-func DynamicValueDeref(v any) reflect.Value {
+// ValueDeref dereferences any pointer value, returning the zero value if nil.
+func ValueDeref(v any) reflect.Value {
 	val := reflect.ValueOf(v)
 
 	for val.Kind() == reflect.Ptr {
 		if val.IsNil() {
-			// Return zero value of the type the pointer points to
 			return reflect.Zero(val.Type().Elem())
 		}
 		return val.Elem()

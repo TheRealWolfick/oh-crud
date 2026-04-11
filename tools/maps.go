@@ -1,8 +1,6 @@
 package tools
 
-import (
-	"lotusforge.au/api-server/models"
-)
+import "lotusforge.au/api-server/models"
 
 // Validate_Map_AgainstConfig is a single-row wrapper around Validate_SliceOfMaps_AgainstConfig.
 //
@@ -98,7 +96,7 @@ func Validate_SliceOfMaps_AgainstConfig(cfg *models.DataModel, rows []map[string
 		}
 
 		if is_valid {
-			coerced_vals, err := models.DecodeAndCoerceFromUser(row, cfg)
+			coerced_vals, err := DecodeAndCoerceFromUser(row, cfg)
 			if err != nil {
 				invalid_structs = append(invalid_structs, row)
 			} else {

@@ -1,4 +1,4 @@
-package models_test
+package tools
 
 import (
 	"testing"
@@ -8,11 +8,7 @@ import (
 	"lotusforge.au/api-server/models"
 )
 
-// ptr is a generic helper for creating pointer literals in tests.
-func ptr[T any](v T) *T { return &v }
-
-// ── Test model helpers ────────────────────────────────────────────────────────
-
+// basicModel builds a minimal DataModel used across model-function tests.
 func basicModel() models.DataModel {
 	return models.DataModel{
 		Name:        ptr("Test Model"),
@@ -68,7 +64,7 @@ func basicModel() models.DataModel {
 func TestValidateDataModel(t *testing.T) {
 	t.Run("valid model passes", func(t *testing.T) {
 		m := basicModel()
-		if err := models.ValidateDataModel(m); err != nil {
+		if err := ValidateDataModel(m); err != nil {
 			t.Errorf("expected no error, got: %v", err)
 		}
 	})
@@ -76,7 +72,7 @@ func TestValidateDataModel(t *testing.T) {
 	t.Run("missing name", func(t *testing.T) {
 		m := basicModel()
 		m.Name = nil
-		if err := models.ValidateDataModel(m); err == nil {
+		if err := ValidateDataModel(m); err == nil {
 			t.Error("expected error for missing name")
 		}
 	})
@@ -84,7 +80,7 @@ func TestValidateDataModel(t *testing.T) {
 	t.Run("missing version", func(t *testing.T) {
 		m := basicModel()
 		m.Version = nil
-		if err := models.ValidateDataModel(m); err == nil {
+		if err := ValidateDataModel(m); err == nil {
 			t.Error("expected error for missing version")
 		}
 	})
@@ -92,7 +88,7 @@ func TestValidateDataModel(t *testing.T) {
 	t.Run("malformed version", func(t *testing.T) {
 		m := basicModel()
 		m.Version = ptr("1.0")
-		if err := models.ValidateDataModel(m); err == nil {
+		if err := ValidateDataModel(m); err == nil {
 			t.Error("expected error for malformed version")
 		}
 	})
@@ -100,7 +96,7 @@ func TestValidateDataModel(t *testing.T) {
 	t.Run("missing table-name", func(t *testing.T) {
 		m := basicModel()
 		m.Table_name = nil
-		if err := models.ValidateDataModel(m); err == nil {
+		if err := ValidateDataModel(m); err == nil {
 			t.Error("expected error for missing table-name")
 		}
 	})
@@ -108,7 +104,7 @@ func TestValidateDataModel(t *testing.T) {
 	t.Run("missing end-point", func(t *testing.T) {
 		m := basicModel()
 		m.End_point = nil
-		if err := models.ValidateDataModel(m); err == nil {
+		if err := ValidateDataModel(m); err == nil {
 			t.Error("expected error for missing end-point")
 		}
 	})
@@ -116,7 +112,7 @@ func TestValidateDataModel(t *testing.T) {
 	t.Run("missing primary-key", func(t *testing.T) {
 		m := basicModel()
 		m.Primary_key = nil
-		if err := models.ValidateDataModel(m); err == nil {
+		if err := ValidateDataModel(m); err == nil {
 			t.Error("expected error for missing primary-key")
 		}
 	})
@@ -124,7 +120,7 @@ func TestValidateDataModel(t *testing.T) {
 	t.Run("primary-key references non-existent field", func(t *testing.T) {
 		m := basicModel()
 		m.Primary_key = ptr("nonexistent")
-		if err := models.ValidateDataModel(m); err == nil {
+		if err := ValidateDataModel(m); err == nil {
 			t.Error("expected error for primary-key referencing unknown field")
 		}
 	})
@@ -134,7 +130,7 @@ func TestValidateDataModel(t *testing.T) {
 		field := m.Fields["id"]
 		field.Nullable = ptr(true)
 		m.Fields["id"] = field
-		if err := models.ValidateDataModel(m); err == nil {
+		if err := ValidateDataModel(m); err == nil {
 			t.Error("expected error for nullable primary key")
 		}
 	})
@@ -142,7 +138,7 @@ func TestValidateDataModel(t *testing.T) {
 	t.Run("no fields", func(t *testing.T) {
 		m := basicModel()
 		m.Fields = map[string]models.DataModelField{}
-		if err := models.ValidateDataModel(m); err == nil {
+		if err := ValidateDataModel(m); err == nil {
 			t.Error("expected error for empty fields")
 		}
 	})
@@ -152,7 +148,7 @@ func TestValidateDataModel(t *testing.T) {
 		f := m.Fields["name"]
 		f.Type = nil
 		m.Fields["name"] = f
-		if err := models.ValidateDataModel(m); err == nil {
+		if err := ValidateDataModel(m); err == nil {
 			t.Error("expected error for field missing type")
 		}
 	})
@@ -162,7 +158,7 @@ func TestValidateDataModel(t *testing.T) {
 		f := m.Fields["name"]
 		f.Type = ptr("badtype")
 		m.Fields["name"] = f
-		if err := models.ValidateDataModel(m); err == nil {
+		if err := ValidateDataModel(m); err == nil {
 			t.Error("expected error for field with unknown type")
 		}
 	})
@@ -172,7 +168,7 @@ func TestValidateDataModel(t *testing.T) {
 		f := m.Fields["name"]
 		f.DB_type = nil
 		m.Fields["name"] = f
-		if err := models.ValidateDataModel(m); err == nil {
+		if err := ValidateDataModel(m); err == nil {
 			t.Error("expected error for field missing db-type")
 		}
 	})
@@ -182,7 +178,7 @@ func TestValidateDataModel(t *testing.T) {
 		f := m.Fields["name"]
 		f.JSON = nil
 		m.Fields["name"] = f
-		if err := models.ValidateDataModel(m); err == nil {
+		if err := ValidateDataModel(m); err == nil {
 			t.Error("expected error for field missing json key")
 		}
 	})
@@ -192,7 +188,7 @@ func TestValidateDataModel(t *testing.T) {
 		f := m.Fields["name"]
 		f.Migration = ptr("badstrategy")
 		m.Fields["name"] = f
-		if err := models.ValidateDataModel(m); err == nil {
+		if err := ValidateDataModel(m); err == nil {
 			t.Error("expected error for unknown migration strategy")
 		}
 	})
@@ -202,7 +198,7 @@ func TestValidateDataModel(t *testing.T) {
 		f := m.Fields["name"]
 		f.Migration = ptr("alter")
 		m.Fields["name"] = f
-		if err := models.ValidateDataModel(m); err != nil {
+		if err := ValidateDataModel(m); err != nil {
 			t.Errorf("unexpected error for valid migration strategy: %v", err)
 		}
 	})
@@ -212,7 +208,7 @@ func TestValidateDataModel(t *testing.T) {
 		m.Unique_keys = map[string]models.UniqueKey{
 			"bad_uk": {Fields: []string{"nonexistent"}},
 		}
-		if err := models.ValidateDataModel(m); err == nil {
+		if err := ValidateDataModel(m); err == nil {
 			t.Error("expected error for unique-key referencing unknown field")
 		}
 	})
@@ -222,7 +218,7 @@ func TestValidateDataModel(t *testing.T) {
 		m.Unique_keys = map[string]models.UniqueKey{
 			"empty_uk": {Fields: []string{}},
 		}
-		if err := models.ValidateDataModel(m); err == nil {
+		if err := ValidateDataModel(m); err == nil {
 			t.Error("expected error for unique-key with no fields")
 		}
 	})
@@ -236,7 +232,7 @@ func TestValidateDataModel(t *testing.T) {
 				Target_fields: []string{"other_id"},
 			},
 		}
-		if err := models.ValidateDataModel(m); err == nil {
+		if err := ValidateDataModel(m); err == nil {
 			t.Error("expected error for field/target-field count mismatch")
 		}
 	})
@@ -244,7 +240,7 @@ func TestValidateDataModel(t *testing.T) {
 	t.Run("allow-diff without comparator", func(t *testing.T) {
 		m := basicModel()
 		m.Allow_diff = ptr(true)
-		if err := models.ValidateDataModel(m); err == nil {
+		if err := ValidateDataModel(m); err == nil {
 			t.Error("expected error for allow-diff without diff-comparator")
 		}
 	})
@@ -254,7 +250,7 @@ func TestValidateDataModel(t *testing.T) {
 		m.Allow_diff = ptr(true)
 		m.Diff_comparator = ptr("code")
 		// No field has include-in-diff: true
-		if err := models.ValidateDataModel(m); err == nil {
+		if err := ValidateDataModel(m); err == nil {
 			t.Error("expected error for allow-diff with no include-in-diff fields")
 		}
 	})
@@ -266,7 +262,7 @@ func TestValidateDataModel(t *testing.T) {
 		f := m.Fields["name"]
 		f.Include_in_diff = ptr(true)
 		m.Fields["name"] = f
-		if err := models.ValidateDataModel(m); err != nil {
+		if err := ValidateDataModel(m); err != nil {
 			t.Errorf("unexpected error for valid diff config: %v", err)
 		}
 	})
@@ -276,20 +272,20 @@ func TestValidateDataModel(t *testing.T) {
 
 func TestCheckVersionIncrease(t *testing.T) {
 	cases := []struct {
-		old     string
-		now     string
-		wantOk  bool
+		old    string
+		now    string
+		wantOk bool
 	}{
 		{"1.0.0", "1.0.1", true},
 		{"1.0.0", "1.1.0", true},
 		{"1.0.0", "2.0.0", true},
-		{"1.0.0", "1.0.0", false},  // same version
-		{"1.0.1", "1.0.0", false},  // older patch
-		{"1.2.0", "1.1.9", false},  // older minor
-		{"2.0.0", "1.9.9", false},  // older major
+		{"1.0.0", "1.0.0", false}, // same version
+		{"1.0.1", "1.0.0", false}, // older patch
+		{"1.2.0", "1.1.9", false}, // older minor
+		{"2.0.0", "1.9.9", false}, // older major
 	}
 	for _, c := range cases {
-		ok, err := models.CheckVersionIncrease(c.old, c.now)
+		ok, err := CheckVersionIncrease(c.old, c.now)
 		if ok != c.wantOk {
 			t.Errorf("CheckVersionIncrease(%q, %q): got ok=%v err=%v, want ok=%v", c.old, c.now, ok, err, c.wantOk)
 		}
@@ -311,7 +307,7 @@ func TestCoerceType_Int(t *testing.T) {
 		{"15", 15},
 	}
 	for _, c := range cases {
-		got, err := models.CoerceType(c.in, "int")
+		got, err := CoerceType(c.in, "int")
 		if err != nil {
 			t.Errorf("CoerceType(%v, int): unexpected error %v", c.in, err)
 			continue
@@ -322,14 +318,14 @@ func TestCoerceType_Int(t *testing.T) {
 	}
 
 	t.Run("nil returns nil", func(t *testing.T) {
-		got, err := models.CoerceType(nil, "int")
+		got, err := CoerceType(nil, "int")
 		if err != nil || got != nil {
 			t.Errorf("expected nil, nil; got %v, %v", got, err)
 		}
 	})
 
 	t.Run("invalid string errors", func(t *testing.T) {
-		if _, err := models.CoerceType("notanumber", "int"); err == nil {
+		if _, err := CoerceType("notanumber", "int"); err == nil {
 			t.Error("expected error for non-numeric string")
 		}
 	})
@@ -337,7 +333,7 @@ func TestCoerceType_Int(t *testing.T) {
 	t.Run("pgtype.Numeric valid", func(t *testing.T) {
 		n := pgtype.Numeric{}
 		_ = n.Scan("42")
-		got, err := models.CoerceType(n, "int")
+		got, err := CoerceType(n, "int")
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
@@ -358,7 +354,7 @@ func TestCoerceType_Float(t *testing.T) {
 		{"2.71", 2.71},
 	}
 	for _, c := range cases {
-		got, err := models.CoerceType(c.in, "float")
+		got, err := CoerceType(c.in, "float")
 		if err != nil {
 			t.Errorf("CoerceType(%v, float): unexpected error %v", c.in, err)
 			continue
@@ -371,14 +367,14 @@ func TestCoerceType_Float(t *testing.T) {
 
 func TestCoerceType_String(t *testing.T) {
 	t.Run("plain string", func(t *testing.T) {
-		got, err := models.CoerceType("hello", "string")
+		got, err := CoerceType("hello", "string")
 		if err != nil || got != "hello" {
 			t.Errorf("got %v, %v", got, err)
 		}
 	})
 	t.Run("time.Time formats as RFC3339", func(t *testing.T) {
 		ts := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
-		got, err := models.CoerceType(ts, "string")
+		got, err := CoerceType(ts, "string")
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
@@ -388,14 +384,14 @@ func TestCoerceType_String(t *testing.T) {
 	})
 	t.Run("pgtype.Text valid", func(t *testing.T) {
 		txt := pgtype.Text{String: "pg text", Valid: true}
-		got, err := models.CoerceType(txt, "string")
+		got, err := CoerceType(txt, "string")
 		if err != nil || got != "pg text" {
 			t.Errorf("got %v, %v", got, err)
 		}
 	})
 	t.Run("pgtype.Text invalid returns nil", func(t *testing.T) {
 		txt := pgtype.Text{Valid: false}
-		got, err := models.CoerceType(txt, "string")
+		got, err := CoerceType(txt, "string")
 		if err != nil || got != nil {
 			t.Errorf("got %v, %v", got, err)
 		}
@@ -417,7 +413,7 @@ func TestCoerceType_Bool(t *testing.T) {
 		{0, false},
 	}
 	for _, c := range cases {
-		got, err := models.CoerceType(c.in, "bool")
+		got, err := CoerceType(c.in, "bool")
 		if err != nil {
 			t.Errorf("CoerceType(%v, bool): unexpected error %v", c.in, err)
 			continue
@@ -431,13 +427,13 @@ func TestCoerceType_Bool(t *testing.T) {
 func TestCoerceType_UUID(t *testing.T) {
 	t.Run("valid string UUID", func(t *testing.T) {
 		uuid := "123e4567-e89b-12d3-a456-426614174000"
-		got, err := models.CoerceType(uuid, "uuid")
+		got, err := CoerceType(uuid, "uuid")
 		if err != nil || got != uuid {
 			t.Errorf("got %v, %v", got, err)
 		}
 	})
 	t.Run("invalid string UUID errors", func(t *testing.T) {
-		if _, err := models.CoerceType("not-a-uuid", "uuid"); err == nil {
+		if _, err := CoerceType("not-a-uuid", "uuid"); err == nil {
 			t.Error("expected error for short UUID string")
 		}
 	})
@@ -446,7 +442,7 @@ func TestCoerceType_UUID(t *testing.T) {
 			Bytes: [16]byte{0x12, 0x3e, 0x45, 0x67, 0xe8, 0x9b, 0x12, 0xd3, 0xa4, 0x56, 0x42, 0x66, 0x14, 0x17, 0x40, 0x00},
 			Valid: true,
 		}
-		got, err := models.CoerceType(raw, "uuid")
+		got, err := CoerceType(raw, "uuid")
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
@@ -459,7 +455,7 @@ func TestCoerceType_UUID(t *testing.T) {
 func TestCoerceType_Time(t *testing.T) {
 	t.Run("time.Time passthrough", func(t *testing.T) {
 		ts := time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC)
-		got, err := models.CoerceType(ts, "time")
+		got, err := CoerceType(ts, "time")
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
@@ -468,7 +464,7 @@ func TestCoerceType_Time(t *testing.T) {
 		}
 	})
 	t.Run("RFC3339 string parses", func(t *testing.T) {
-		got, err := models.CoerceType("2024-06-01T12:00:00Z", "time")
+		got, err := CoerceType("2024-06-01T12:00:00Z", "time")
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
@@ -478,7 +474,7 @@ func TestCoerceType_Time(t *testing.T) {
 		}
 	})
 	t.Run("invalid string errors", func(t *testing.T) {
-		if _, err := models.CoerceType("not-a-time", "time"); err == nil {
+		if _, err := CoerceType("not-a-time", "time"); err == nil {
 			t.Error("expected error for invalid time string")
 		}
 	})
@@ -486,7 +482,7 @@ func TestCoerceType_Time(t *testing.T) {
 
 func TestCoerceType_JSON(t *testing.T) {
 	t.Run("[]byte JSON", func(t *testing.T) {
-		got, err := models.CoerceType([]byte(`{"key":"value"}`), "json")
+		got, err := CoerceType([]byte(`{"key":"value"}`), "json")
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
@@ -496,7 +492,7 @@ func TestCoerceType_JSON(t *testing.T) {
 		}
 	})
 	t.Run("string JSON", func(t *testing.T) {
-		got, err := models.CoerceType(`[1,2,3]`, "json")
+		got, err := CoerceType(`[1,2,3]`, "json")
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
@@ -506,7 +502,7 @@ func TestCoerceType_JSON(t *testing.T) {
 	})
 	t.Run("already decoded map passes through", func(t *testing.T) {
 		m := map[string]any{"a": 1}
-		got, err := models.CoerceType(m, "json")
+		got, err := CoerceType(m, "json")
 		if err != nil || got == nil {
 			t.Errorf("got %v, %v", got, err)
 		}
@@ -514,7 +510,7 @@ func TestCoerceType_JSON(t *testing.T) {
 }
 
 func TestCoerceType_Unknown(t *testing.T) {
-	_, err := models.CoerceType("something", "unknowntype")
+	_, err := CoerceType("something", "unknowntype")
 	if err == nil {
 		t.Error("expected error for unknown type name")
 	}
@@ -527,7 +523,7 @@ func TestDecodeAndCoerceFromUser(t *testing.T) {
 
 	t.Run("coerces known fields from JSON keys to field names", func(t *testing.T) {
 		raw := map[string]any{"id": "5", "code": "ABC", "count": "10", "active": "true"}
-		got, err := models.DecodeAndCoerceFromUser(raw, &cfg)
+		got, err := DecodeAndCoerceFromUser(raw, &cfg)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -547,7 +543,7 @@ func TestDecodeAndCoerceFromUser(t *testing.T) {
 
 	t.Run("missing field is omitted from result", func(t *testing.T) {
 		raw := map[string]any{"code": "ABC"}
-		got, err := models.DecodeAndCoerceFromUser(raw, &cfg)
+		got, err := DecodeAndCoerceFromUser(raw, &cfg)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -558,7 +554,7 @@ func TestDecodeAndCoerceFromUser(t *testing.T) {
 
 	t.Run("unknown JSON keys are ignored", func(t *testing.T) {
 		raw := map[string]any{"code": "ABC", "not_in_config": "ignore_me"}
-		got, err := models.DecodeAndCoerceFromUser(raw, &cfg)
+		got, err := DecodeAndCoerceFromUser(raw, &cfg)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -569,7 +565,7 @@ func TestDecodeAndCoerceFromUser(t *testing.T) {
 
 	t.Run("coercion error returns error", func(t *testing.T) {
 		raw := map[string]any{"count": "not-a-number"}
-		_, err := models.DecodeAndCoerceFromUser(raw, &cfg)
+		_, err := DecodeAndCoerceFromUser(raw, &cfg)
 		if err == nil {
 			t.Error("expected error for unconvertable type")
 		}
@@ -582,7 +578,7 @@ func TestDecodeAndCoerceFromUser(t *testing.T) {
 		cfgWithAlias.Fields["name"] = f
 
 		raw := map[string]any{"full_name": "John"}
-		got, err := models.DecodeAndCoerceFromUser(raw, &cfgWithAlias)
+		got, err := DecodeAndCoerceFromUser(raw, &cfgWithAlias)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -598,7 +594,7 @@ func TestDecodeAndCoerceFromUser(t *testing.T) {
 		cfgWithAlias.Fields["name"] = f
 
 		raw := map[string]any{"name": "Primary", "full_name": "Alias"}
-		got, err := models.DecodeAndCoerceFromUser(raw, &cfgWithAlias)
+		got, err := DecodeAndCoerceFromUser(raw, &cfgWithAlias)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

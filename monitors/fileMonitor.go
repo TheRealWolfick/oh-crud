@@ -6,12 +6,11 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"lotusforge.au/api-server/handlers"
-	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/schematools"
 	"lotusforge.au/api-server/tools"
 )
 
-func ModelsMonitor(handlerRegistry *models.HandlerRegistry, modelRegistry *models.ModelRegistry, auth func(http.Handler) http.Handler, qm *tools.QueueManager, gate *schematools.PendingApprovalGate) {
+func ModelsMonitor(handlerRegistry *tools.HandlerRegistry, modelRegistry *tools.ModelRegistry, auth func(http.Handler) http.Handler, qm *tools.QueueManager, gate *schematools.PendingApprovalGate) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		qm.Logger.Error("Failed to load watcher, config will not update live", "error", err)
@@ -32,7 +31,7 @@ func ModelsMonitor(handlerRegistry *models.HandlerRegistry, modelRegistry *model
 						qm.Logger.Error("Updated YAML failed to load. Skipping updating routes", "error", err)
 					} else {
 						qm.Logger.Debug("Update detected to config file", "config", *updated_config.Name)
-						if err := models.ValidateDataModel(*updated_config); err != nil {
+						if err := tools.ValidateDataModel(*updated_config); err != nil {
 							qm.Logger.Error("Updated YAML failed validation, routes not updated", "error", err)
 						} else {
 							modelRegistry.Register(updated_config)

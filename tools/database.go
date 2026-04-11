@@ -24,8 +24,7 @@ func SingleInsert_Dynamic(
 	return RecursiveBatchInsert_Dynamic(ctx, db, cfg, []map[string]any{item})
 }
 
-// CreateDiff_Dynamic queues a diff operation comparing supplied rows against the stored table.
-// The diff is persisted to the diffs table and can be retrieved or actioned later.
+// CreateDiff_Dynamic queues a diff comparing supplied rows against the stored table.
 func CreateDiff_Dynamic(
 	ctx context.Context,
 	db models.DBExecQuery,
@@ -46,7 +45,9 @@ func createDiff_Dynamic(
 	note string,
 ) (map[string]any, error) {
 	log, ok := middleware.GetLogger(ctx)
-	if !ok { log = GetBasicLogger() }
+	if !ok {
+		log = GetBasicLogger()
+	}
 
 	comparatorKey := GetDiffComparatorKey(cfg)
 	if comparatorKey == "" {
@@ -54,7 +55,6 @@ func createDiff_Dynamic(
 	}
 	excludeKeys := BuildExcludeKeysFromConfig(cfg)
 
-	// Build select of all DB columns (field name = DB column name)
 	cols := []string{}
 	for field_name := range cfg.Fields {
 		cols = append(cols, field_name)
@@ -72,8 +72,10 @@ func createDiff_Dynamic(
 	}
 	coerced_stored := []map[string]any{}
 	for _, row := range stored {
-		coerced_row, err := models.DecodeAndCoerceFromDB(row, cfg, comparatorKey)
-		if err != nil { continue }
+		coerced_row, err := DecodeAndCoerceFromDB(row, cfg, comparatorKey)
+		if err != nil {
+			continue
+		}
 		coerced_stored = append(coerced_stored, coerced_row)
 	}
 
@@ -83,25 +85,27 @@ func createDiff_Dynamic(
 		log.Debug("Stored[0:10]", "data", stored[0:10])
 		log.Debug("Coerced[0:10]", "data", coerced_stored[0:10])
 		return map[string]any{
-			"table":        *cfg.Table_name,
+			"table":         *cfg.Table_name,
 			"rows_affected": 0,
-			"error":        "no differences found or invalid comparator",
+			"error":         "no differences found or invalid comparator",
 		}, fmt.Errorf("no valid diff created")
 	}
 
 	totalDiffs := len(diff_struct.Diffs) + len(diff_struct.MissingFromSupplied) + len(diff_struct.MissingFromStored)
 	if totalDiffs == 0 {
 		return map[string]any{
-			"action":       "diff",
-			"on_table":     *cfg.Table_name,
+			"action":        "diff",
+			"on_table":      *cfg.Table_name,
 			"rows_affected": 0,
-			"message":      "no differences found between supplied and stored data",
+			"message":       "no differences found between supplied and stored data",
 		}, nil
 	}
 
 	h := md5.New()
 	user, userOk := middleware.GetUser(ctx)
-	if !userOk { user = &models.User{} }
+	if !userOk {
+		user = &models.User{}
+	}
 	task, _ := middleware.GetTask(ctx)
 	if len(task.Id) != 32 {
 		task.Id, _ = Generate32CharString()
@@ -123,7 +127,7 @@ func createDiff_Dynamic(
 	cmdtag, err := db.Exec(ctx, insertQuery, insertQb.GetArgs()...)
 
 	ret_map := map[string]any{
-		"table":        *cfg.Table_name,
+		"table":         *cfg.Table_name,
 		"rows_affected": cmdtag.RowsAffected(),
 	}
 	if err != nil {
@@ -133,8 +137,7 @@ func createDiff_Dynamic(
 	return ret_map, nil
 }
 
-// MultiUpdate_Dynamic queues an update for each supplied row, using the config-driven schema.
-// The primary key field is extracted from config and used as the WHERE clause for each row.
+// MultiUpdate_Dynamic queues an update for each supplied row using the config-driven schema.
 func MultiUpdate_Dynamic(
 	ctx context.Context,
 	db models.DBExecQuery,
@@ -147,7 +150,6 @@ func MultiUpdate_Dynamic(
 }
 
 // MultiDelete_Dynamic queues a delete for each supplied row using the config-driven schema.
-// Only the primary key field from each row is used; all other fields are ignored.
 func MultiDelete_Dynamic(
 	ctx context.Context,
 	db models.DBExecutor,
@@ -159,9 +161,8 @@ func MultiDelete_Dynamic(
 	}
 }
 
-// RecursiveBatchInsert_Dynamic inserts a batch of config-typed rows into the database.
-// On failure the batch is split in half and each half retried recursively, isolating failing rows.
-// The result reports how many rows succeeded and which rows failed (with their error).
+// RecursiveBatchInsert_Dynamic inserts a batch of config-typed rows.
+// On failure the batch is split in half and retried recursively, isolating failing rows.
 func RecursiveBatchInsert_Dynamic(
 	ctx context.Context,
 	db models.DBExecutor,
@@ -196,7 +197,10 @@ func recursiveBatchInsertProcess_Dynamic(
 		return result
 	}
 
-	log, ok := middleware.GetLogger(ctx); if !ok { log = GetBasicLogger() }
+	log, ok := middleware.GetLogger(ctx)
+	if !ok {
+		log = GetBasicLogger()
+	}
 	qb := NewQueryBuilder(log)
 	query := qb.BuildMultiInsert(cfg, items)
 
@@ -246,7 +250,10 @@ func multiUpdate_Dynamic(
 		Errors:       []models.MultiUpdateError{},
 	}
 
-	log, ok := middleware.GetLogger(ctx); if !ok { log = GetBasicLogger() }
+	log, ok := middleware.GetLogger(ctx)
+	if !ok {
+		log = GetBasicLogger()
+	}
 
 	for idx, row := range supplied {
 		where_fields, ok := FindRowKeyFields(row, cfg)

@@ -13,7 +13,7 @@ import (
 	"lotusforge.au/api-server/tools"
 )
 
-func RegisterRoutes(cfg *models.DataModel, handlerRegistry *models.HandlerRegistry, auth func(http.Handler) http.Handler, qm *tools.QueueManager) {
+func RegisterRoutes(cfg *models.DataModel, handlerRegistry *tools.HandlerRegistry, auth func(http.Handler) http.Handler, qm *tools.QueueManager) {
 	var err error
 	qm.Logger.Debug("Dynamic end point generating", "data-model", *cfg.Name)
 
@@ -229,7 +229,7 @@ func getResource(
 		// Create new query builder and save it into the context of the request
 		qb := tools.NewQueryBuilder(log)
 
-		if err := tools.ProcessURLParams(qb, r, cfg); err != nil {
+		if err := qb.ProcessURLParams(r, cfg); err != nil {
 			log.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", err)
 			http.Error(w, "Error in parsing where clauses", http.StatusBadRequest)
 			return
