@@ -125,7 +125,6 @@ func (qb *QueryBuilder) innerSetWhere(field string, value any, mod string) {
 	_, exists := qb.where[field]
 
 	if !exists {
-		qb.logger.Debug("Doesn't exist currently in qb map!")
 		qb.where[field] = qb.pos
 		qb.wheremod[field] = mod
 		qb.args = append(qb.args, value)
@@ -148,7 +147,6 @@ func (qb *QueryBuilder) SetWhereAbsolute(field string, value any) {
 	_, exists := qb.where[field]
 
 	if !exists {
-		qb.logger.Debug("Doesn't exist currently in qb map!")
 		qb.where[field] = qb.pos
 		qb.wheremod[field] = "="
 		qb.args = append(qb.args, value)
@@ -429,120 +427,135 @@ func (qb *QueryBuilder) BuildMultiInsert(cfg *models.DataModel, data []map[strin
 // Build the query to select from the database.
 // Must supply the table name to be selected from and what fields are required. The fields must be in a slice, even if it is only one value.
 func (qb *QueryBuilder) BuildSelect(table string, select_fields []string) string {
-	if len(qb.where) < 1 {
-		qb.logger.Debug(fmt.Sprintf("Limit: %v", qb.limit))
-		qb.logger.Debug(fmt.Sprintf("Offset: %v", qb.offset))
-		if qb.limit != 0 { 
-			if qb.offset != 0 {return fmt.Sprintf("SELECT %s FROM %s LIMIT %v OFFSET %v;", strings.Join(select_fields, ", "), table, qb.limit, qb.offset)}
-			return fmt.Sprintf("SELECT %s FROM %s LIMIT %v;", strings.Join(select_fields, ", "), table, qb.limit) }
-		return fmt.Sprintf("SELECT %s FROM %s;", strings.Join(select_fields, ", "), table)
-	}
-	// Initiate slice for where values. Default will be primary key
-	w := make([]string, 0)
+	// Create string builder
+	sb := strings.Builder{}
 
-	for key, val := range qb.where {
-		if reflect.TypeOf(qb.args[val-1]).Kind() == reflect.Slice {
-			w = append(w, fmt.Sprintf("%s IN $%d", key, val))
-		} else {
-			w = append(w, fmt.Sprintf("%s %s $%d", key, qb.wheremod[key], val))
+	// Build select
+	ss := fmt.Sprintf("SELECT %s FROM %s", strings.Join(select_fields, ", "), table)
+	sb.WriteString(ss)
+
+	// Build where
+	if len(qb.where) > 0 {
+		w := make([]string, 0)
+
+		for key, val := range qb.where {
+			if reflect.TypeOf(qb.args[val-1]).Kind() == reflect.Slice {
+				w = append(w, fmt.Sprintf("%s IN $%d", key, val))
+			} else {
+				w = append(w, fmt.Sprintf("%s %s $%d", key, qb.wheremod[key], val))
+			}
 		}
+		ws := fmt.Sprintf(" WHERE %s", strings.Join(w, " AND "))
+		sb.WriteString(ws)
 	}
 
-	if qb.limit != 0 { 
-		if qb.offset != 0 {return fmt.Sprintf( "SELECT %s FROM %s LIMIT %v OFFSET %v;", strings.Join(select_fields, ", "), table, qb.limit, qb.offset) }
-		return fmt.Sprintf("SELECT %s FROM %s LIMIT %v;", strings.Join(select_fields, ", "), table, qb.limit)
-	}
-	qb.logger.Debug(fmt.Sprintf("Limit: %v", qb.limit))
-	qb.logger.Debug(fmt.Sprintf("Offset: %v", qb.offset))
-	return fmt.Sprintf("SELECT %s FROM %s WHERE %s;", strings.Join(select_fields, ", "), table, strings.Join(w, " AND "))
-} 
-
-
-func (qb *QueryBuilder) BuildCount(table string) string {
-	return fmt.Sprintf("SELECT COUNT(*) FROM %s;", table)
-}
-
-
-// BuildUpdate builds a parameterized UPDATE query for a struct-typed model.
-// WHERE clauses are extracted from URL query parameters matching the model's primary key fields.
-// Returns an empty string if no primary key values are found in the URL.
-func (qb *QueryBuilder) BuildUpdate(table string, r *http.Request, model interface{}) string {
-	if qb.query != "" {
-		return qb.query
+	// Build order by
+	if len(qb.sort) > 0 {
+		ss := fmt.Sprintf(" ORDER BY %s", strings.Join(qb.sort, ", "))
+		sb.WriteString(ss)
 	}
 
-	whereFields := r.URL.Query()
-	prim_keys := GetPrimaryKeys(model)
-	whereExists := false
+	// Build limit / offset
+	if qb.limit != 0 {
+		ls := fmt.Sprintf(" LIMIT %v", qb.limit)
+		sb.WriteString(ls)
+	}
+	if qb.offset != 0 {
+		ls := fmt.Sprintf(" OFFSET %v", qb.offset)
+		sb.WriteString(ls)
+	}
 
-	for _, key := range prim_keys {
-		f, _ := reflect.TypeOf(model).FieldByName(key)
-		whereval := whereFields.Get(f.Tag.Get("db"))
-		if whereval != "" {
-			qb.innerSetWhere(f.Tag.Get("db"), whereval, "=")
-			whereExists = true
+	// Final write and return
+	sb.WriteString(";")
+	return sb.String()
+	} 
+
+
+	func (qb *QueryBuilder) BuildCount(table string) string {
+		return fmt.Sprintf("SELECT COUNT(*) FROM %s;", table)
+	}
+
+
+	// BuildUpdate builds a parameterized UPDATE query for a struct-typed model.
+	// WHERE clauses are extracted from URL query parameters matching the model's primary key fields.
+	// Returns an empty string if no primary key values are found in the URL.
+	func (qb *QueryBuilder) BuildUpdate(table string, r *http.Request, model interface{}) string {
+		if qb.query != "" {
+			return qb.query
 		}
-	}
 
-	if !whereExists {
-		return ""
-	}
+		whereFields := r.URL.Query()
+		prim_keys := GetPrimaryKeys(model)
+		whereExists := false
 
-	w := make([]string, 0)
-	v := make([]string, 0)
+		for _, key := range prim_keys {
+			f, _ := reflect.TypeOf(model).FieldByName(key)
+			whereval := whereFields.Get(f.Tag.Get("db"))
+			if whereval != "" {
+				qb.innerSetWhere(f.Tag.Get("db"), whereval, "=")
+				whereExists = true
+			}
+		}
 
-	for key, val := range qb.where {
-		w = append(w, fmt.Sprintf("%s = $%d", key, val))
-	}
-	for key, val := range qb.values {
-		v = append(v, fmt.Sprintf("%s = $%d", key, val))
-	}
+		if !whereExists {
+			return ""
+		}
 
-	qb.query = fmt.Sprintf("UPDATE %s SET %s WHERE %s;", table, strings.Join(v, ", "), strings.Join(w, " AND "))
-	return qb.query
-}
+		w := make([]string, 0)
+		v := make([]string, 0)
 
-// BuildUpdate_Dynamic builds a parameterized UPDATE query from the where and value clauses
-// already set on the query builder.
-func (qb *QueryBuilder) BuildUpdate_Dynamic(cfg *models.DataModel) string {
-	if qb.query != "" {
-		qb.logger.Warn("Called build update after query had already been built!")
+		for key, val := range qb.where {
+			w = append(w, fmt.Sprintf("%s = $%d", key, val))
+		}
+		for key, val := range qb.values {
+			v = append(v, fmt.Sprintf("%s = $%d", key, val))
+		}
+
+		qb.query = fmt.Sprintf("UPDATE %s SET %s WHERE %s;", table, strings.Join(v, ", "), strings.Join(w, " AND "))
 		return qb.query
 	}
 
-	// Construct the where and value clauses, where must be an exact match
-	w := make([]string, 0)
-	v := make([]string, 0)
+	// BuildUpdate_Dynamic builds a parameterized UPDATE query from the where and value clauses
+	// already set on the query builder.
+	func (qb *QueryBuilder) BuildUpdate_Dynamic(cfg *models.DataModel) string {
+		if qb.query != "" {
+			qb.logger.Warn("Called build update after query had already been built!")
+			return qb.query
+		}
 
-	for key, val := range qb.where {
-		w = append(w, fmt.Sprintf("%s = $%d", key, val))
-	}
+		// Construct the where and value clauses, where must be an exact match
+		w := make([]string, 0)
+		v := make([]string, 0)
 
-	for key, val := range qb.values {
-		v = append(v, fmt.Sprintf("%s = $%d", key, val))
-	}
+		for key, val := range qb.where {
+			w = append(w, fmt.Sprintf("%s = $%d", key, val))
+		}
 
-	qb.query = fmt.Sprintf("UPDATE %s SET %s WHERE %s;", *cfg.Table_name, strings.Join(v, ", "), strings.Join(w, " AND "))
-	return qb.query
-}
+		for key, val := range qb.values {
+			v = append(v, fmt.Sprintf("%s = $%d", key, val))
+		}
 
-func (qb *QueryBuilder) HasUpdates() bool {
-	return len(qb.values) > 0
-}
-
-
-// Build a parameterized DELETE query using the where clauses already set on the query builder.
-func (qb *QueryBuilder) BuildDelete_Dynamic(cfg *models.DataModel) string {
-	if qb.query != "" {
-		qb.logger.Warn("Called build delete after query had already been built!")
+		qb.query = fmt.Sprintf("UPDATE %s SET %s WHERE %s;", *cfg.Table_name, strings.Join(v, ", "), strings.Join(w, " AND "))
 		return qb.query
 	}
 
-	w := make([]string, 0)
-	for key, val := range qb.where {
-		w = append(w, fmt.Sprintf("%s = $%d", key, val))
+	func (qb *QueryBuilder) HasUpdates() bool {
+		return len(qb.values) > 0
 	}
 
-	qb.query = fmt.Sprintf("DELETE FROM %s WHERE %s;", *cfg.Table_name, strings.Join(w, " AND "))
-	return qb.query
-}
+
+	// Build a parameterized DELETE query using the where clauses already set on the query builder.
+	func (qb *QueryBuilder) BuildDelete_Dynamic(cfg *models.DataModel) string {
+		if qb.query != "" {
+			qb.logger.Warn("Called build delete after query had already been built!")
+			return qb.query
+		}
+
+		w := make([]string, 0)
+		for key, val := range qb.where {
+			w = append(w, fmt.Sprintf("%s = $%d", key, val))
+		}
+
+		qb.query = fmt.Sprintf("DELETE FROM %s WHERE %s;", *cfg.Table_name, strings.Join(w, " AND "))
+		return qb.query
+	}
