@@ -22,6 +22,7 @@ type QueryBuilder struct {
 	logger *slog.Logger
 	limit  int
 	offset int
+	sort   []string
 }
 
 
@@ -43,6 +44,7 @@ func NewQueryBuilder(logger *slog.Logger) *QueryBuilder {
 		logger: logger,
 		limit: 0,
 		offset: 0,
+		sort: []string{},
 	}
 }
 
