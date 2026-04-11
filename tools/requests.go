@@ -38,3 +38,13 @@ func ConvertToInt(val string) int {
 	i, _ := strconv.Atoi(val)
 	return i
 }
+
+func ASCorDESC(s string) string {
+	switch s {
+	case "":
+		return "ASC"
+	case "desc", "DESC", "d", "D", "descending", "DESCENDING":
+		return "DESC"
+	}
+	return "ASC"
+}

@@ -56,9 +56,14 @@ func ProcessURLParams(qb *QueryBuilder, r *http.Request, cfg *models.DataModel) 
 		temp_strings := strings.Split(sort_string, ",")
 		// Strip a sorted strings
 		for _, s := range temp_strings {
-			field_name, found := CheckFieldExists(strings.Trim(s, " "), cfg)
+			temp := strings.Split(s, "~")
+			field_name, found := CheckFieldExists(strings.Trim(temp[0], " "), cfg)
 			if found {
-				qb.sort = append(qb.sort, field_name)
+				if len(temp) > 1 {
+					qb.sort = append(qb.sort, fmt.Sprintf("%s %s", field_name, ASCorDESC(temp[1])))
+				} else {
+					qb.sort = append(qb.sort, fmt.Sprintf("%s %s", field_name, "ASC"))
+				}
 				qb.logger.Debug("Appended a sort column", "field_name", field_name)
 			}
 		}
