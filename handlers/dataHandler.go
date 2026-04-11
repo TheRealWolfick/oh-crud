@@ -254,7 +254,7 @@ func getResource(
 		defer rows.Close()
 		defer count.Close()
 		response["data"], err = pgx.CollectRows(rows, pgx.RowToMap)
-		response["count"], err = pgx.CollectOneRow(count, pgx.RowTo[int])
+		response["total_count"], err = pgx.CollectOneRow(count, pgx.RowTo[int])
 
 		// Handle error
 		if err != nil {
