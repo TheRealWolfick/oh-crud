@@ -139,3 +139,16 @@ func FindRowKeyFields(row map[string]any, cfg *models.DataModel) ([]string, bool
 
 	return nil, false
 }
+
+// Check if a row is a valid field and return the field name / database column name if valid
+func CheckFieldExists(key string, cfg *models.DataModel) (string, bool) {
+	for field_name, field_cfg := range cfg.Fields {
+		if key == field_name || key == *field_cfg.JSON {return field_name, true}
+		if field_cfg.JSON_alias != nil && len(field_cfg.JSON_alias) > 0 {
+			for _, alias := range field_cfg.JSON_alias {
+				if key == alias { return field_name, true }
+			}
+		}
+	}
+	return "", false
+}

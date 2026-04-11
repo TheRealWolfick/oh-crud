@@ -49,8 +49,21 @@ func ProcessURLParams(qb *QueryBuilder, r *http.Request, cfg *models.DataModel) 
 		qb.SetLimit(page_size_int)
 		qb.SetOffset(page_size_int * (page_int - 1))
 	}
-	
 
+	// Read any selected sorts and prepare them for validation
+	sort_string := r.FormValue("sort_by")
+	if sort_string != "" {
+		temp_strings := strings.Split(sort_string, ",")
+		// Strip a sorted strings
+		for _, s := range temp_strings {
+			field_name, found := CheckFieldExists(strings.Trim(s, " "), cfg)
+			if found {
+				qb.sort = append(qb.sort, field_name)
+				qb.logger.Debug("Appended a sort column", "field_name", field_name)
+			}
+		}
+	}
+	
 	if len(r.URL.Query()) < 1 && page == "" && page_size == "" {
 		qb.logger.Debug("No valid URL values passed skipping checks for fields")
 		return nil
