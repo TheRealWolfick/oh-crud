@@ -66,6 +66,7 @@ func main() {
 	handlerRegister := tools.NewHandlerRegistry(mux)
 	modelRegister := tools.NewModelRegistry()
 	for _, dm := range all_models {
+		if *dm.End_point == "" { continue }
 		handlers.RegisterRoutes(&dm, handlerRegister, authMiddleware, qm)
 		modelRegister.Register(&dm)
 	}

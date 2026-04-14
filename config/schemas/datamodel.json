@@ -65,7 +65,7 @@
       "type": "object",
       "additionalProperties": {
         "type": "object",
-        "required": ["type", "json", "db-type"],
+        "required": ["type", "db-type"],
         "additionalProperties": false,
         "properties": {
           "type": {

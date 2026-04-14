@@ -2,6 +2,14 @@ name: event_types
 version: 1.0.0
 table-name: event_types
 end-point: ""
+end-points-allowed:
+  GET: true
+  PUT: true
+  POST: true
+  DELETE: false
+  PUT-GROUP: true
+  POST-GROUP: true
+  DELETE-GROUP: false
 primary-key: event_type_id
 fields:
   event_type_id:

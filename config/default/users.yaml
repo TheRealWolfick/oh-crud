@@ -23,7 +23,7 @@ fields:
   api_access:
     type: bool
     json: api_access
-    db-type: bool
+    db-type: boolean
     default: false
   email:
     type: string

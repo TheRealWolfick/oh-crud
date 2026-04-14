@@ -1,0 +1,86 @@
+name: diffs
+version: 1.0.0
+table-name: diffs
+end-point: ""
+primary-key: diff_id
+
+foreign-keys:
+  fk_diffs_user:
+    foreign-key-fields:
+      - generated_by_user
+    foreign-key-target-table: users
+    foreign-key-target-fields:
+      - username
+    foreign-key-on-update: CASCADE
+
+unique-keys:
+  uk_diffs_checksum:
+    unique-key-fields:
+      - checksum
+
+fields:
+  diff_id:
+    type: int
+    json: diff_id
+    db-type: serial
+    skip-insert: true
+  diff_type:
+    type: string
+    json: diff_type
+    db-type: character varying(20)
+    required-on-insert: true
+  task_id:
+    type: string
+    db-type: character varying(32)
+    json: task_id
+    required-on-insert: true
+  missing_from_supplied:
+    type: json
+    db-type: jsonb
+    json: missing_from_supplied
+    nullable: true
+  missing_from_stored:
+    type: json
+    db-type: jsonb
+    json: missing_from_stored
+    nullable: true
+  diffs:
+    type: json
+    db-type: jsonb
+    json: diffs
+    nullable: true
+  generated_by_user:
+    type: string
+    db-type: character varying(20)
+    json: generated_by_user
+    required-on-insert: true
+  checksum:
+    type: string
+    db-type: character varying(64)
+    json: checksum
+    required-on-insert: true
+  created:
+    type: time
+    db-type: date
+    json: created
+    skip-insert: true
+    default: now()
+    nullable: true
+  note:
+    type: string
+    db-type: character varying(200)
+    nullable: true
+    json: note
+  batched:
+    type: bool
+    db-type: boolean
+    json: batched
+    default: false
+  batched_date:
+    type: time
+    db-type: date
+    json: batched_date
+    nullable: true
+
+
+  
