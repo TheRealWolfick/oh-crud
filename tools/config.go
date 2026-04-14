@@ -307,98 +307,98 @@ func CoerceType(raw any, type_name string) (any, error) {
 				return nil, nil
 			}
 			return fmt.Sprintf("%x-%x-%x-%x-%x",
-				v.Bytes[0:4], v.Bytes[4:6], v.Bytes[6:8], v.Bytes[8:10], v.Bytes[10:16],
-			), nil
-		case time.Time:
-			return v.UTC().Format(time.RFC3339), nil
-		case []byte:
-			return string(v), nil
-		default:
-			return fmt.Sprintf("%v", v), nil
-		}
+			v.Bytes[0:4], v.Bytes[4:6], v.Bytes[6:8], v.Bytes[8:10], v.Bytes[10:16],
+		), nil
+	case time.Time:
+		return v.UTC().Format(time.RFC3339), nil
+	case []byte:
+		return string(v), nil
+	default:
+		return fmt.Sprintf("%v", v), nil
+	}
 
-	case "bool":
-		switch v := raw.(type) {
-		case bool:
-			return v, nil
-		case float64:
-			return v != 0, nil
-		case int:
-			return v != 0, nil
-		case string:
-			if v == "" {
-				return nil, nil
-			}
-			return strconv.ParseBool(v)
-		case pgtype.Bool:
-			if !v.Valid {
-				return nil, nil
-			}
-			return v.Bool, nil
+case "bool":
+	switch v := raw.(type) {
+	case bool:
+		return v, nil
+	case float64:
+		return v != 0, nil
+	case int:
+		return v != 0, nil
+	case string:
+		if v == "" {
+			return nil, nil
 		}
-
-	case "json":
-		switch v := raw.(type) {
-		case []byte:
-			var out any
-			if err := json.Unmarshal(v, &out); err != nil {
-				return nil, fmt.Errorf("json unmarshal failed: %w", err)
-			}
-			return out, nil
-		case string:
-			if v == "" {
-				return nil, nil
-			}
-			var out any
-			if err := json.Unmarshal([]byte(v), &out); err != nil {
-				return nil, fmt.Errorf("json unmarshal failed: %w", err)
-			}
-			return out, nil
-		case map[string]any, []any:
-			return v, nil
+		return strconv.ParseBool(v)
+	case pgtype.Bool:
+		if !v.Valid {
+			return nil, nil
 		}
+		return v.Bool, nil
+	}
 
-	case "time":
-		switch v := raw.(type) {
-		case time.Time:
-			return v.UTC(), nil
-		case pgtype.Timestamptz:
-			if !v.Valid {
-				return nil, nil
-			}
-			return v.Time.UTC(), nil
-		case string:
-			if v == "" {
-				return nil, nil
-			}
-			t, err := time.Parse(time.RFC3339, v)
-			if err != nil {
-				return nil, fmt.Errorf("could not parse time string %q: %w", v, err)
-			}
-			return t.UTC(), nil
+case "json":
+	switch v := raw.(type) {
+	case []byte:
+		var out any
+		if err := json.Unmarshal(v, &out); err != nil {
+			return nil, fmt.Errorf("json unmarshal failed: %w", err)
 		}
+		return out, nil
+	case string:
+		if v == "" {
+			return nil, nil
+		}
+		var out any
+		if err := json.Unmarshal([]byte(v), &out); err != nil {
+			return nil, fmt.Errorf("json unmarshal failed: %w", err)
+		}
+		return out, nil
+	case map[string]any, []any:
+		return v, nil
+	}
 
-	case "uuid":
-		switch v := raw.(type) {
-		case string:
-			if v == "" {
-				return nil, nil
-			}
-			if len(v) != 36 {
-				return nil, fmt.Errorf("invalid UUID string: %q", v)
-			}
-			return v, nil
-		case pgtype.UUID:
-			if !v.Valid {
-				return nil, nil
-			}
-			return fmt.Sprintf("%x-%x-%x-%x-%x",
-				v.Bytes[0:4], v.Bytes[4:6], v.Bytes[6:8], v.Bytes[8:10], v.Bytes[10:16],
-			), nil
-		case [16]byte:
-			return fmt.Sprintf("%x-%x-%x-%x-%x",
-				v[0:4], v[4:6], v[6:8], v[8:10], v[10:16],
-			), nil
+case "time":
+	switch v := raw.(type) {
+	case time.Time:
+		return v.UTC(), nil
+	case pgtype.Timestamptz:
+		if !v.Valid {
+			return nil, nil
+		}
+		return v.Time.UTC(), nil
+	case string:
+		if v == "" {
+			return nil, nil
+		}
+		t, err := time.Parse(time.RFC3339, v)
+		if err != nil {
+			return nil, fmt.Errorf("could not parse time string %q: %w", v, err)
+		}
+		return t.UTC(), nil
+	}
+
+case "uuid":
+	switch v := raw.(type) {
+	case string:
+		if v == "" {
+			return nil, nil
+		}
+		if len(v) != 36 {
+			return nil, fmt.Errorf("invalid UUID string: %q", v)
+		}
+		return v, nil
+	case pgtype.UUID:
+		if !v.Valid {
+			return nil, nil
+		}
+		return fmt.Sprintf("%x-%x-%x-%x-%x",
+		v.Bytes[0:4], v.Bytes[4:6], v.Bytes[6:8], v.Bytes[8:10], v.Bytes[10:16],
+	), nil
+case [16]byte:
+	return fmt.Sprintf("%x-%x-%x-%x-%x",
+	v[0:4], v[4:6], v[6:8], v[8:10], v[10:16],
+), nil
 		}
 	}
 
@@ -646,6 +646,9 @@ func DynamicGetDatabaseColumns(cfg *models.DataModel, pk_only bool, req_only boo
 				}
 			}
 		} else {
+			if field_cfg.Private != nil && *field_cfg.Private {
+				continue
+			}
 			database_columns = append(database_columns, field_name)
 		}
 	}
