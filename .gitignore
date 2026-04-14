@@ -4,3 +4,4 @@ TASKS.md
 IDEAS.md
 config/database/*.hcl
 config/database/*.version
+.claude

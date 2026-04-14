@@ -1,0 +1,42 @@
+name: users
+version: 1.0.0
+table-name: users
+end-point: user
+primary-key: username
+end-points-allowed:
+  GET: true
+  PUT: true
+  POST: true
+fields:
+  username:
+    type: string
+    json: username
+    json-alias:
+      - user
+    db-type: character varying(20)
+    required-on-insert: true
+  api_key:
+    type: uuid
+    private: true
+    db-type: uuid
+  api_access:
+    type: bool
+    json: api_access
+    db-type: bool
+    default: false
+  email:
+    type: string
+    json: email
+    db-type: character varying(40)
+    default: ""
+  mobile:
+    type: string
+    json: mobile
+    json-alias:
+      - mob
+    db-type: character varying(40)
+    default: ""
+  date_created:
+    type: time
+    private: true
+    db-type: date
