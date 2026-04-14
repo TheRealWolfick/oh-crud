@@ -1,0 +1,47 @@
+name: events
+version: 1.0.0
+table-name: events
+end-point: events
+primary-key: event_id
+
+foreign-keys:
+  fk_events_event_user:
+    foreign-key-fields:
+      - event_user
+    foreign-key-target-table: users
+    foreign-key-target-fields:
+      - username
+    foreign-key-on-update: CASCADE
+  fk_events_type:
+    foreign-key-fields:
+      - type
+    foreign-key-target-table: event_types 
+    foreign-key-target-fields:
+      - type
+    foreign-key-on-update: CASCADE
+
+fields:
+  event_id:
+    type: int
+    json: event_id
+    db-type: serial
+    skip-insert: true
+  type:
+    type: string
+    json: type
+    db-type: character varying(40)
+    required-on-insert: true
+  event_log:
+    type: json
+    json: event_log
+    db-type: jsonb
+    nullable: true
+  event_time:
+    type: time
+    json: event_time
+    db-type: timestamp without time zone
+    default: now()
+  event_user:
+    type: string
+    json: event_user
+    db-type: character varying(20)

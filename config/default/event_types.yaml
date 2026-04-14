@@ -1,0 +1,22 @@
+name: event_types
+version: 1.0.0
+table-name: event_types
+end-point: ""
+primary-key: event_type_id
+fields:
+  event_type_id:
+    type: int
+    json: ""
+    db-type: smallserial
+    skip-insert: true
+  type:
+    type: string
+    json: type
+    db-type: character varying(20)
+    required-on-insert: true
+  description:
+    type: string
+    json: description
+    db-type: character varying(200)
+    nullable: true
+  

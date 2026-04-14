@@ -41,5 +41,5 @@ fields:
     type: time
     json: ""
     db-type: date
-    default: "now()"
+    default: now()
     private: true
