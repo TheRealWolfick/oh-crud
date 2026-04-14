@@ -34,6 +34,7 @@ type DataModelField struct {
 	Default  *string `yaml:"default"`
 	// Atlas metadata
 	Migration *string `yaml:"migration"`
+	Private *bool `yaml:"private"`
 }
 
 // End_pointsAllowed controls which HTTP methods are enabled for a given endpoint.

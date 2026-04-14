@@ -19,6 +19,7 @@ fields:
     type: uuid
     json: ""
     db-type: uuid
+    private: true
   api_access:
     type: bool
     json: api_access
@@ -41,3 +42,4 @@ fields:
     json: ""
     db-type: date
     default: "now()"
+    private: true
