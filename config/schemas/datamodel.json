@@ -65,10 +65,7 @@
       "type": "object",
       "additionalProperties": {
         "type": "object",
-        "anyOf": [
-          { "required": ["type", "json", "db-type"] },
-          { "required": ["type", "private", "db-type"] }
-        ],
+        "required": ["type", "json", "db-type"],
         "additionalProperties": false,
         "properties": {
           "type": {
@@ -90,8 +87,7 @@
           "migration": {
             "type": "string",
             "enum": ["alter", "skip", "recreate"]
-          },
-          "private": { "type": "boolean" }
+          }
         }
       }
     }

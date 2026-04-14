@@ -17,7 +17,7 @@ fields:
     required-on-insert: true
   api_key:
     type: uuid
-    private: true
+    json: ""
     db-type: uuid
   api_access:
     type: bool
@@ -28,15 +28,16 @@ fields:
     type: string
     json: email
     db-type: character varying(40)
-    default: ""
+    required-on-insert: true
   mobile:
     type: string
     json: mobile
     json-alias:
       - mob
     db-type: character varying(40)
-    default: ""
+    required-on-insert: true
   date_created:
     type: time
-    private: true
+    json: ""
     db-type: date
+    default: "now()"
