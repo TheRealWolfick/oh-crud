@@ -18,6 +18,7 @@ import (
 
 func main() {
 	// Directories
+	default_models_dir := "./config/default"
 	models_dir := "./config/base-models"
 	special_models_dir := "./config/special-models"
 
@@ -39,9 +40,10 @@ func main() {
 	// Create the queue for handling jobs
 	qm := tools.NewQueue(pool, 5, logger)
 
+	// Load default models from default dir
+	all_models := loadModelsFromDir(default_models_dir, logger)
 	// Load config-driven models from base-models dir
-	all_models := loadModelsFromDir(models_dir, logger)
-
+	all_models = append(all_models, loadModelsFromDir(models_dir, logger)...)
 	// Load config-driven models from special-models dir
 	all_models = append(all_models, loadModelsFromDir(special_models_dir, logger)...)
 
@@ -52,21 +54,20 @@ func main() {
 
 	// Make the handlers
 	authMiddleware := middleware.RequireAuth(pool)
-	userHandler := handlers.NewUserHandler(logger, pool)
 
 	// Setup the server
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("OK")) })
 
-	mux.Handle("GET /user", authMiddleware(http.HandlerFunc(userHandler.GetUserInfo)))
-	mux.Handle("PUT /user", authMiddleware(http.HandlerFunc(userHandler.UpdateUserInfo)))
-
 	// Register config-driven routes
 	handlerRegister := tools.NewHandlerRegistry(mux)
 	modelRegister := tools.NewModelRegistry()
 	for _, dm := range all_models {
-		if *dm.End_point == "" { continue }
+		if *dm.End_point == "" { 
+			logger.Debug(fmt.Sprintf("Skipping end point for: %s", *dm.Name))
+			continue 
+		}
 		handlers.RegisterRoutes(&dm, handlerRegister, authMiddleware, qm)
 		modelRegister.Register(&dm)
 	}

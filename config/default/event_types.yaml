@@ -10,7 +10,14 @@ end-points-allowed:
   PUT-GROUP: true
   POST-GROUP: true
   DELETE-GROUP: false
+
 primary-key: event_type_id
+
+unique-keys:
+  uk_event_type_type:
+    unique-key-fields:
+      - type
+
 fields:
   event_type_id:
     type: int

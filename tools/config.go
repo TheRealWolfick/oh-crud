@@ -463,9 +463,9 @@ func ValidateDataModel(m models.DataModel) error {
 	if m.Table_name == nil || strings.TrimSpace(*m.Table_name) == "" {
 		errs = append(errs, "table-name is required")
 	}
-	if m.End_point == nil || strings.TrimSpace(*m.End_point) == "" {
-		errs = append(errs, "end-point is required")
-	}
+	//if m.End_point == nil || strings.TrimSpace(*m.End_point) == "" {
+	//	errs = append(errs, "end-point is required")
+	//}
 	if len(m.Fields) == 0 {
 		errs = append(errs, "at least one field is required")
 	}
@@ -509,9 +509,9 @@ func ValidateDataModel(m models.DataModel) error {
 			}
 		}
 
-		if field.JSON == nil || strings.TrimSpace(*field.JSON) == "" {
-			errs = append(errs, fmt.Sprintf("%s: json is required", prefix))
-		}
+		//if field.JSON == nil || strings.TrimSpace(*field.JSON) == "" {
+		//	errs = append(errs, fmt.Sprintf("%s: json is required", prefix))
+		//}
 
 		if field.Migration != nil && !validMigrations[*field.Migration] {
 			errs = append(errs, fmt.Sprintf("%s: unknown migration strategy %q", prefix, *field.Migration))
