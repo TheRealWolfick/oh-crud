@@ -324,7 +324,7 @@ func updateResource(
 		tools.SetValueAndWhereFromMap(qb, valid_resources[0], where_fields)
 
 		// Build the query
-		query := qb.BuildUpdate_Dynamic(cfg)
+		query := qb.BuildUpdate(cfg)
 
 		// Queue the query
 		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type))
@@ -648,7 +648,7 @@ func deleteResource(
 			qb.SetWhereAbsolute(k, valid_resources[0][k])
 		}
 
-		query := qb.BuildDelete_Dynamic(cfg)
+		query := qb.BuildDelete(cfg)
 
 		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type))
 		task_id, err := qm.QueueExec(ctx_preserve, query, note, qb.GetArgs()...)

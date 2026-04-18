@@ -379,45 +379,9 @@ func (qb *QueryBuilder) BuildCount(table string) string {
 	return fmt.Sprintf("SELECT COUNT(*) FROM %s;", table)
 }
 
-// BuildUpdate builds a parameterized UPDATE query for a struct-typed model.
-// WHERE clauses are extracted from URL query parameters matching the model's primary key fields.
-func (qb *QueryBuilder) BuildUpdate(table string, r *http.Request, model interface{}) string {
-	if qb.query != "" {
-		return qb.query
-	}
-
-	whereFields := r.URL.Query()
-	prim_keys := GetPrimaryKeys(model)
-	whereExists := false
-
-	for _, key := range prim_keys {
-		f, _ := reflect.TypeOf(model).FieldByName(key)
-		whereval := whereFields.Get(f.Tag.Get("db"))
-		if whereval != "" {
-			qb.innerSetWhere(f.Tag.Get("db"), whereval, "=")
-			whereExists = true
-		}
-	}
-	if !whereExists {
-		return ""
-	}
-
-	w := make([]string, 0)
-	v := make([]string, 0)
-	for key, val := range qb.where {
-		w = append(w, fmt.Sprintf("%s = $%d", key, val))
-	}
-	for key, val := range qb.values {
-		v = append(v, fmt.Sprintf("%s = $%d", key, val))
-	}
-
-	qb.query = fmt.Sprintf("UPDATE %s SET %s WHERE %s;", table, strings.Join(v, ", "), strings.Join(w, " AND "))
-	return qb.query
-}
-
-// BuildUpdate_Dynamic builds a parameterized UPDATE query from the where and value clauses
+// BuildUpdate builds a parameterized UPDATE query from the where and value clauses
 // already set on the query builder.
-func (qb *QueryBuilder) BuildUpdate_Dynamic(cfg *models.DataModel) string {
+func (qb *QueryBuilder) BuildUpdate(cfg *models.DataModel) string {
 	if qb.query != "" {
 		qb.logger.Warn("Called BuildUpdate_Dynamic after query had already been built")
 		return qb.query
@@ -438,8 +402,8 @@ func (qb *QueryBuilder) BuildUpdate_Dynamic(cfg *models.DataModel) string {
 
 func (qb *QueryBuilder) HasUpdates() bool { return len(qb.values) > 0 }
 
-// BuildDelete_Dynamic builds a parameterized DELETE query from the where clauses already set.
-func (qb *QueryBuilder) BuildDelete_Dynamic(cfg *models.DataModel) string {
+// BuildDelete builds a parameterized DELETE query from the where clauses already set.
+func (qb *QueryBuilder) BuildDelete(cfg *models.DataModel) string {
 	if qb.query != "" {
 		qb.logger.Warn("Called BuildDelete_Dynamic after query had already been built")
 		return qb.query

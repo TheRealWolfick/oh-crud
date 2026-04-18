@@ -277,7 +277,7 @@ func multiUpdate(
 			}
 		}
 
-		query := qb.BuildUpdate_Dynamic(cfg)
+		query := qb.BuildUpdate(cfg)
 		cmdtag, err := db.Exec(ctx, query, qb.GetArgs()...)
 
 		if err == nil && cmdtag.RowsAffected() > 0 {
@@ -323,7 +323,7 @@ func multiDelete(
 			qb.SetWhereAbsolute(f, row[f])
 		}
 
-		query := qb.BuildDelete_Dynamic(cfg)
+		query := qb.BuildDelete(cfg)
 		cmdtag, err := db.Exec(ctx, query, qb.GetArgs()...)
 		if err == nil && cmdtag.RowsAffected() > 0 {
 			report.SuccessCount = report.SuccessCount + int(cmdtag.RowsAffected())

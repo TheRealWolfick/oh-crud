@@ -47,8 +47,6 @@ func TestBinarySearch(t *testing.T) {
 		}
 	}
 
-	SortSliceOfStructs(left, "Word")
-
 	t.Run("Test Binary Search", func(t *testing.T) {
 		pos, found := BinarySearch("opening", left, "Word")
 		if found == false || pos != 5 {

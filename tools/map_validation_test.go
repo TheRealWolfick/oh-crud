@@ -225,7 +225,7 @@ func TestSetValueAndWhereFromMap(t *testing.T) {
 		SetValueAndWhereFromMap(qb, m, []string{"id"})
 
 		// verify that "id" is in where args and "label"/"score" are in set args
-		q := qb.BuildUpdate_Dynamic(&models.DataModel{
+		q := qb.BuildUpdate(&models.DataModel{
 			Table_name: ptr("t"),
 			Fields:     map[string]models.DataModelField{},
 		})
