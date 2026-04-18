@@ -13,12 +13,6 @@ type User struct {
 }
 
 type UserRequest struct {
-	Username string `json:"username" db:"username"`
-	Api_Key  string `json:"api_key" db:"api_key"`
-}
-
-type UserCreateUpdate struct {
-	Username *string `json:"username" db:"username"`
-	Email    *string `json:"email,omitempty"`
-	Mobile   *string `json:"mobile,omitempty"`
+	Username  string `json:"username" db:"username"`
+	Api_Key   string `json:"api_key" db:"api_key"`
 }

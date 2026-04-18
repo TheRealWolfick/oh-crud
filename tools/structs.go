@@ -3,29 +3,12 @@ package tools
 import (
 	"fmt"
 	"reflect"
-	"slices"
 	"sort"
 	"strconv"
 	"time"
 
 	"lotusforge.au/api-server/models"
 )
-
-func StructIsEmpty[T any](s *T) bool {
-	if s == nil {
-		return true
-	}
-	v := reflect.ValueOf(s).Elem()  // Elem() dereferences the pointer
-	return v.IsZero()
-}
-
-func ToAnySlice[T any](slice []T) []any {
-	var result []any
-	for _, item := range slice {
-		result = append(result, item)
-	}
-	return result
-}
 
 func getFields[T any](model T, tag string, value string) []string {
 	typ := reflect.TypeOf(model)
@@ -99,40 +82,6 @@ func GetDiffFieldName[T any](model T) string {
 	}
 	return ""
 }
-
-func getTagFromField[T any](model T, field string, tag string) string {
-	mod := reflect.TypeOf(model)
-
-	if mod.Kind() == reflect.Ptr {
-		mod = mod.Elem()
-	}
-
-	f, found := mod.FieldByName(field)
-
-	if !found {
-		return ""
-	}
-
-	return f.Tag.Get(tag)
-}
-
-func GetDBTagFromField[T interface{}](model T, field string) string {
-	return getTagFromField(model, field, "db")
-}
-
-func GetCustomWhereFromField[T any](model T, field string) string {
-	return getTagFromField(model, field, "customwhere")
-}
-
-func getAbsoluteTagFromField[T interface{}](model T, field string) string {
-	return getTagFromField(model, field, "absolute")
-}
-
-func IsAbsolute[T any](model T, field string) bool {
-	absolute := getAbsoluteTagFromField(model, field)
-	return absolute == "true"
-}
-
 
 // Test whether the string B is of type A. Currently does not support mods
 func ValidateValue(A reflect.Kind, B any) bool {
@@ -482,83 +431,4 @@ func DiffMapSlices(
 		MissingFromSupplied: rightRemaining,  // in stored, not in supplied
 		Diffs:               diffs,
 	}
-}
-
-// DiffStructSlices performs a diff between two structs of the same type. This function
-// is currently deprecated due to moving to dynamic config driven maps.
-// 
-// May be reinstated in the future 
-func DiffStructSlices[T any](left []T, right []T) *models.Diff[T] {
-	if len(left) < 1 || len(right) < 1 {
-		return nil
-	}
-
-	comparator_field := GetDiffFieldName(left[0])
-
-	if comparator_field == "" {
-		return nil
-	}
-
-	left_only := make([]T, 0)
-	matches := make([]models.Item_Diff[T], 0)
-
-	// Sort left and right data for optimizing search
-	SortSliceOfStructs(left, comparator_field)
-	SortSliceOfStructs(right, comparator_field)
-
-	// Do the merge
-	for _, item := range left {
-		// Read the comparator
-		comparator_prep := reflect.ValueOf(item)
-		if comparator_prep.Kind() == reflect.Ptr {comparator_prep = comparator_prep.Elem()}
-		comparator_prep = comparator_prep.FieldByName(comparator_field)
-		if comparator_prep.Kind() == reflect.Ptr {comparator_prep = comparator_prep.Elem()}
-		comparator := comparator_prep.Interface().(string)
-
-		// Check if comparator is in right slice
-		right_index, found := BinarySearch(comparator, right, comparator_field)
-
-		if !found {
-			left_only = append(left_only, item)
-			continue
-		}
-
-		// It was found
-		matches = append(matches, DiffStruct(item, right[right_index], comparator_field))
-
-		// Remove item from right
-		right = slices.Concat(right[:right_index], right[right_index+1:])
-	}
-
-	return &models.Diff[T]{
-		DiffType: &comparator_field,
-		MissingFromSupplied: right,
-		MissingFromStored: left_only,
-		Diffs: matches,
-	}
-}
-
-// SortSliceOfStructs is a deprecated function which would sort a slic of structs based
-// on a field name. It's primary use is as a part of the diff functionality to allow
-// binary searching.
-func SortSliceOfStructs[T any](arr []T, field_name string) {
-	sort.Slice(arr, func(i, j int) bool {
-		i_val := reflect.ValueOf(arr[i])
-		j_val := reflect.ValueOf(arr[j])
-
-		if i_val.Kind() == reflect.Ptr {
-			i_val = i_val.Elem()
-			j_val = j_val.Elem()
-		}
-
-		i_field := i_val.FieldByName(field_name)
-		j_field := j_val.FieldByName(field_name)
-
-		if i_field.Kind() == reflect.Ptr {
-			i_field = i_field.Elem()
-			j_field = j_field.Elem()
-		}
-
-		return i_field.Interface().(string) < j_field.Interface().(string)
-	})
 }

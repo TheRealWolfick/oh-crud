@@ -14,18 +14,18 @@ import (
 	"lotusforge.au/api-server/models"
 )
 
-// SingleInsert_Dynamic queues a single-row insert using the config-driven schema.
-func SingleInsert_Dynamic(
+// SingleInsert queues a single-row insert using the config-driven schema.
+func SingleInsert(
 	ctx context.Context,
 	db models.DBExecutor,
 	cfg *models.DataModel,
 	item map[string]any,
 ) func(context.Context, ...any) (map[string]any, error) {
-	return RecursiveBatchInsert_Dynamic(ctx, db, cfg, []map[string]any{item})
+	return RecursiveBatchInsert(ctx, db, cfg, []map[string]any{item})
 }
 
-// CreateDiff_Dynamic queues a diff comparing supplied rows against the stored table.
-func CreateDiff_Dynamic(
+// CreateDiff queues a diff comparing supplied rows against the stored table.
+func CreateDiff(
 	ctx context.Context,
 	db models.DBExecQuery,
 	cfg *models.DataModel,
@@ -33,11 +33,11 @@ func CreateDiff_Dynamic(
 	note string,
 ) func(context.Context, ...any) (map[string]any, error) {
 	return func(ctx context.Context, a ...any) (map[string]any, error) {
-		return createDiff_Dynamic(ctx, db, cfg, supplied, note)
+		return createDiff(ctx, db, cfg, supplied, note)
 	}
 }
 
-func createDiff_Dynamic(
+func createDiff(
 	ctx context.Context,
 	db models.DBExecQuery,
 	cfg *models.DataModel,
@@ -137,40 +137,40 @@ func createDiff_Dynamic(
 	return ret_map, nil
 }
 
-// MultiUpdate_Dynamic queues an update for each supplied row using the config-driven schema.
-func MultiUpdate_Dynamic(
+// MultiUpdate queues an update for each supplied row using the config-driven schema.
+func MultiUpdate(
 	ctx context.Context,
 	db models.DBExecQuery,
 	cfg *models.DataModel,
 	supplied []map[string]any,
 ) func(context.Context, ...any) (map[string]any, error) {
 	return func(ctx context.Context, a ...any) (map[string]any, error) {
-		return multiUpdate_Dynamic(ctx, db, cfg, supplied)
+		return multiUpdate(ctx, db, cfg, supplied)
 	}
 }
 
-// MultiDelete_Dynamic queues a delete for each supplied row using the config-driven schema.
-func MultiDelete_Dynamic(
+// MultiDelete queues a delete for each supplied row using the config-driven schema.
+func MultiDelete(
 	ctx context.Context,
 	db models.DBExecutor,
 	cfg *models.DataModel,
 	supplied []map[string]any,
 ) func(context.Context, ...any) (map[string]any, error) {
 	return func(ctx context.Context, a ...any) (map[string]any, error) {
-		return multiDelete_Dynamic(ctx, db, cfg, supplied)
+		return multiDelete(ctx, db, cfg, supplied)
 	}
 }
 
-// RecursiveBatchInsert_Dynamic inserts a batch of config-typed rows.
+// RecursiveBatchInsert inserts a batch of config-typed rows.
 // On failure the batch is split in half and retried recursively, isolating failing rows.
-func RecursiveBatchInsert_Dynamic(
+func RecursiveBatchInsert(
 	ctx context.Context,
 	db models.DBExecutor,
 	cfg *models.DataModel,
 	items []map[string]any,
 ) func(context.Context, ...any) (map[string]any, error) {
 	return func(context.Context, ...any) (map[string]any, error) {
-		result := recursiveBatchInsertProcess_Dynamic(ctx, db, cfg, items)
+		result := recursiveBatchInsertProcess(ctx, db, cfg, items)
 		failed_count := len(result.FailedItems)
 		logData := map[string]any{
 			"total_count":   result.SuccessCount + failed_count,
@@ -182,7 +182,7 @@ func RecursiveBatchInsert_Dynamic(
 	}
 }
 
-func recursiveBatchInsertProcess_Dynamic(
+func recursiveBatchInsertProcess(
 	ctx context.Context,
 	db models.DBExecutor,
 	cfg *models.DataModel,
@@ -226,11 +226,11 @@ func recursiveBatchInsertProcess_Dynamic(
 	}
 
 	mid := len(items) / 2
-	leftResult := recursiveBatchInsertProcess_Dynamic(ctx, db, cfg, items[:mid])
+	leftResult := recursiveBatchInsertProcess(ctx, db, cfg, items[:mid])
 	result.SuccessCount += leftResult.SuccessCount
 	result.FailedItems = append(result.FailedItems, leftResult.FailedItems...)
 
-	rightResult := recursiveBatchInsertProcess_Dynamic(ctx, db, cfg, items[mid:])
+	rightResult := recursiveBatchInsertProcess(ctx, db, cfg, items[mid:])
 	result.SuccessCount += rightResult.SuccessCount
 	result.FailedItems = append(result.FailedItems, rightResult.FailedItems...)
 
@@ -238,7 +238,7 @@ func recursiveBatchInsertProcess_Dynamic(
 	return result
 }
 
-func multiUpdate_Dynamic(
+func multiUpdate(
 	ctx context.Context,
 	db models.DBExecutor,
 	cfg *models.DataModel,
@@ -293,7 +293,7 @@ func multiUpdate_Dynamic(
 	return report_to_return, err
 }
 
-func multiDelete_Dynamic(
+func multiDelete(
 	ctx context.Context,
 	db models.DBExecutor,
 	cfg *models.DataModel,

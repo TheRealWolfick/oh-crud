@@ -132,7 +132,7 @@ func addNewResource(
 
 		// Extract context and queue action
 		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type))
-		task_id, err := qm.QueueFunction(ctx_preserve, tools.SingleInsert_Dynamic(ctx_preserve, qm.Db, cfg, valid_resources[0]), note)
+		task_id, err := qm.QueueFunction(ctx_preserve, tools.SingleInsert(ctx_preserve, qm.Db, cfg, valid_resources[0]), note)
 
 		if err != nil {
 			log.Error("TASK_ERROR", "error", "could not create task", "resource", raw, "error", err)
@@ -187,7 +187,7 @@ func addNewResources_Group(
 		}
 
 		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type))
-		task_id, err := qm.QueueFunction(ctx_preserve, tools.RecursiveBatchInsert_Dynamic(ctx_preserve, qm.Db, cfg, valid_resources), note)
+		task_id, err := qm.QueueFunction(ctx_preserve, tools.RecursiveBatchInsert(ctx_preserve, qm.Db, cfg, valid_resources), note)
 		if err != nil {
 			qm.Logger.Error("TASK_ERROR", "error", err)
 			http.Error(w, fmt.Sprintf("Error creating bulk create task\nError: %v", err), http.StatusInternalServerError)
@@ -379,7 +379,7 @@ func updateResource_Group(
 
 		// Queue the query
 		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type))
-		task_id, err := qm.QueueFunction(ctx_preserve, tools.MultiUpdate_Dynamic(ctx_preserve, qm.Db, cfg, valid_resources), note)
+		task_id, err := qm.QueueFunction(ctx_preserve, tools.MultiUpdate(ctx_preserve, qm.Db, cfg, valid_resources), note)
 		if err != nil {
 			log.Error("TASK_ERROR", "error", err)
 			http.Error(w, fmt.Sprintf("Error creating update task\nError: %v", err), http.StatusInternalServerError)
@@ -485,7 +485,7 @@ func dynamicCreateDiff(
 		}
 
 		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type))
-		task_id, err := qm.QueueFunction(ctx_preserve, tools.CreateDiff_Dynamic(ctx_preserve, qm.Db, cfg, valid_resources, note), note)
+		task_id, err := qm.QueueFunction(ctx_preserve, tools.CreateDiff(ctx_preserve, qm.Db, cfg, valid_resources, note), note)
 		if err != nil {
 			log.Error("TASK_ERROR", "error", err)
 			http.Error(w, fmt.Sprintf("Error creating diff task: %v", err), http.StatusInternalServerError)
@@ -701,7 +701,7 @@ func deleteResource_Group(
 		}
 
 		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type))
-		task_id, err := qm.QueueFunction(ctx_preserve, tools.MultiDelete_Dynamic(ctx_preserve, qm.Db, cfg, valid_resources), note)
+		task_id, err := qm.QueueFunction(ctx_preserve, tools.MultiDelete(ctx_preserve, qm.Db, cfg, valid_resources), note)
 		if err != nil {
 			log.Error("TASK_ERROR", "error", err)
 			http.Error(w, fmt.Sprintf("Error creating bulk delete task\nError: %v", err), http.StatusInternalServerError)

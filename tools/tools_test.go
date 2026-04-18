@@ -16,31 +16,6 @@ type testingStruct struct {
 }
 
 
-func TestStructIsEmpty(t *testing.T) {
-	s := &testingStruct{}
-	value := 5
-	s2 := &testingStruct{
-		Value: &value,
-	}
-
-	t.Run("Is empty struct empty?",func(t *testing.T) {
-		isEmpty := StructIsEmpty(s)
-		if !isEmpty {t.Error("Expected struct to be seen as empty")}
-	})
-	t.Run("Is non empty struct empty?", func(t *testing.T) {
-		isEmpty := StructIsEmpty(s2)
-		if isEmpty {t.Error("Expected struct to be seen as not empty")}
-	})
-
-	s2 = nil
-
-	t.Run("Cleared struct returns as empty.", func(t *testing.T) {
-		isEmpty := StructIsEmpty(s2)
-		if !isEmpty {t.Error("Expected nil struct to be seen as empty.")}
-	})
-}
-
-
 func TestGettingFieldsFromStructs(t *testing.T) {
 	var testStruct testingStruct
 	testjson := `{"word": "a word", "value": 15, "something", "description"}`
