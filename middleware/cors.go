@@ -15,7 +15,7 @@ func Cors(cfg *models.DataModel, server_conf *models.SwappableServerConfig) func
 			// Extract info
 			origin := r.Header.Get("Origin")
 			conf := server_conf.Get()
-
+			
 			// Set the allowed origin
 			if slices.Contains(conf.CORS.Allowed_Origins, origin) {
 				w.Header().Set("Access-Control-Allow-Origin", origin)

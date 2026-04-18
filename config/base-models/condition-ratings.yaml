@@ -1,6 +1,6 @@
 ---
 name: Condition Ratings
-version: 1.1.0
+version: 1.1.2
 table-name: condition_ratings
 end-point: condition/rating
 allow-diff: false

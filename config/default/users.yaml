@@ -3,6 +3,12 @@ version: 1.0.0
 table-name: users
 end-point: user
 primary-key: username
+
+unique-keys:
+  uk_users_api:
+    unique-key-fields:
+      - api_key
+
 end-points-allowed:
   GET: true
   PUT: true

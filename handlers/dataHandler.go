@@ -23,13 +23,14 @@ func RegisterRoutes(
 	var err error
 	qm.Logger.Debug("Dynamic end point generating", "data-model", *cfg.Name)
 
-	// Perform error check on first handler and soft cancel on error
-	err = handlerRegistry.Register(fmt.Sprintf("GET /%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleGet(cfg, qm))), *cfg.Version)
+	// Perform error check OPTIONS handler and soft cancel on error
+	err = handlerRegistry.Register(fmt.Sprintf("OPTIONS /%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(emptyResponse())), *cfg.Version)
 	if err != nil {
 		qm.Logger.Error("Failed to load model", "error", err)
 		return
 	}
 
+	handlerRegistry.Register(fmt.Sprintf("GET /%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleGet(cfg, qm))), *cfg.Version)
 	handlerRegistry.Register(fmt.Sprintf("PUT /%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleUpdate(cfg, qm))), *cfg.Version)
 	handlerRegistry.Register(fmt.Sprintf("PUT /%s/group", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleUpdate_Group(cfg, qm))), *cfg.Version)
 	handlerRegistry.Register(fmt.Sprintf("POST /%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleAddNew(cfg, qm))), *cfg.Version)
@@ -746,5 +747,11 @@ func notAllowed(
 			w.Header().Set("Allow", "-")
 		}
 		http.Error(w, "Not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func emptyResponse() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
 	}
 }

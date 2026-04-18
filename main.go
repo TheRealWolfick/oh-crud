@@ -74,12 +74,12 @@ func main() {
 	handlerRegister := tools.NewHandlerRegistry(mux)
 	modelRegister := tools.NewModelRegistry()
 	for _, dm := range all_models {
-		if *dm.End_point == "" { 
+		modelRegister.Register(&dm)
+		if dm.End_point == nil || *dm.End_point == "" {
 			logger.Debug(fmt.Sprintf("Skipping end point for: %s", *dm.Name))
-			continue 
+			continue
 		}
 		handlers.RegisterRoutes(&dm, handlerRegister, authMiddleware, qm, server_conf)
-		modelRegister.Register(&dm)
 	}
 
 	// OpenAPI spec endpoint

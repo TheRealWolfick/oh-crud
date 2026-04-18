@@ -2,8 +2,10 @@
 
 cors:
   allowed-origins:
-    - localhost
+    - http://localhost:8080
     - https://api.lotusforge.au
+    - http://localhost
+    - http://127.0.0.1:8080
   allowed-headers:
     - X-Username
     - X-API-Key
