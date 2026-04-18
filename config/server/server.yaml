@@ -1,0 +1,12 @@
+---
+
+cors:
+  allowed-origins:
+    - localhost
+    - https://api.lotusforge.au
+  allowed-headers:
+    - X-Username
+    - X-API-Key
+    - Content-Type
+    - Authorization
+  allow-credentials: true

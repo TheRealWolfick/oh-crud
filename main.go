@@ -40,6 +40,16 @@ func main() {
 	// Create the queue for handling jobs
 	qm := tools.NewQueue(pool, 5, logger)
 
+	// Load the server config
+	intial_server_conf, err := tools.LoadYAMLIntoModel[models.ServerConfig]("./config/server/server.yaml")
+	if err != nil {
+		logger.Error("Failed to load server configuration")
+		os.Exit(1)
+	}
+	server_conf := models.NewSwappableServerConfig(intial_server_conf)
+	logger.Debug(tools.DereferencedString(server_conf.Get()))
+
+
 	// Load default models from default dir
 	all_models := loadModelsFromDir(default_models_dir, logger)
 	// Load config-driven models from base-models dir
@@ -68,15 +78,16 @@ func main() {
 			logger.Debug(fmt.Sprintf("Skipping end point for: %s", *dm.Name))
 			continue 
 		}
-		handlers.RegisterRoutes(&dm, handlerRegister, authMiddleware, qm)
+		handlers.RegisterRoutes(&dm, handlerRegister, authMiddleware, qm, server_conf)
 		modelRegister.Register(&dm)
 	}
 
 	// OpenAPI spec endpoint
 	mux.Handle("GET /openapi.json", handlers.NewOpenAPIHandler(modelRegister))
 
-	// Load the file watcher
-	go monitors.ModelsMonitor(handlerRegister, modelRegister, authMiddleware, qm, gate)
+	// Load the file watchers
+	go monitors.ModelsMonitor(handlerRegister, modelRegister, authMiddleware, qm, gate, server_conf)
+	go monitors.ServerConfigMonitor(server_conf, logger)
 
 	// Launch the server
 	http.ListenAndServe(":8080", mux)
@@ -103,7 +114,7 @@ func loadModelsFromDir(dir string, logger interface{ Warn(string, ...any); Error
 		if filepath.Ext(info.Name()) != ".yaml" {
 			continue
 		}
-		data, err := tools.LoadModel_YAML(fmt.Sprintf("%s/%s", dir, info.Name()))
+		data, err := tools.LoadYAMLIntoModel[models.DataModel](fmt.Sprintf("%s/%s", dir, info.Name()))
 		if err != nil {
 			logger.Warn(fmt.Sprintf("Failed to load config file: %s", info.Name()), "error", err)
 			continue

@@ -13,23 +13,29 @@ import (
 	"lotusforge.au/api-server/tools"
 )
 
-func RegisterRoutes(cfg *models.DataModel, handlerRegistry *tools.HandlerRegistry, auth func(http.Handler) http.Handler, qm *tools.QueueManager) {
+func RegisterRoutes(
+	cfg *models.DataModel, 
+	handlerRegistry *tools.HandlerRegistry, 
+	auth func(http.Handler) http.Handler, 
+	qm *tools.QueueManager, 
+	server_conf *models.SwappableServerConfig,
+) {
 	var err error
 	qm.Logger.Debug("Dynamic end point generating", "data-model", *cfg.Name)
 
 	// Perform error check on first handler and soft cancel on error
-	err = handlerRegistry.Register(fmt.Sprintf("GET /%s", *cfg.End_point), auth(handleGet(cfg, qm)), *cfg.Version)
+	err = handlerRegistry.Register(fmt.Sprintf("GET /%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleGet(cfg, qm))), *cfg.Version)
 	if err != nil {
 		qm.Logger.Error("Failed to load model", "error", err)
 		return
 	}
 
-	handlerRegistry.Register(fmt.Sprintf("PUT /%s", *cfg.End_point), auth(handleUpdate(cfg, qm)), *cfg.Version)
-	handlerRegistry.Register(fmt.Sprintf("PUT /%s/group", *cfg.End_point), auth(handleUpdate_Group(cfg, qm)), *cfg.Version)
-	handlerRegistry.Register(fmt.Sprintf("POST /%s", *cfg.End_point), auth(handleAddNew(cfg, qm)), *cfg.Version)
-	handlerRegistry.Register(fmt.Sprintf("POST /%s/group", *cfg.End_point), auth(handleAddNew_Group(cfg, qm)), *cfg.Version)
-	handlerRegistry.Register(fmt.Sprintf("DELETE /%s", *cfg.End_point), auth(handleDelete(cfg, qm)), *cfg.Version)
-	handlerRegistry.Register(fmt.Sprintf("DELETE /%s/group", *cfg.End_point), auth(handleDelete_Group(cfg, qm)), *cfg.Version)
+	handlerRegistry.Register(fmt.Sprintf("PUT /%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleUpdate(cfg, qm))), *cfg.Version)
+	handlerRegistry.Register(fmt.Sprintf("PUT /%s/group", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleUpdate_Group(cfg, qm))), *cfg.Version)
+	handlerRegistry.Register(fmt.Sprintf("POST /%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleAddNew(cfg, qm))), *cfg.Version)
+	handlerRegistry.Register(fmt.Sprintf("POST /%s/group", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleAddNew_Group(cfg, qm))), *cfg.Version)
+	handlerRegistry.Register(fmt.Sprintf("DELETE /%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleDelete(cfg, qm))), *cfg.Version)
+	handlerRegistry.Register(fmt.Sprintf("DELETE /%s/group", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleDelete_Group(cfg, qm))), *cfg.Version)
 
 	if cfg.Allow_diff != nil && *cfg.Allow_diff {
 		handlerRegistry.Register(fmt.Sprintf("GET /%s/diff", *cfg.End_point), auth(dynamicGetDiff(cfg, qm)), *cfg.Version)
@@ -525,77 +531,77 @@ func dynamicActionDiff(
 
 		// Read the diff row as a raw map so JSONB columns come back as []byte
 		rows, err := qm.Db.Query(r.Context(),
-			`SELECT * FROM diffs WHERE diff_type = $1 AND checksum = $2 LIMIT 1;`,
-			*cfg.Table_name, checksum,
-		)
-		if err != nil {
-			log.Error("DATA_READ_ERROR", "error", err)
-			http.Error(w, "Error reading diff", http.StatusInternalServerError)
-			return
-		}
-		rawRows, err := pgx.CollectRows(rows, pgx.RowToMap)
-		if err != nil || len(rawRows) == 0 {
-			http.Error(w, "Invalid checksum provided", http.StatusBadRequest)
-			return
-		}
-		row := rawRows[0]
-
-		// Helper to decode a JSONB column from []byte into a target
-		decodeJSONB := func(col string, target any) {
-			log.Debug("attempting to identify type", "col", col)
-			switch v := row[col].(type) {
-			case []byte:
-				json.Unmarshal(v, target)
-			case string:
-				json.Unmarshal([]byte(v), target)
-			default:
-				b, err := json.Marshal(v)
-				if err != nil {
-					return
-				}
-				json.Unmarshal(b, target)
-			}
-		}
-
-		var missingFromSupplied []map[string]any
-		var missingFromStored []map[string]any
-		var diffs []models.Item_Diff[map[string]any]
-		decodeJSONB("missing_from_supplied", &missingFromSupplied)
-		decodeJSONB("missing_from_stored", &missingFromStored)
-		decodeJSONB("diffs", &diffs)
-
-		// Generate batch code
-		var batchCode string
-		batchRow := qm.Db.QueryRow(r.Context(),
-			`SELECT generate_batch_num($1, $2, $3)`,
-			req_username, *cfg.Table_name, checksum)
-		if err := batchRow.Scan(&batchCode); err != nil {
-			log.Error("BATCH_CODE_ERROR", "error", err)
-			http.Error(w, "Error generating batch code", http.StatusInternalServerError)
-			return
-		}
-
-		// Build sync arrays from diffs
-		syncStored := make([]map[string]any, 0)
-		syncSupplied := make([]map[string]any, 0)
-		for _, d := range diffs {
-			if d.Supplied != nil {
-				syncStored = append(syncStored, *d.Supplied)
-			}
-			if d.Stored != nil {
-				syncSupplied = append(syncSupplied, *d.Stored)
-			}
-		}
-
-		response := map[string]any{
-			"batch_code":            batchCode,
-			"missing_from_supplied": missingFromSupplied,
-			"missing_from_stored":   missingFromStored,
-			"sync_stored":           syncStored,
-			"sync_supplied":         syncSupplied,
-		}
-		json.NewEncoder(w).Encode(response)
+		`SELECT * FROM diffs WHERE diff_type = $1 AND checksum = $2 LIMIT 1;`,
+		*cfg.Table_name, checksum,
+	)
+	if err != nil {
+		log.Error("DATA_READ_ERROR", "error", err)
+		http.Error(w, "Error reading diff", http.StatusInternalServerError)
+		return
 	}
+	rawRows, err := pgx.CollectRows(rows, pgx.RowToMap)
+	if err != nil || len(rawRows) == 0 {
+		http.Error(w, "Invalid checksum provided", http.StatusBadRequest)
+		return
+	}
+	row := rawRows[0]
+
+	// Helper to decode a JSONB column from []byte into a target
+	decodeJSONB := func(col string, target any) {
+		log.Debug("attempting to identify type", "col", col)
+		switch v := row[col].(type) {
+		case []byte:
+			json.Unmarshal(v, target)
+		case string:
+			json.Unmarshal([]byte(v), target)
+		default:
+			b, err := json.Marshal(v)
+			if err != nil {
+				return
+			}
+			json.Unmarshal(b, target)
+		}
+	}
+
+	var missingFromSupplied []map[string]any
+	var missingFromStored []map[string]any
+	var diffs []models.Item_Diff[map[string]any]
+	decodeJSONB("missing_from_supplied", &missingFromSupplied)
+	decodeJSONB("missing_from_stored", &missingFromStored)
+	decodeJSONB("diffs", &diffs)
+
+	// Generate batch code
+	var batchCode string
+	batchRow := qm.Db.QueryRow(r.Context(),
+	`SELECT generate_batch_num($1, $2, $3)`,
+	req_username, *cfg.Table_name, checksum)
+	if err := batchRow.Scan(&batchCode); err != nil {
+		log.Error("BATCH_CODE_ERROR", "error", err)
+		http.Error(w, "Error generating batch code", http.StatusInternalServerError)
+		return
+	}
+
+	// Build sync arrays from diffs
+	syncStored := make([]map[string]any, 0)
+	syncSupplied := make([]map[string]any, 0)
+	for _, d := range diffs {
+		if d.Supplied != nil {
+			syncStored = append(syncStored, *d.Supplied)
+		}
+		if d.Stored != nil {
+			syncSupplied = append(syncSupplied, *d.Stored)
+		}
+	}
+
+	response := map[string]any{
+		"batch_code":            batchCode,
+		"missing_from_supplied": missingFromSupplied,
+		"missing_from_stored":   missingFromStored,
+		"sync_stored":           syncStored,
+		"sync_supplied":         syncSupplied,
+	}
+	json.NewEncoder(w).Encode(response)
+}
 }
 
 // Delete a single resource identified by its primary key in the request body

@@ -18,9 +18,9 @@ import (
 
 // ── Config loading ────────────────────────────────────────────────────────────
 
-func LoadModel_YAML(path string) (*models.DataModel, error) {
+func LoadYAMLIntoModel[T any](path string) (*T, error) {
 	if filepath.Ext(path) == ".yaml" {
-		model := NewDataModel()
+		model := new(T)
 		file, err := os.ReadFile(path)
 		if err != nil {
 			return nil, err

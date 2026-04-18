@@ -6,11 +6,12 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"lotusforge.au/api-server/handlers"
+	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/schematools"
 	"lotusforge.au/api-server/tools"
 )
 
-func ModelsMonitor(handlerRegistry *tools.HandlerRegistry, modelRegistry *tools.ModelRegistry, auth func(http.Handler) http.Handler, qm *tools.QueueManager, gate *schematools.PendingApprovalGate) {
+func ModelsMonitor(handlerRegistry *tools.HandlerRegistry, modelRegistry *tools.ModelRegistry, auth func(http.Handler) http.Handler, qm *tools.QueueManager, gate *schematools.PendingApprovalGate, server_conf *models.SwappableServerConfig) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		qm.Logger.Error("Failed to load watcher, config will not update live", "error", err)
@@ -26,7 +27,7 @@ func ModelsMonitor(handlerRegistry *tools.HandlerRegistry, modelRegistry *tools.
 					return
 				}
 				if event.Has(fsnotify.Write) {
-					updated_config, err := tools.LoadModel_YAML(event.Name)
+					updated_config, err := tools.LoadYAMLIntoModel[models.DataModel](event.Name)
 					if err != nil {
 						qm.Logger.Error("Updated YAML failed to load. Skipping updating routes", "error", err)
 					} else {
@@ -35,7 +36,7 @@ func ModelsMonitor(handlerRegistry *tools.HandlerRegistry, modelRegistry *tools.
 							qm.Logger.Error("Updated YAML failed validation, routes not updated", "error", err)
 						} else {
 							modelRegistry.Register(updated_config)
-							handlers.RegisterRoutes(updated_config, handlerRegistry, auth, qm)
+							handlers.RegisterRoutes(updated_config, handlerRegistry, auth, qm, server_conf)
 							schematools.SyncModelIfNeeded(context.Background(), qm.Db, updated_config, modelRegistry.All(), qm.Logger, gate)
 						}
 					}
