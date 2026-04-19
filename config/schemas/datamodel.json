@@ -1,5 +1,5 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "DataModel",
   "type": "object",
   "required": ["name", "version", "table-name", "end-point", "primary-key", "fields"],
@@ -88,7 +88,51 @@
             "type": "string",
             "enum": ["alter", "skip", "recreate"]
           },
-          "private": { "type": "boolean" }
+          "private": { "type": "boolean" },
+          "rules": { 
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "min": { "type": "number" },
+              "max": { "type": "number" },
+              "pattern": { "type": "string" },
+              "max-length": { "type": "number" }
+            }
+          }
+        },
+        "if": {
+          "properties": {
+            "type": { "enum": ["int", "float"] }
+          },
+          "required": ["type"]
+        },
+        "then": {
+          "properties": {
+            "rules": {
+              "properties": { 
+                "min": { "type": "number" },
+                "max": { "type": "number" }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "if": {
+          "properties": {
+            "type": { "enum": ["string"] }
+          },
+          "required": ["type"]
+        },
+        "then": {
+          "properties": {
+            "rules": {
+              "properties": { 
+                "pattern": { "type": "string" },
+                "max-length": { "type": "number" }
+              },
+              "additionalProperties": false
+            }
+          }
         }
       }
     }

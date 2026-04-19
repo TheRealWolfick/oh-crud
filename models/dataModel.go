@@ -18,6 +18,13 @@ type UniqueKey struct {
 	Fields []string `yaml:"unique-key-fields"`
 }
 
+type DataModelFieldRules struct {
+	Min *int `yaml:"min"`
+	Max *int `yaml:"max"`
+	Max_length *int `yaml:"max-length"`
+	Pattern *string `yaml:"pattern"`
+}
+
 // DataModelField describes the schema for a single field within a DataModel.
 type DataModelField struct {
 	// Field metadata
@@ -35,6 +42,7 @@ type DataModelField struct {
 	// Atlas metadata
 	Migration *string `yaml:"migration"`
 	Private *bool `yaml:"private"`
+	Rules *DataModelFieldRules `yaml:"rules"`
 }
 
 // End_pointsAllowed controls which HTTP methods are enabled for a given endpoint.
