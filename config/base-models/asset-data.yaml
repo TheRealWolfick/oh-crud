@@ -43,6 +43,14 @@ foreign-keys:
     foreign-key-target-fields:
       - condition_rating
     foreign-key-on-update: CASCADE
+  fk_asset_location:
+    foreign-key-fields:
+      - mh_location
+    foreign-key-target-table: mh_location
+    foreign-key-target-fields:
+      - location
+    foreign-key-on-update: CASCADE
+    foreign-key-on-delete: SET NULL
 
 unique-keys:
   uk_asset_asset_no:
@@ -241,6 +249,11 @@ fields:
     db-type: character varying(40)
     nullable: true
     include-in-diff: false
+  mh_location:
+    type: string
+    json: mh_location
+    db-type: character varying(40)
+    nullable: true
   model:
     type: string
     json: model
