@@ -46,7 +46,7 @@ foreign-keys:
   fk_asset_location:
     foreign-key-fields:
       - mh_location
-    foreign-key-target-table: mh_location
+    foreign-key-target-table: mh_locations
     foreign-key-target-fields:
       - location
     foreign-key-on-update: CASCADE
