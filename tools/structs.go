@@ -329,6 +329,7 @@ func DiffMap(
 		Stored:     &storedDiff,
 	}
 }
+
 func normalizeVal(v any, exists bool) string {
     if !exists || v == nil {
         return ""
@@ -336,8 +337,21 @@ func normalizeVal(v any, exists bool) string {
     switch val := v.(type) {
     case time.Time:
         return val.UTC().Format("2006-01-02")
+    case string:
+        // Attempt to parse common date/datetime formats
+        dateFormats := []string{
+            "1/2/06 15:04:05",
+            "1/2/06 0:00:00",
+            "2006-01-02T15:04:05Z07:00",
+            "2006-01-02",
+        }
+        for _, layout := range dateFormats {
+            if t, err := time.Parse(layout, val); err == nil {
+                return t.UTC().Format("2006-01-02")
+            }
+        }
+        return val
     case float64:
-        // Avoids scientific notation and trailing zeros
         return strconv.FormatFloat(val, 'f', -1, 64)
     case float32:
         return strconv.FormatFloat(float64(val), 'f', -1, 32)
