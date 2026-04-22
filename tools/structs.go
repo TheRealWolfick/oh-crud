@@ -335,7 +335,7 @@ func normalizeVal(v any, exists bool) string {
     }
     switch val := v.(type) {
     case time.Time:
-        return val.UTC().Format(time.RFC3339)
+        return val.UTC().Format("2006-01-02")
     case float64:
         // Avoids scientific notation and trailing zeros
         return strconv.FormatFloat(val, 'f', -1, 64)

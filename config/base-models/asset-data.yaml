@@ -95,7 +95,7 @@ fields:
   asset_no:
     type: string
     json: asset_no
-    db-type: character varying(20)
+    db-type: character varying(40)
     required-on-insert: true
     include-in-diff: false
   asset_status:
