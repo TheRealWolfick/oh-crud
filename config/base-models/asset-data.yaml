@@ -1,6 +1,6 @@
 ---
 name: Asset Data
-version: 1.1.2
+version: 1.1.3
 table-name: asset_data
 end-point: asset/data
 allow-diff: true
