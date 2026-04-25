@@ -38,6 +38,10 @@ func configTestModel() *models.DataModel {
 				JSON:        ptr("id"),
 				DB_type:     ptr("int"),
 				Skip_insert: ptr(true),
+				Rules: &models.DataModelFieldRules{
+					Min: ptr(0),
+					Max: ptr(20),
+				},
 			},
 			"code": {
 				Type:               ptr("string"),
@@ -45,6 +49,9 @@ func configTestModel() *models.DataModel {
 				DB_type:            ptr("text"),
 				Required_on_insert: ptr(true),
 				Include_in_diff:    ptr(false),
+				Rules: &models.DataModelFieldRules{
+					Pattern: ptr("[A-Z]*"),
+				},
 			},
 			"name": {
 				Type:            ptr("string"),
@@ -52,12 +59,19 @@ func configTestModel() *models.DataModel {
 				DB_type:         ptr("text"),
 				Nullable:        ptr(true),
 				Include_in_diff: ptr(true),
+				Rules: &models.DataModelFieldRules{
+					Max_length: ptr(6),
+				},
 			},
 			"amt": {
 				Type:    ptr("float"),
 				JSON:    ptr("amt"),
 				DB_type: ptr("numeric"),
 				Nullable: ptr(true),
+				Rules: &models.DataModelFieldRules{
+					Min: ptr(0),
+					Max: ptr(20),
+				},
 			},
 		},
 	}
@@ -298,6 +312,114 @@ func TestFindRowKeyFields(t *testing.T) {
 		sorted := sortedStrings(fields)
 		if sorted[0] != "code" || sorted[1] != "name" {
 			t.Errorf("expected [code name], got %v", fields)
+		}
+	})
+
+}
+
+func TestRowFieldRules(t *testing.T) {
+	cfg := configTestModel()
+	
+	t.Run("string field more than maximum character limit", func(t *testing.T) {
+		field_rules := cfg.Fields["name"].Rules
+	  _, valid := ValidateStringRules("name", "brethren", field_rules)
+
+		if valid {
+			t.Errorf("Expected string of 'brethren' to error with max=6")
+		}
+	})
+	
+	t.Run("string field within character limits", func(t *testing.T) {
+		field_rules := cfg.Fields["name"].Rules
+	  errs, valid := ValidateStringRules("name", "brothl", field_rules)
+
+		if !valid {
+			t.Errorf("Expected string of 'brothl' to not error. Got {%s}", errs)
+		}
+	})
+
+	t.Run("string field to match pattern", func(t *testing.T) {
+		field_rules := cfg.Fields["code"].Rules
+	  errs, valid := ValidateStringRules("code", "TEST", field_rules)
+
+		if !valid {
+			t.Errorf("Expected string of 'TEST' to not error. Got {%s}", errs)
+		}
+	})
+
+	t.Run("string field to not match pattern", func(t *testing.T) {
+		field_rules := cfg.Fields["code"].Rules
+	  _, valid := ValidateStringRules("code", "Test", field_rules)
+
+		if valid {
+			t.Errorf("Expected string of 'test' to error.")
+		}
+	})
+
+	t.Run("string field to not match pattern with numbers", func(t *testing.T) {
+		field_rules := cfg.Fields["code"].Rules
+	  _, valid := ValidateStringRules("code", "TEST5T", field_rules)
+
+		if valid {
+			t.Errorf("Expected string of 'TEST5T' to error.")
+		}
+	})
+
+	// Integers
+
+	t.Run("int field to below min value", func(t *testing.T) {
+		field_rules := cfg.Fields["id"].Rules
+	  _, valid := ValidateIntRules("id", -4, field_rules)
+
+		if valid {
+			t.Errorf("Expected int of -4 (min=0) to error.")
+		}
+	})
+
+	t.Run("int field to above max value", func(t *testing.T) {
+		field_rules := cfg.Fields["id"].Rules
+	  _, valid := ValidateIntRules("id", 25, field_rules)
+
+		if valid {
+			t.Errorf("Expected int of 25 (max=20) to error.")
+		}
+	})
+
+	t.Run("int field within min and max values", func(t *testing.T) {
+		field_rules := cfg.Fields["id"].Rules
+	  errs, valid := ValidateIntRules("id", 15, field_rules)
+
+		if !valid {
+			t.Errorf("Expected int of 15 (min=0,max=20) to not error. Got {%s}", errs)
+		}
+	})
+
+	// Floats
+
+	t.Run("float field to below min value", func(t *testing.T) {
+		field_rules := cfg.Fields["amt"].Rules
+	  _, valid := ValidateFloatRules("amt", -4.5, field_rules)
+
+		if valid {
+			t.Errorf("Expected float of -4.5 (min=0) to error.")
+		}
+	})
+
+	t.Run("float field to above max value", func(t *testing.T) {
+		field_rules := cfg.Fields["amt"].Rules
+	  _, valid := ValidateFloatRules("amt", 25.35, field_rules)
+
+		if valid {
+			t.Errorf("Expected float of 25.35 (max=20) to error.")
+		}
+	})
+
+	t.Run("float field within min and max values", func(t *testing.T) {
+		field_rules := cfg.Fields["amt"].Rules
+	  errs, valid := ValidateFloatRules("amt", 20.0, field_rules)
+
+		if !valid {
+			t.Errorf("Expected float of 20.0 (min=0,max=20) to not error. Got {%s}", errs)
 		}
 	})
 }
