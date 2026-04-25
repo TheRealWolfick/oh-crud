@@ -199,10 +199,13 @@ func DecodeAndCoerceFromUser(raw map[string]any, cfg *models.DataModel) (map[str
 		// Coerce the value based on its type
 		coerced_val, err := CoerceType(val, *field_cfg.Type)
 		if err != nil {
-			errors = append(errors, fmt.Sprintf("field %q: %w", field_name, err))
+			errors = append(errors, fmt.Sprintf("field %q: %s", field_name, err.Error()))
 		} else {
 			row_data[field_name] = coerced_val
 		}
+
+		// Check that no rule violations have occured
+
 	}
 	if len(errors) > 0 { return nil, fmt.Errorf("ERRORS:: %s", strings.Join(errors, "; ")) }
 	return row_data, nil
