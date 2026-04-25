@@ -176,6 +176,7 @@ func RecursiveBatchInsert(
 			"success_count": result.SuccessCount,
 			"failed_count":  failed_count,
 			"failed_items":  result.FailedItems,
+			"table_name":    cfg.Table_name,
 		}
 		return logData, nil
 	}
@@ -217,7 +218,6 @@ func recursiveBatchInsertProcess(
 			result.FailedItems = append(result.FailedItems, map[string]any{
 				"item":           items[0],
 				"error":          pgErr.Message,
-				"table":          pgErr.TableName,
 			})
 			return result
 		}
