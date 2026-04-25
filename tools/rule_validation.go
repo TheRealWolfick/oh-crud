@@ -8,12 +8,11 @@ import (
 	"lotusforge.au/api-server/models"
 )
 
-// types: string, int, float, time
 
+// Validate that a string field is valid to its relevent rules
 func ValidateStringRules(field_name string, coerced_data string, field_rules *models.DataModelFieldRules) (string, bool) {
 	errors := []string{}
 
-	// Valid rules: pattern, max-length
 	// Test max-length
 	if field_rules.Max_length != nil {
 		if len(coerced_data) > *field_rules.Max_length { 
@@ -34,3 +33,48 @@ func ValidateStringRules(field_name string, coerced_data string, field_rules *mo
 	return "", true
 }
 
+
+// Validate that an int field is valid to its relevant rules
+func ValidateIntRules(field_name string, coerced_data int, field_rules *models.DataModelFieldRules) (string, bool) {
+	errors := []string{}
+
+	// Test min
+  if field_rules.Min != nil {
+		if coerced_data < *field_rules.Min {
+			errors = append(errors, fmt.Sprintf("Field {%s} violated minimum of {%v}", field_name, *field_rules.Min)) 
+		}
+	}
+
+	// Test max
+  if field_rules.Max != nil {
+		if coerced_data > *field_rules.Max {
+			errors = append(errors, fmt.Sprintf("Field {%s} violated maximum of {%v}", field_name, *field_rules.Max)) 
+		}
+	}
+
+	if len(errors) > 0 {return strings.Join(errors, ", "), false}
+	return "", true
+}
+
+
+// Validate that a float field is valid to its float relevant rules
+func ValidateFloatRules(field_name string, coerced_data float64, field_rules *models.DataModelFieldRules) (string, bool) {
+	errors := []string{}
+
+	// Test min
+  if field_rules.Min != nil {
+		if coerced_data < float64(*field_rules.Min) {
+			errors = append(errors, fmt.Sprintf("Field {%s} violated minimum of {%v}", field_name, *field_rules.Min)) 
+		}
+	}
+
+	// Test max
+  if field_rules.Max != nil {
+		if coerced_data > float64(*field_rules.Max) {
+			errors = append(errors, fmt.Sprintf("Field {%s} violated maximum of {%v}", field_name, *field_rules.Max)) 
+		}
+	}
+
+	if len(errors) > 0 {return strings.Join(errors, ", "), false}
+	return "", true
+}
