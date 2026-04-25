@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -80,6 +81,7 @@ func GetInsertRequiredFields(cfg *models.DataModel) []string {
 }
 
 // GetUpdateKeyOptions returns all valid key sets (PK + each unique key) expressed as JSON keys.
+// Currently does not handle json aliases.
 func GetUpdateKeyOptions(cfg *models.DataModel) [][]string {
 	options := [][]string{}
 
@@ -89,10 +91,17 @@ func GetUpdateKeyOptions(cfg *models.DataModel) [][]string {
 		}
 	}
 
+	// _ is the unique key name, uk is the *models.UniqueKey which is a list of all the required
+	// fields for the unique key. 
 	for _, uk := range cfg.Unique_keys {
+		// Option is a list of all the required fields for this key to be fulfiled
 		option := []string{}
 		valid := true
+
+		// Iterate through each key of the unique key
 		for _, field_name := range uk.Fields {
+
+			// Check that this field is in the data field
 			field, ok := cfg.Fields[field_name]
 			if !ok || field.JSON == nil {
 				valid = false
@@ -100,6 +109,8 @@ func GetUpdateKeyOptions(cfg *models.DataModel) [][]string {
 			}
 			option = append(option, *field.JSON)
 		}
+
+		// Check that there is at least one valid option for the unique identifier and append if yes
 		if valid && len(option) > 0 {
 			options = append(options, option)
 		}
@@ -138,11 +149,9 @@ func CheckFieldExists(key string, cfg *models.DataModel) (string, bool) {
 		if key == field_name || key == *field_cfg.JSON {
 			return field_name, true
 		}
-		if field_cfg.JSON_alias != nil && len(field_cfg.JSON_alias) > 0 {
-			for _, alias := range field_cfg.JSON_alias {
-				if key == alias {
-					return field_name, true
-				}
+		if len(field_cfg.JSON_alias) > 0 {
+			if slices.Contains(field_cfg.JSON_alias, key) {
+				return field_name, true
 			}
 		}
 	}
@@ -158,14 +167,20 @@ func NewDataModel() *models.DataModel {
 // DecodeAndCoerceFromUser type-coerces a raw JSON map against the DataModel config.
 // Returns a new map keyed by YAML field name (= DB column name).
 func DecodeAndCoerceFromUser(raw map[string]any, cfg *models.DataModel) (map[string]any, error) {
+	errors := []string{}
 	row_data := map[string]any{}
 
+	// Read the field name and its configuration for each field
 	for field_name, field_cfg := range cfg.Fields {
+		// Quick continue if the field is not one that data can be sent into be the user
 		if field_cfg.JSON == nil {
 			continue
 		}
+
+		// Check if this field is in the raw data
 		val, exists := raw[*field_cfg.JSON]
 
+		// If it was not field in the raw data, check if any aliases for this field are in the data
 		if !exists && field_cfg.JSON_alias != nil {
 			for _, alias := range field_cfg.JSON_alias {
 				v, e := raw[alias]
@@ -177,18 +192,19 @@ func DecodeAndCoerceFromUser(raw map[string]any, cfg *models.DataModel) (map[str
 			}
 		}
 
-		if !exists {
-			continue
-		}
-		if field_cfg.Type == nil {
-			continue
-		}
+		// If it does not exist or it does not have a type, there is nothing to be coerced
+		if !exists { continue }
+		if field_cfg.Type == nil { continue }
+
+		// Coerce the value based on its type
 		coerced_val, err := CoerceType(val, *field_cfg.Type)
 		if err != nil {
-			return nil, fmt.Errorf("field %q: %w", field_name, err)
+			errors = append(errors, fmt.Sprintf("field %q: %w", field_name, err))
+		} else {
+			row_data[field_name] = coerced_val
 		}
-		row_data[field_name] = coerced_val
 	}
+	if len(errors) > 0 { return nil, fmt.Errorf("ERRORS:: %s", strings.Join(errors, "; ")) }
 	return row_data, nil
 }
 
