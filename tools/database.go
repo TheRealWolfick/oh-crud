@@ -217,6 +217,7 @@ func recursiveBatchInsertProcess(
 			result.FailedItems = append(result.FailedItems, map[string]any{
 				"item":           items[0],
 				"error":          pgErr.Message,
+				"table":          pgErr.TableName,
 			})
 			return result
 		}

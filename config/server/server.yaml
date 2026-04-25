@@ -11,4 +11,5 @@ cors:
     - X-API-Key
     - Content-Type
     - Authorization
+    - X-User-Note
   allow-credentials: true

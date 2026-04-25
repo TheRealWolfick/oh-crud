@@ -245,7 +245,7 @@ func getResource(
 
 		// Response intialization
 		w.Header().Set("Content-Type", "application/json")
-		response := map[string]any{"task_type": "GET"}
+		response := map[string]any{"task_type": task_type}
 
 		// Create new query builder and save it into the context of the request
 		qb := tools.NewQueryBuilder(log)
@@ -671,11 +671,18 @@ func deleteResource(
 		}
 
 		// Enforce that at least one key (PK or unique key) is present; other fields are ignored
-		valid_resources, _ := tools.Validate_Map_AgainstConfig(cfg, raw, true, false)
+		valid_resources, invalid_resources := tools.Validate_Map_AgainstConfig(cfg, raw, true, false)
 		log.Debug("validated", "valid resources", fmt.Sprint(valid_resources))
 		if len(valid_resources) < 1 {
-			log.Error("REQUEST_ERROR", "error", "no key field found for delete")
-			http.Error(w, "No identifying key (primary key or unique key) supplied for delete", http.StatusBadRequest)
+			log.Warn("Request with no valid resources")
+			response["successful_submission"] = false
+			response["rows_received"] = len(raw)
+			response["rows_valid"] = len(valid_resources)
+			response["rows_invalid"] = len(invalid_resources)
+			response["invalid"] = invalid_resources
+			w.WriteHeader(http.StatusBadRequest)
+
+			json.NewEncoder(w).Encode(response)
 			return
 		}
 
@@ -738,8 +745,15 @@ func deleteResource_Group(
 		// Only enforce that each row has the PK; other fields are ignored for delete
 		valid_resources, invalid_resources := tools.Validate_SliceOfMaps_AgainstConfig(cfg, raw, true, false)
 		if len(valid_resources) < 1 {
-			log.Error("REQUEST_ERROR", "error", "no valid resources with primary key")
-			http.Error(w, "No valid resources with primary key supplied", http.StatusBadRequest)
+			log.Warn("Request with no valid resources")
+			response["successful_submission"] = false
+			response["rows_received"] = len(raw)
+			response["rows_valid"] = len(valid_resources)
+			response["rows_invalid"] = len(invalid_resources)
+			response["invalid"] = invalid_resources
+			w.WriteHeader(http.StatusBadRequest)
+
+			json.NewEncoder(w).Encode(response)
 			return
 		}
 
