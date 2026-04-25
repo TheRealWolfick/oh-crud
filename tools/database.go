@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -217,9 +216,7 @@ func recursiveBatchInsertProcess(
 		if errors.As(err, &pgErr) {
 			result.FailedItems = append(result.FailedItems, map[string]any{
 				"item":           items[0],
-				"rectified":      strings.Contains(pgErr.Message, "duplicate key value violates"),
-				"date_rectified": nil,
-				"error":          pgErr,
+				"error":          pgErr.Message,
 			})
 			return result
 		}
