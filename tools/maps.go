@@ -1,6 +1,11 @@
 package tools
 
-import "lotusforge.au/api-server/models"
+import (
+	"fmt"
+	"strings"
+
+	"lotusforge.au/api-server/models"
+)
 
 // Validate_Map_AgainstConfig is a single-row wrapper around Validate_SliceOfMaps_AgainstConfig.
 //
@@ -25,9 +30,10 @@ func Validate_SliceOfMaps_AgainstConfig(cfg *models.DataModel, rows []map[string
 		return []map[string]any{}, []map[string]any{}
 	}
 
-	unique_idenifiers := [][]string{}
+	// Get all possible json combinations that ensure uniqueness
+	unique_identifiers := [][]string{}
 	if require_identify_unique {
-		unique_idenifiers = GetUpdateKeyOptions(cfg)
+		unique_identifiers = GetUpdateKeyOptions(cfg)
 	}
 
 	// Build required field entries: each entry holds the primary json key + aliases.
@@ -35,6 +41,8 @@ func Validate_SliceOfMaps_AgainstConfig(cfg *models.DataModel, rows []map[string
 		json_key string
 		aliases  []string
 	}
+
+	// Get all the fields required for an insert statement
 	insert_required := []requiredField{}
 	if require_insert_fields {
 		for _, field_cfg := range cfg.Fields {
@@ -50,10 +58,12 @@ func Validate_SliceOfMaps_AgainstConfig(cfg *models.DataModel, rows []map[string
 	valid_structs := []map[string]any{}
 	invalid_structs := []map[string]any{}
 
+	// Begin checking validity of row
 	for _, row := range rows {
 		is_valid := true
+		err := []string{}
 
-		// Check required-on-insert fields (primary key or any alias satisfies the check)
+		// Check required-on-insert fields (primary key or any alias that satisfies the check)
 		if require_insert_fields {
 			for _, req := range insert_required {
 				found := false
@@ -69,41 +79,56 @@ func Validate_SliceOfMaps_AgainstConfig(cfg *models.DataModel, rows []map[string
 				}
 				if !found {
 					is_valid = false
+					err = append(err, fmt.Sprintf("Missing field: %s", req.json_key))
 					break
 				}
 			}
 		}
 
 		// Check that at least one key set (PK or unique key) is fully present
-		if is_valid && require_identify_unique {
+		if require_identify_unique {
 			key_found := false
-			for _, option := range unique_idenifiers {
+			// For each list of fields that identify uniqueness
+			for _, option := range unique_identifiers {
 				all_present := true
+				// For each required json field name
 				for _, json_key := range option {
+					// If it doesn't exist, break to next option
 					if _, exists := row[json_key]; !exists {
 						all_present = false
 						break
 					}
 				}
+				// All were present, thus update flag to identify that a key was found
 				if all_present {
 					key_found = true
 					break
 				}
 			}
+			// Check that there was at least one key found in the list of options.
 			if !key_found {
 				is_valid = false
+
+				// Build and append error message with all the possible unique identifiers
+				err_msgs := []string{}
+				for _, e := range unique_identifiers {
+					err_msgs = append(err_msgs, strings.Join(e, "+"))
+				}
+				err = append(err, fmt.Sprintf("Missing at least one valid unique identifying construct: [%s]", strings.Join(err_msgs, ", ")))
 			}
 		}
 
+		// If data so far is valid (has not been flagged previously as invalid)
 		if is_valid {
+			// Decode and coerce the row values
 			coerced_vals, err := DecodeAndCoerceFromUser(row, cfg)
 			if err != nil {
-				invalid_structs = append(invalid_structs, row)
+				invalid_structs = append(invalid_structs, map[string]any{"data": row, "reasons": err.Error()})
 			} else {
 				valid_structs = append(valid_structs, coerced_vals)
 			}
 		} else {
-			invalid_structs = append(invalid_structs, row)
+			invalid_structs = append(invalid_structs, map[string]any{"data": row, "reasons": err})
 		}
 	}
 

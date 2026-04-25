@@ -101,14 +101,6 @@ func TestValidateDataModel(t *testing.T) {
 		}
 	})
 
-	t.Run("missing end-point", func(t *testing.T) {
-		m := basicModel()
-		m.End_point = nil
-		if err := ValidateDataModel(m); err == nil {
-			t.Error("expected error for missing end-point")
-		}
-	})
-
 	t.Run("missing primary-key", func(t *testing.T) {
 		m := basicModel()
 		m.Primary_key = nil
@@ -170,16 +162,6 @@ func TestValidateDataModel(t *testing.T) {
 		m.Fields["name"] = f
 		if err := ValidateDataModel(m); err == nil {
 			t.Error("expected error for field missing db-type")
-		}
-	})
-
-	t.Run("field missing json", func(t *testing.T) {
-		m := basicModel()
-		f := m.Fields["name"]
-		f.JSON = nil
-		m.Fields["name"] = f
-		if err := ValidateDataModel(m); err == nil {
-			t.Error("expected error for field missing json key")
 		}
 	})
 

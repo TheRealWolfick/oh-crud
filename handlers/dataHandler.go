@@ -112,7 +112,7 @@ func addNewResource(
 		log.Info("REQUEST_RECEIVED")
 
 		// Response intialization
-		response := map[string]any{"task_type": "CREATE"}
+		response := map[string]any{"task_type": task_type}
 		w.Header().Set("Content-Type", "application/json")
 
 		// Read incoming data
@@ -130,10 +130,17 @@ func addNewResource(
 		}
 
 		log.Debug("Decoding and coercing raw data", "data", fmt.Sprint(raw))
-		valid_resources, _ := tools.Validate_Map_AgainstConfig(cfg, raw, false, true)
+		valid_resources, invalid_resources := tools.Validate_Map_AgainstConfig(cfg, raw, false, true)
 		if len(valid_resources) < 1 {
-			log.Error("REQUEST_ERROR", "error", "resource invalid", "resource", raw)
-			http.Error(w, "No valid resources", http.StatusBadRequest)
+			log.Warn("Request with no valid resources")
+			response["successful_submission"] = false
+			response["rows_received"] = len(raw)
+			response["rows_valid"] = len(valid_resources)
+			response["rows_invalid"] = len(invalid_resources)
+			response["invalid"] = invalid_resources
+			w.WriteHeader(http.StatusBadRequest)
+
+			json.NewEncoder(w).Encode(response)
 			return
 		}
 
@@ -172,7 +179,7 @@ func addNewResources_Group(
 		log.Info("REQUEST_RECEIVED")
 
 		// Response intialization
-		response := map[string]any{"task_type": "CREATE_BULK"}
+		response := map[string]any{"task_type": task_type}
 		w.Header().Set("Content-Type", "application/json")
 
 		var raw []map[string]any
@@ -188,8 +195,15 @@ func addNewResources_Group(
 		log.Debug("Decoding and coercing raw data", "data", fmt.Sprint(raw))
 		valid_resources, invalid_resources := tools.Validate_SliceOfMaps_AgainstConfig(cfg, raw, false, true)
 		if len(valid_resources) < 1 {
-			log.Error("REQUEST_ERROR", "error", "no valid resources")
-			http.Error(w, "No valid resources", http.StatusBadRequest)
+			log.Warn("Request with no valid resources")
+			response["successful_submission"] = false
+			response["rows_received"] = len(raw)
+			response["rows_valid"] = len(valid_resources)
+			response["rows_invalid"] = len(invalid_resources)
+			response["invalid"] = invalid_resources
+			w.WriteHeader(http.StatusBadRequest)
+
+			json.NewEncoder(w).Encode(response)
 			return
 		}
 
@@ -231,7 +245,7 @@ func getResource(
 
 		// Response intialization
 		w.Header().Set("Content-Type", "application/json")
-		response := map[string]any{"task_type": "GET"}
+		response := map[string]any{"task_type": task_type}
 
 		// Create new query builder and save it into the context of the request
 		qb := tools.NewQueryBuilder(log)
@@ -292,7 +306,7 @@ func updateResource(
 		log.Info("REQUEST_RECEIVED")
 
 		// Response intialization
-		response := map[string]any{"task_type": "UPDATE"}
+		response := map[string]any{"task_type": task_type}
 		w.Header().Set("Content-Type", "application/json")
 
 		var raw map[string]any
@@ -307,12 +321,13 @@ func updateResource(
 		// Coerce data into map — enforce key presence (PK or unique key), not required-on-insert
 		valid_resources, invalid_resources := tools.Validate_Map_AgainstConfig(cfg, raw, true, false)
 		if len(invalid_resources) > 0 {
-			log.Warn("Request with no valid resources for update")
+			log.Warn("Request with no valid resources")
 			response["successful_submission"] = false
 			response["rows_received"] = len(raw)
 			response["rows_valid"] = len(valid_resources)
 			response["rows_invalid"] = len(invalid_resources)
 			response["invalid"] = invalid_resources
+			w.WriteHeader(http.StatusBadRequest)
 
 			json.NewEncoder(w).Encode(response)
 			return
@@ -371,12 +386,25 @@ func updateResource_Group(
 		log.Info("REQUEST_RECEIVED")
 
 		// Response intialization
-		response := map[string]any{"task_type": "BULK_UPDATE"}
+		response := map[string]any{"task_type": task_type}
 		w.Header().Set("Content-Type", "application/json")
 
 		var raw []map[string]any
 		err = json.NewDecoder(r.Body).Decode(&raw)
 		valid_resources, invalid_resources := tools.Validate_SliceOfMaps_AgainstConfig(cfg, raw, true, false)
+
+		if len(valid_resources) < 1 {
+			log.Warn("Request with no valid resources")
+			response["successful_submission"] = false
+			response["rows_received"] = len(raw)
+			response["rows_valid"] = len(valid_resources)
+			response["rows_invalid"] = len(invalid_resources)
+			response["invalid"] = invalid_resources
+			w.WriteHeader(http.StatusBadRequest)
+
+			json.NewEncoder(w).Encode(response)
+			return
+		}
 
 		if err != nil {
 			log.Error("REQUEST_ERROR", "error", err)
@@ -468,7 +496,7 @@ func dynamicCreateDiff(
 		ctx := middleware.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
-		response := map[string]any{"task_type": "CREATE_DIFF"}
+		response := map[string]any{"task_type": task_type}
 		w.Header().Set("Content-Type", "application/json")
 
 		var raw []map[string]any
@@ -486,8 +514,15 @@ func dynamicCreateDiff(
 		// Coerce all supplied rows against the config
 		valid_resources, invalid_resources := tools.Validate_SliceOfMaps_AgainstConfig(cfg, raw, true, false)
 		if len(valid_resources) < 1 {
-			log.Error("REQUEST_ERROR", "error", "no valid resources")
-			http.Error(w, "No valid resources supplied", http.StatusBadRequest)
+			log.Warn("Request with no valid resources")
+			response["successful_submission"] = false
+			response["rows_received"] = len(raw)
+			response["rows_valid"] = len(valid_resources)
+			response["rows_invalid"] = len(invalid_resources)
+			response["invalid"] = invalid_resources
+			w.WriteHeader(http.StatusBadRequest)
+
+			json.NewEncoder(w).Encode(response)
 			return
 		}
 
@@ -503,6 +538,7 @@ func dynamicCreateDiff(
 		response["rows_received"] = len(raw)
 		response["rows_valid"] = len(valid_resources)
 		response["rows_invalid"] = len(invalid_resources)
+		response["invalid_resources"] = invalid_resources
 		json.NewEncoder(w).Encode(response)
 	}
 }
@@ -622,7 +658,7 @@ func deleteResource(
 
 		log.Info("REQUEST_RECEIVED")
 
-		response := map[string]any{"task_type": "DELETE"}
+		response := map[string]any{"task_type": task_type}
 		w.Header().Set("Content-Type", "application/json")
 
 		var raw map[string]any
@@ -635,11 +671,18 @@ func deleteResource(
 		}
 
 		// Enforce that at least one key (PK or unique key) is present; other fields are ignored
-		valid_resources, _ := tools.Validate_Map_AgainstConfig(cfg, raw, true, false)
+		valid_resources, invalid_resources := tools.Validate_Map_AgainstConfig(cfg, raw, true, false)
 		log.Debug("validated", "valid resources", fmt.Sprint(valid_resources))
 		if len(valid_resources) < 1 {
-			log.Error("REQUEST_ERROR", "error", "no key field found for delete")
-			http.Error(w, "No identifying key (primary key or unique key) supplied for delete", http.StatusBadRequest)
+			log.Warn("Request with no valid resources")
+			response["successful_submission"] = false
+			response["rows_received"] = len(raw)
+			response["rows_valid"] = len(valid_resources)
+			response["rows_invalid"] = len(invalid_resources)
+			response["invalid"] = invalid_resources
+			w.WriteHeader(http.StatusBadRequest)
+
+			json.NewEncoder(w).Encode(response)
 			return
 		}
 
@@ -688,7 +731,7 @@ func deleteResource_Group(
 
 		log.Info("REQUEST_RECEIVED")
 
-		response := map[string]any{"task_type": "BULK_DELETE"}
+		response := map[string]any{"task_type": task_type}
 		w.Header().Set("Content-Type", "application/json")
 
 		var raw []map[string]any
@@ -702,8 +745,15 @@ func deleteResource_Group(
 		// Only enforce that each row has the PK; other fields are ignored for delete
 		valid_resources, invalid_resources := tools.Validate_SliceOfMaps_AgainstConfig(cfg, raw, true, false)
 		if len(valid_resources) < 1 {
-			log.Error("REQUEST_ERROR", "error", "no valid resources with primary key")
-			http.Error(w, "No valid resources with primary key supplied", http.StatusBadRequest)
+			log.Warn("Request with no valid resources")
+			response["successful_submission"] = false
+			response["rows_received"] = len(raw)
+			response["rows_valid"] = len(valid_resources)
+			response["rows_invalid"] = len(invalid_resources)
+			response["invalid"] = invalid_resources
+			w.WriteHeader(http.StatusBadRequest)
+
+			json.NewEncoder(w).Encode(response)
 			return
 		}
 
