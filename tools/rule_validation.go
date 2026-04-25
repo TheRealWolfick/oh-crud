@@ -24,7 +24,7 @@ func ValidateStringRules(field_name string, coerced_data string, field_rules *mo
 	if field_rules.Pattern != nil {
 		pat := regexp.MustCompile(*field_rules.Pattern)
 		if len(pat.FindString(coerced_data)) != len(coerced_data) {
-			errors = append(errors, fmt.Sprintf("Field {%s} did not match the pattern of {%s}", field_name, *field_rules.Pattern)) 
+			errors = append(errors, fmt.Sprintf(`Field {%s} did not match the pattern of r"%s"`, field_name, *field_rules.Pattern)) 
 		}
 	}
 

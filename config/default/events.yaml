@@ -1,8 +1,10 @@
 name: events
-version: 1.0.0
+version: 1.0.2
 table-name: events
 end-point: events
 primary-key: event_id
+end-points-allowed:
+  GET: true
 
 foreign-keys:
   fk_events_event_user:
@@ -12,14 +14,6 @@ foreign-keys:
     foreign-key-target-fields:
       - username
     foreign-key-on-update: CASCADE
-  fk_events_type:
-    foreign-key-fields:
-      - type
-    foreign-key-target-table: event_types 
-    foreign-key-target-fields:
-      - type
-    foreign-key-on-update: CASCADE
-    foreign-key-on-delete: CASCADE
 
 fields:
   event_id:

@@ -50,7 +50,7 @@ func ModelsMonitor(handlerRegistry *tools.HandlerRegistry, modelRegistry *tools.
 		}
 	}()
 
-	paths := []string{"./config/base-models", "./config/special-models"}
+	paths := []string{"./config/base-models", "./config/special-models", "./config/default"}
 	for _, p := range paths {
 		err = watcher.Add(p)
 		if err != nil {
