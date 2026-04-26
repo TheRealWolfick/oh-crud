@@ -23,13 +23,6 @@ fields:
     db-type: smallint
     required-on-insert: true
     include-in-diff: false
-    rules:
-      enum:
-        - 1
-        - 2
-        - 3
-        - 4
-        - 5
   description:
     type: string
     json: description
@@ -37,10 +30,6 @@ fields:
     required-on-insert: true
     default: ""
     include-in-diff: true
-    rules:
-      enum:
-        - short
-        - long
   long_description:
     type: string
     json: long_description
