@@ -41,6 +41,7 @@ func configTestModel() *models.DataModel {
 				Rules: &models.DataModelFieldRules{
 					Min: ptr(0),
 					Max: ptr(20),
+					Enum: []string{"1", "2", "3"},
 				},
 			},
 			"code": {
@@ -61,6 +62,7 @@ func configTestModel() *models.DataModel {
 				Include_in_diff: ptr(true),
 				Rules: &models.DataModelFieldRules{
 					Max_length: ptr(6),
+					Enum: []string{"John","Smith","Jones"},
 				},
 			},
 			"amt": {
@@ -71,6 +73,7 @@ func configTestModel() *models.DataModel {
 				Rules: &models.DataModelFieldRules{
 					Min: ptr(0),
 					Max: ptr(20),
+					Enum: []string{"5.0", "13.35", "20.0"},
 				},
 			},
 		},
@@ -329,12 +332,12 @@ func TestRowFieldRules(t *testing.T) {
 		}
 	})
 	
-	t.Run("string field within character limits", func(t *testing.T) {
+	t.Run("string field within character limits and correct field rules", func(t *testing.T) {
 		field_rules := cfg.Fields["name"].Rules
-	  errs, valid := ValidateStringRules("name", "brothl", field_rules)
+	  errs, valid := ValidateStringRules("name", "John", field_rules)
 
 		if !valid {
-			t.Errorf("Expected string of 'brothl' to not error. Got {%s}", errs)
+			t.Errorf("Expected string of 'John' to not error. Got {%s}", errs)
 		}
 	})
 
@@ -365,6 +368,15 @@ func TestRowFieldRules(t *testing.T) {
 		}
 	})
 
+	t.Run("string field not matching enum values", func(t *testing.T) {
+		field_rules := cfg.Fields["name"].Rules
+	  _, valid := ValidateStringRules("name", "James", field_rules)
+
+		if valid {
+			t.Errorf("Expected string of 'James' to error")
+		}
+	})
+
 	// Integers
 
 	t.Run("int field to below min value", func(t *testing.T) {
@@ -387,10 +399,19 @@ func TestRowFieldRules(t *testing.T) {
 
 	t.Run("int field within min and max values", func(t *testing.T) {
 		field_rules := cfg.Fields["id"].Rules
-	  errs, valid := ValidateIntRules("id", 15, field_rules)
+	  errs, valid := ValidateIntRules("id", 1, field_rules)
 
 		if !valid {
-			t.Errorf("Expected int of 15 (min=0,max=20) to not error. Got {%s}", errs)
+			t.Errorf("Expected int of 1 (min=0,max=20) to not error. Got {%s}", errs)
+		}
+	})
+
+	t.Run("int field not a valid enum value", func(t *testing.T) {
+		field_rules := cfg.Fields["id"].Rules
+	  _, valid := ValidateIntRules("id", 15, field_rules)
+
+		if valid {
+			t.Errorf("Expected int of 15 (min=0,max=20) to error")
 		}
 	})
 
@@ -420,6 +441,15 @@ func TestRowFieldRules(t *testing.T) {
 
 		if !valid {
 			t.Errorf("Expected float of 20.0 (min=0,max=20) to not error. Got {%s}", errs)
+		}
+	})
+
+	t.Run("float field not a valid enum value", func(t *testing.T) {
+		field_rules := cfg.Fields["amt"].Rules
+	  _, valid := ValidateFloatRules("amt", 17.05, field_rules)
+
+		if valid {
+			t.Errorf("Expected float of 17.05 (min=0,max=20) to error")
 		}
 	})
 }

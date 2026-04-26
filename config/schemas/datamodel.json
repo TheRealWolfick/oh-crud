@@ -96,44 +96,62 @@
               "min": { "type": "number" },
               "max": { "type": "number" },
               "pattern": { "type": "string" },
-              "max-length": { "type": "number" }
+              "max-length": { "type": "number" },
+              "enum": { 
+                "type": "array",
+                "items": { "type": ["string", "number"] }
+              }
             }
           }
         },
-        "if": {
-          "properties": {
-            "type": { "enum": ["int", "float"] }
-          },
-          "required": ["type"]
-        },
-        "then": {
-          "properties": {
-            "rules": {
-              "properties": { 
-                "min": { "type": "number" },
-                "max": { "type": "number" }
+        "allOf": [ 
+          {
+            "if": {
+              "properties": {
+                "type": { "enum": ["int", "float"] }
               },
-              "additionalProperties": false
+              "required": ["type"]
+            },
+            "then": {
+              "properties": {
+                "rules": {
+                  "properties": { 
+                    "min": { "type": "number" },
+                    "max": { "type": "number" },
+                    "enum": {
+                      "type": "array",
+                      "items": { "type": "number" }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
             }
-          }
-        },
-        "if": {
-          "properties": {
-            "type": { "enum": ["string"] }
           },
-          "required": ["type"]
-        },
-        "then": {
-          "properties": {
-            "rules": {
-              "properties": { 
-                "pattern": { "type": "string" },
-                "max-length": { "type": "number" }
+          {
+            "if": {
+              "properties": {
+                "type": { "enum": ["string"] }
               },
-              "additionalProperties": false
+              "required": ["type"]
+            },
+            "then": {
+              "properties": {
+                "rules": {
+                  "properties": { 
+                    "pattern": { "type": "string" },
+                    "max-length": { "type": "number" },
+                    "enum": {
+                      "type": "array",
+                      "items": { "type": "string" }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
             }
           }
-        }
+        ]
       }
     }
   }

@@ -19,10 +19,11 @@ type UniqueKey struct {
 }
 
 type DataModelFieldRules struct {
-	Min *int `yaml:"min"`
-	Max *int `yaml:"max"`
-	Max_length *int `yaml:"max-length"`
-	Pattern *string `yaml:"pattern"`
+	Min *int         `yaml:"min"`
+	Max *int         `yaml:"max"`
+	Max_length *int  `yaml:"max-length"`
+	Pattern *string  `yaml:"pattern"`
+	Enum []string    `yaml:"enum"`
 }
 
 // DataModelField describes the schema for a single field within a DataModel.
