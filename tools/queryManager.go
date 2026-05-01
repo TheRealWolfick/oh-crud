@@ -465,7 +465,11 @@ func (qb *QueryBuilder) ProcessURLParams(r *http.Request, cfg *models.DataModel)
 
 	// Fields logic
 	if fields != "" {
-		qb.fields = strings.Split(fields, ",")
+		fields_slice := strings.Split(fields, ",")
+		for _, field := range fields_slice {
+			f, allowed := CheckFieldGetValid(field, cfg)
+			if allowed { qb.fields = append(qb.fields, f) }
+		}
 	}
 
 	// Sort logic
