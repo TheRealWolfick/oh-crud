@@ -49,3 +49,5 @@ func generateRandomString(string_length int) (string, error) {
 func Generate32CharString() (string, error) {
 	return generateRandomString(32)
 }
+
+

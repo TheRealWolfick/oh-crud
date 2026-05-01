@@ -256,7 +256,12 @@ func getResource(
 			return
 		}
 
-		query := qb.BuildSelect(*cfg.Table_name, tools.DynamicGetDatabaseColumns(cfg, false, false))
+		var query string
+		if qb.HasFields() {
+			query = qb.BuildSelect(*cfg.Table_name, qb.GetFields())
+		} else {
+			query = qb.BuildSelect(*cfg.Table_name, tools.DynamicGetDatabaseColumns(cfg, false, false))
+		}
 		// Save the page data into the response
 		response["page"] = qb.GetPage()
 		response["page_size"] = qb.GetPageSize()

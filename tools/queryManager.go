@@ -16,6 +16,7 @@ type QueryBuilder struct {
 	values   map[string]uint
 	where    map[string]uint
 	args     []any
+	fields   []string
 	pos      uint
 	wheremod map[string]string
 	query    string
@@ -35,6 +36,7 @@ func NewQueryBuilder(logger *slog.Logger) *QueryBuilder {
 		values:   make(map[string]uint),
 		where:    make(map[string]uint),
 		args:     []any{},
+		fields:   []string{},
 		pos:      1,
 		wheremod: make(map[string]string),
 		query:    "",
@@ -53,6 +55,10 @@ func (qb *QueryBuilder) GetPage() int {
 	}
 	return qb.offset/qb.limit + 1
 }
+
+func (qb *QueryBuilder) HasFields() bool { return len(qb.fields) > 0 }
+
+func (qb *QueryBuilder) GetFields() []string { return qb.fields }
 
 func (qb *QueryBuilder) GetPageSize() int { return qb.offset }
 
@@ -347,6 +353,7 @@ func (qb *QueryBuilder) BuildMultiInsert(cfg *models.DataModel, data []map[strin
 
 func (qb *QueryBuilder) BuildSelect(table string, select_fields []string) string {
 	sb := strings.Builder{}
+	
 	sb.WriteString(fmt.Sprintf("SELECT %s FROM %s", strings.Join(select_fields, ", "), table))
 
 	if len(qb.where) > 0 {
@@ -430,7 +437,9 @@ func (qb *QueryBuilder) ProcessURLParams(r *http.Request, cfg *models.DataModel)
 	var page_size_int int
 	page := r.FormValue("page")
 	page_size := r.FormValue("page_size")
+	fields := r.FormValue("fields")
 
+	// Page logic
 	if page == "" || page == "0" || !IsInt(page) {
 		page_int = 1
 		qb.logger.Debug("Set page_int to default value of 1")
@@ -454,6 +463,12 @@ func (qb *QueryBuilder) ProcessURLParams(r *http.Request, cfg *models.DataModel)
 		qb.SetOffset(page_size_int * (page_int - 1))
 	}
 
+	// Fields logic
+	if fields != "" {
+		qb.fields = strings.Split(fields, ",")
+	}
+
+	// Sort logic
 	sort_string := r.FormValue("sort_by")
 	if sort_string != "" {
 		temp_strings := strings.Split(sort_string, ",")
