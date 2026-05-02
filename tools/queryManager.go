@@ -371,6 +371,10 @@ func (qb *QueryBuilder) BuildSelect(table string, select_fields []string) string
 		sb.WriteString(fmt.Sprintf(" WHERE %s", strings.Join(w, " AND ")))
 	}
 
+	if len(qb.groups) > 0 {
+		sb.WriteString(fmt.Sprintf(" GROUP BY %s", strings.Join(qb.groups, ", ")))
+	}
+
 	if len(qb.sort) > 0 {
 		sb.WriteString(fmt.Sprintf(" ORDER BY %s", strings.Join(qb.sort, ", ")))
 	}
@@ -382,6 +386,7 @@ func (qb *QueryBuilder) BuildSelect(table string, select_fields []string) string
 	}
 
 	sb.WriteString(";")
+	qb.logger.Debug("Query string built", "qry", sb.String())
 	return sb.String()
 }
 
@@ -476,7 +481,11 @@ func (qb *QueryBuilder) ProcessURLParams(r *http.Request, cfg *models.DataModel)
 
 				// Parse and soft continue if invalid
 				parsed_field, valid := ParseAggregateFuncString(sort_slice[0], qb, cfg)
-				if !valid { continue }
+				if !valid { 
+					// It may be a grouped fields and not an aggregated fields. Check and update
+					if !slices.Contains(qb.groups, sort_slice[0]) { continue }
+					parsed_field = sort_slice[0]
+				}
 
 				// Check if it is in the select fields (can be sorted by)
 				if slices.Contains(qb.fields, parsed_field) {
