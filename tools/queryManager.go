@@ -446,8 +446,16 @@ func (qb *QueryBuilder) ProcessURLParams(r *http.Request, cfg *models.DataModel)
 		// Only GET is allowed at this current time
 		if r.Method != "GET" { break }
 
-		// Group by logic
+		// Extract all form values
 		gf := r.FormValue("group_by")
+		af := r.FormValue("aggregate")
+		sf := r.FormValue("sort_by")
+
+		if gf == "" && af == "" && sf == "" {
+			return fmt.Errorf("Can't call aggregate with no aggregate methods")
+		}
+
+		// Group by logic
 		for field := range strings.SplitSeq(gf, ",") {
 			f, allowed := CheckFieldGetValid(field, cfg)
 			if allowed { 
@@ -457,8 +465,7 @@ func (qb *QueryBuilder) ProcessURLParams(r *http.Request, cfg *models.DataModel)
 		}
 
 		// Aggregated fields
-		agg_fields := r.FormValue("aggregate")
-		for field := range strings.SplitSeq(agg_fields, ",") {
+		for field := range strings.SplitSeq(af, ",") {
 			// Parse and soft continue if invalid
 			parsed_field, valid := ParseAggregateFuncString(field, qb, cfg)
 			if !valid { continue }
@@ -473,9 +480,8 @@ func (qb *QueryBuilder) ProcessURLParams(r *http.Request, cfg *models.DataModel)
 		// Having logic
 
 		// Sort logic
-		sort_string := r.FormValue("sort_by")
-		if sort_string != "" {
-			for field := range strings.SplitSeq(sort_string, ",") {
+		if sf != "" {
+			for field := range strings.SplitSeq(sf, ",") {
 				// Extract the sort order from the string first
 				sort_slice := strings.Split(field, "~")
 
