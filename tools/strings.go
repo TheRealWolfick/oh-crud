@@ -2,7 +2,11 @@ package tools
 
 import (
 	"crypto/rand"
+	"fmt"
 	"strconv"
+	"strings"
+
+	"lotusforge.au/api-server/models"
 )
 
 func IsInt(val string) bool {
@@ -50,4 +54,26 @@ func Generate32CharString() (string, error) {
 	return generateRandomString(32)
 }
 
+func ParseAggregateFuncString(field string, qb *QueryBuilder, cfg *models.DataModel) (string, bool) {
+	if field == "count" {
+		return "count(*)", true
+	}
 
+	// Skip if not a valid field
+	if !strings.Contains(field, ":") { return "", false }
+
+	// Process functions
+	s := strings.Split(field, ":"); if len(s) != 2 { return "", false }
+	fnc, sub_field := s[0], s[1]
+
+	switch fnc {
+	case "avg", "min", "max", "sum":
+		f, allowed := CheckFieldGetValid(sub_field, cfg)
+		if allowed { 
+			return  fmt.Sprintf("%s(%s)", fnc, f), true
+		}
+	default:
+		qb.logger.Debug("Invalid function passed into aggregate function", "func", fnc)
+	}
+	return "", false
+}

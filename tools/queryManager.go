@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -17,6 +18,7 @@ type QueryBuilder struct {
 	where    map[string]uint
 	args     []any
 	fields   []string
+	groups   []string
 	pos      uint
 	wheremod map[string]string
 	query    string
@@ -37,6 +39,7 @@ func NewQueryBuilder(logger *slog.Logger) *QueryBuilder {
 		where:    make(map[string]uint),
 		args:     []any{},
 		fields:   []string{},
+		groups:   []string{},
 		pos:      1,
 		wheremod: make(map[string]string),
 		query:    "",
@@ -433,97 +436,145 @@ func (qb *QueryBuilder) ProcessURLParams(r *http.Request, cfg *models.DataModel)
 		return err
 	}
 
-	var page_int int
-	var page_size_int int
-	page := r.FormValue("page")
-	page_size := r.FormValue("page_size")
-	fields := r.FormValue("fields")
+	switch r.PathValue("function") {
+	case "aggregate":
+		// Only GET is allowed at this current time
+		if r.Method != "GET" { break }
 
-	// Page logic
-	if page == "" || page == "0" || !IsInt(page) {
-		page_int = 1
-		qb.logger.Debug("Set page_int to default value of 1")
-	} else {
-		page_int = ConvertToInt(page)
-	}
-	if page_size == "" || page_size == "0" || !IsInt(page_size) {
-		page_size_int = 25
-		qb.logger.Debug("Set page_size_int to default value of 25")
-	} else {
-		page_size_int = ConvertToInt(page_size)
-	}
-	if page_size_int < 0 {
-		page_size_int = 0
-	}
-	if page_int < 0 {
-		page_int = 0
-	}
-	if strings.ToLower(page) != "all" {
-		qb.SetLimit(page_size_int)
-		qb.SetOffset(page_size_int * (page_int - 1))
-	}
-
-	// Fields logic
-	if fields != "" {
-		fields_slice := strings.Split(fields, ",")
-		for _, field := range fields_slice {
+		// Group by logic
+		gf := r.FormValue("group_by")
+		for field := range strings.SplitSeq(gf, ",") {
 			f, allowed := CheckFieldGetValid(field, cfg)
-			if allowed { qb.fields = append(qb.fields, f) }
-		}
-	}
-
-	// Sort logic
-	sort_string := r.FormValue("sort_by")
-	if sort_string != "" {
-		temp_strings := strings.Split(sort_string, ",")
-		for _, s := range temp_strings {
-			temp := strings.Split(s, "~")
-			field_name, found := CheckFieldExists(strings.Trim(temp[0], " "), cfg)
-			if found {
-				if len(temp) > 1 {
-					qb.sort = append(qb.sort, fmt.Sprintf("%s %s", field_name, ASCorDESC(temp[1])))
-				} else {
-					qb.sort = append(qb.sort, fmt.Sprintf("%s %s", field_name, "ASC"))
-				}
-				qb.logger.Debug("Appended a sort column", "field_name", field_name)
+			if allowed { 
+				qb.groups = append(qb.groups, f) 
+				qb.fields = append(qb.fields, f)
 			}
 		}
-	}
 
-	if len(r.URL.Query()) < 1 && page == "" && page_size == "" {
-		qb.logger.Debug("No valid URL values passed, skipping field checks")
-		return nil
-	}
+		// Aggregated fields
+		agg_fields := r.FormValue("aggregate")
+		for field := range strings.SplitSeq(agg_fields, ",") {
+			// Parse and soft continue if invalid
+			parsed_field, valid := ParseAggregateFuncString(field, qb, cfg)
+			if !valid { continue }
 
-	for field_name, field_cfg := range cfg.Fields {
-		if field_cfg.JSON == nil || *field_cfg.JSON == "" {
-			continue
-		}
-		url_value := r.FormValue(*field_cfg.JSON)
-		if url_value == "" {
-			continue
-		}
-		if field_cfg.Type == nil {
-			continue
-		}
-		dereferenced := ValueDeref(field_cfg.Type)
-		qb.logger.Debug("Dereferenced the field type", "field_type", dereferenced)
-		if !dereferenced.IsValid() {
-			return fmt.Errorf("invalid data type found in config %q", *cfg.Name)
-		}
-		field_type, err := DecodeFieldType(dereferenced.Interface().(string))
-		if err != nil {
-			return err
+			// Check if field is already in fields, soft continue if yes
+			if slices.Contains(qb.fields, parsed_field) { continue }
+
+			// Add field to list'
+			qb.fields = append(qb.fields, parsed_field)
 		}
 
-		is_abs := field_cfg.Absolute_match != nil && *field_cfg.Absolute_match
-		if is_abs {
-			if !ValidateValue(field_type, url_value) {
+		// Having logic
+
+		// Sort logic
+		sort_string := r.FormValue("sort_by")
+		if sort_string != "" {
+			for field := range strings.SplitSeq(sort_string, ",") {
+				// Extract the sort order from the string first
+				sort_slice := strings.Split(field, "~")
+
+				// Parse and soft continue if invalid
+				parsed_field, valid := ParseAggregateFuncString(sort_slice[0], qb, cfg)
+				if !valid { continue }
+
+				// Check if it is in the select fields (can be sorted by)
+				if slices.Contains(qb.fields, parsed_field) {
+					if len(sort_slice) > 1 {
+						qb.sort = append(qb.sort, fmt.Sprintf("%s %s", sort_slice[0], ASCorDESC(sort_slice[1])))
+					} else {
+						qb.sort = append(qb.sort, fmt.Sprintf("%s %s", sort_slice[0], "ASC"))
+					}
+					qb.logger.Debug("Appended a sort column", "field_name", sort_slice[0])
+				}
+			}
+		}
+
+	case "":
+		var page_int int
+		var page_size_int int
+		page := r.FormValue("page")
+		page_size := r.FormValue("page_size")
+		fields := r.FormValue("fields")
+
+		// Page logic
+		if page == "" || page == "0" || !IsInt(page) {
+			page_int = 1
+			qb.logger.Debug("Set page_int to default value of 1")
+		} else {
+			page_int = ConvertToInt(page)
+		}
+		if page_size == "" || page_size == "0" || !IsInt(page_size) {
+			page_size_int = 25
+			qb.logger.Debug("Set page_size_int to default value of 25")
+		} else {
+			page_size_int = ConvertToInt(page_size)
+		}
+		if page_size_int < 0 {
+			page_size_int = 0
+		}
+		if page_int < 0 {
+			page_int = 0
+		}
+		if strings.ToLower(page) != "all" {
+			qb.SetLimit(page_size_int)
+			qb.SetOffset(page_size_int * (page_int - 1))
+		}
+
+		// Fields logic
+		if fields != "" {
+			for field := range strings.SplitSeq(fields, ",") {
+				f, allowed := CheckFieldGetValid(field, cfg)
+				if allowed { qb.fields = append(qb.fields, f) }
+			}
+		}
+
+		// Process all valid fields in the url query for the where clause
+		for field_name, field_cfg := range cfg.Fields {
+			if field_cfg.JSON == nil || *field_cfg.JSON == "" {
 				continue
 			}
-			qb.SetWhereAbsolute(field_name, url_value)
-		} else {
-			qb.SetWhere(field_name, url_value, field_type)
+			url_value := r.FormValue(*field_cfg.JSON)
+			if url_value == "" {
+				continue
+			}
+			if field_cfg.Type == nil {
+				continue
+			}
+			dereferenced := ValueDeref(field_cfg.Type)
+			if !dereferenced.IsValid() {
+				return fmt.Errorf("invalid data type found in config %q", *cfg.Name)
+			}
+			field_type, err := DecodeFieldType(dereferenced.Interface().(string))
+			if err != nil {
+				return err
+			}
+
+			is_abs := field_cfg.Absolute_match != nil && *field_cfg.Absolute_match
+			if is_abs {
+				if !ValidateValue(field_type, url_value) {
+					continue
+				}
+				qb.SetWhereAbsolute(field_name, url_value)
+			} else {
+				qb.SetWhere(field_name, url_value, field_type)
+			}
+		}
+		// Sort logic
+		sort_string := r.FormValue("sort_by")
+		if sort_string != "" {
+			for s := range strings.SplitSeq(sort_string, ",") {
+				temp := strings.Split(s, "~")
+				field_name, found := CheckFieldExists(strings.Trim(temp[0], " "), cfg)
+				if found {
+					if len(temp) > 1 {
+						qb.sort = append(qb.sort, fmt.Sprintf("%s %s", field_name, ASCorDESC(temp[1])))
+					} else {
+						qb.sort = append(qb.sort, fmt.Sprintf("%s %s", field_name, "ASC"))
+					}
+					qb.logger.Debug("Appended a sort column", "field_name", field_name)
+				}
+			}
 		}
 	}
 

@@ -30,6 +30,7 @@ func RegisterRoutes(
 		return
 	}
 
+	// Standard set of handlers
 	handlerRegistry.Register(fmt.Sprintf("GET /%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleGet(cfg, qm))), *cfg.Version)
 	handlerRegistry.Register(fmt.Sprintf("PUT /%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleUpdate(cfg, qm))), *cfg.Version)
 	handlerRegistry.Register(fmt.Sprintf("PUT /%s/group", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleUpdate_Group(cfg, qm))), *cfg.Version)
@@ -38,11 +39,15 @@ func RegisterRoutes(
 	handlerRegistry.Register(fmt.Sprintf("DELETE /%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleDelete(cfg, qm))), *cfg.Version)
 	handlerRegistry.Register(fmt.Sprintf("DELETE /%s/group", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleDelete_Group(cfg, qm))), *cfg.Version)
 
+	// Handle diff routes
 	if cfg.Allow_diff != nil && *cfg.Allow_diff {
 		handlerRegistry.Register(fmt.Sprintf("GET /%s/diff", *cfg.End_point), auth(dynamicGetDiff(cfg, qm)), *cfg.Version)
 		handlerRegistry.Register(fmt.Sprintf("POST /%s/diff", *cfg.End_point), auth(dynamicCreateDiff(cfg, qm)), *cfg.Version)
 		handlerRegistry.Register(fmt.Sprintf("PUT /%s/diff", *cfg.End_point), auth(dynamicActionDiff(cfg, qm)), *cfg.Version)
 	}
+
+	// Handle specific function in get - primarily aggregate
+	handlerRegistry.Register(fmt.Sprintf("GET /%s/{function}", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleGet(cfg, qm))), *cfg.Version)
 }
 
 func handleGet(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
