@@ -494,7 +494,6 @@ func (qb *QueryBuilder) ProcessURLParams(r *http.Request, cfg *models.DataModel)
 					} else {
 						qb.sort = append(qb.sort, fmt.Sprintf("%s %s", sort_slice[0], "ASC"))
 					}
-					qb.logger.Debug("Appended a sort column", "field_name", sort_slice[0])
 				}
 			}
 		}
