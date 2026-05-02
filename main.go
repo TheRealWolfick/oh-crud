@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"lotusforge.au/api-server/handlers"
@@ -90,7 +91,14 @@ func main() {
 	go monitors.ServerConfigMonitor(server_conf, logger)
 
 	// Launch the server
-	http.ListenAndServe(":8080", mux)
+	srv := &http.Server{
+		Addr:        ":8080",
+		Handler:     mux,
+		IdleTimeout: 120 * time.Second,
+		ReadTimeout: 30 * time.Second,
+		WriteTimeout: 60 * time.Second,
+	}
+	srv.ListenAndServe()
 
 	// Close database connection
 	defer pool.Close()
