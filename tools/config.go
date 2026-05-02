@@ -229,20 +229,17 @@ func DecodeAndCoerceFromUser(raw map[string]any, cfg *models.DataModel) (map[str
 
 		if field_cfg.Rules != nil {
 			switch *field_cfg.Type {
-			case "float": 
+			case "float":
 				rule_errs, valid = ValidateFloatRules(field_name, coerced_val.(float64), field_cfg.Rules)
-				fallthrough
-			case "int": 
+			case "int":
 				rule_errs, valid = ValidateIntRules(field_name, coerced_val.(int), field_cfg.Rules)
-				fallthrough
-			case "string": 
+			case "string":
 				rule_errs, valid = ValidateStringRules(field_name, coerced_val.(string), field_cfg.Rules)
-				fallthrough
 			default:
-				if !valid {
-					errors = append(errors, rule_errs)
-				}
-
+				valid = true
+			}
+			if !valid {
+				errors = append(errors, rule_errs)
 			}
 		}
 

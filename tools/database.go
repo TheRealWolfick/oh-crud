@@ -213,14 +213,16 @@ func recursiveBatchInsertProcess(
 	}
 
 	if len(items) == 1 {
+		errMsg := err.Error()
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {
-			result.FailedItems = append(result.FailedItems, map[string]any{
-				"item":           items[0],
-				"error":          pgErr.Message,
-			})
-			return result
+			errMsg = pgErr.Message
 		}
+		result.FailedItems = append(result.FailedItems, map[string]any{
+			"item":  items[0],
+			"error": errMsg,
+		})
+		return result
 	}
 
 	mid := len(items) / 2
