@@ -24,7 +24,7 @@ func RegisterRoutes(
 	qm.Logger.Debug("Dynamic end point generating", "data-model", *cfg.Name)
 
 	// Perform error check OPTIONS handler and soft cancel on error
-	err = handlerRegistry.Register(fmt.Sprintf("OPTIONS /%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(emptyResponse())), *cfg.Version)
+	err = handlerRegistry.Register(fmt.Sprintf("OPTIONS /%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(emptyResponse()), *cfg.Version)
 	if err != nil {
 		qm.Logger.Error("Failed to load model", "error", err)
 		return
