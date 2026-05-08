@@ -13,6 +13,9 @@ cors:
     - Authorization
     - X-User-Note
   allow-credentials: true
-users-roles:
-  - administrator
-  - user
+  
+# RBAC
+admin-role: administrator
+default-user-role: user
+custom-roles:
+  - report
