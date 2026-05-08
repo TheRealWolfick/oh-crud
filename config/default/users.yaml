@@ -49,3 +49,10 @@ fields:
     db-type: date
     default: now()
     private: true
+  roles:
+    type: string
+    json: roles
+    json-alias:
+      - role
+    db-type: character varying(240)
+    default: "user"
