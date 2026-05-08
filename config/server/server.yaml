@@ -13,3 +13,6 @@ cors:
     - Authorization
     - X-User-Note
   allow-credentials: true
+users-roles:
+  - administrator
+  - user
