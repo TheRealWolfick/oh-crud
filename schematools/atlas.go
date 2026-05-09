@@ -75,7 +75,7 @@ func (g *SchemaGenerator) SyncModel(ctx context.Context, model *models.DataModel
 }
 
 // ---------------------------------------------------------------------------
-// HCL generation  (ModelToHCL is exported so you can unit-test it)
+// HCL generation
 // ---------------------------------------------------------------------------
 
 // ModelToHCL converts a *models.DataModel into an Atlas schema HCL string (includes FKs).

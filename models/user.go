@@ -10,6 +10,7 @@ type User struct {
 	UserInfoResponse
 	Api_Access bool   `json:"api_access" db:"api_access"`
 	Api_Key    string `json:"api_key" db:"api_key"`
+	Roles      string `json:"roles" db:"roles"`
 }
 
 type UserRequest struct {

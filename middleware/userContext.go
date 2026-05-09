@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"log/slog"
+	"slices"
 
 	"lotusforge.au/api-server/models"
 )
@@ -17,6 +18,7 @@ type TaskContext struct {
 const userContextKey Contextkey = "user"
 const taskContextKey Contextkey = "task"
 const loggerContextKey Contextkey = "logger"
+const userRolesKey Contextkey = "roles"
 
 func SetUser(ctx context.Context, user *models.User) context.Context {
 	return context.WithValue(ctx, userContextKey, user)
@@ -55,4 +57,18 @@ func SetLogger(ctx context.Context, logger *slog.Logger) context.Context {
 func GetLogger(ctx context.Context) (*slog.Logger, bool) {
 	user, ok := ctx.Value(loggerContextKey).(*slog.Logger)
 	return user, ok
+}
+
+func SetRoles(ctx context.Context, user_roles []string) context.Context {
+	return context.WithValue(ctx, userRolesKey, user_roles)
+}
+
+func CheckUserHasAllowedRole(ctx context.Context, allowed_roles []string) bool {
+	user_roles, ok := ctx.Value(userRolesKey).([]string)
+	if ok {
+		for _, role := range allowed_roles {
+			return slices.Contains(user_roles, role)
+		}
+	}
+	return false
 }

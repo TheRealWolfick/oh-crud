@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -20,7 +21,7 @@ func validateAPIKey(ctx context.Context, db *pgxpool.Pool, username string, api_
 	user := &models.User{}
 	
 	// Query db
-	err = db.QueryRow(ctx, "SELECT username, email, mobile, api_access FROM users WHERE username = $1 and api_key = $2;", username, api_key).Scan(&user.Username, &user.Email, &user.Mobile, &user.Api_Access)
+	err = db.QueryRow(ctx, "SELECT username, email, mobile, api_access, roles FROM users WHERE username = $1 and api_key = $2;", username, api_key).Scan(&user.Username, &user.Email, &user.Mobile, &user.Api_Access, &user.Roles)
 
 	// validate
 	if err != nil {
@@ -49,10 +50,11 @@ func RequireAuth(db *pgxpool.Pool) func(http.Handler) http.Handler {
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusUnauthorized)
 				return
+
 			}
 
 			// Add user context
-			ctx := SetUser(r.Context(), user)
+			ctx := SetUser(SetRoles(r.Context(), strings.Split(user.Roles, ",")), user)
 
 			// Call the next function
 			next.ServeHTTP(w, r.WithContext(ctx))
