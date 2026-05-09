@@ -63,11 +63,14 @@ func SetRoles(ctx context.Context, user_roles []string) context.Context {
 	return context.WithValue(ctx, userRolesKey, user_roles)
 }
 
-func CheckUserHasAllowedRole(ctx context.Context, allowed_roles []string) bool {
+func CheckUserHasAllowedRole(ctx context.Context, allowed_roles []string, svr_cfg *models.ServerConfig) bool {
 	user_roles, ok := ctx.Value(userRolesKey).([]string)
 	if ok {
+		// Check if user is an admin
+		if svr_cfg.RBAC != nil && slices.Contains(user_roles, svr_cfg.RBAC.Admin_role) { return true }
+		// Check if user can access this end point
 		for _, role := range allowed_roles {
-			return slices.Contains(user_roles, role)
+			if slices.Contains(user_roles, role) { return true }
 		}
   }
 	return false

@@ -31,70 +31,70 @@ func RegisterRoutes(
 	}
 
 	// Standard set of handlers
-	handlerRegistry.Register(fmt.Sprintf("GET /%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleGet(cfg, qm))), *cfg.Version)
-	handlerRegistry.Register(fmt.Sprintf("PUT /%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleUpdate(cfg, qm))), *cfg.Version)
-	handlerRegistry.Register(fmt.Sprintf("PUT /%s/group", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleUpdate_Group(cfg, qm))), *cfg.Version)
-	handlerRegistry.Register(fmt.Sprintf("POST /%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleAddNew(cfg, qm))), *cfg.Version)
-	handlerRegistry.Register(fmt.Sprintf("POST /%s/group", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleAddNew_Group(cfg, qm))), *cfg.Version)
-	handlerRegistry.Register(fmt.Sprintf("DELETE /%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleDelete(cfg, qm))), *cfg.Version)
-	handlerRegistry.Register(fmt.Sprintf("DELETE /%s/group", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleDelete_Group(cfg, qm))), *cfg.Version)
+	handlerRegistry.Register(fmt.Sprintf("GET /%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleGet(cfg, qm, server_conf))), *cfg.Version)
+	handlerRegistry.Register(fmt.Sprintf("PUT /%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleUpdate(cfg, qm, server_conf))), *cfg.Version)
+	handlerRegistry.Register(fmt.Sprintf("PUT /%s/group", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleUpdate_Group(cfg, qm, server_conf))), *cfg.Version)
+	handlerRegistry.Register(fmt.Sprintf("POST /%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleAddNew(cfg, qm, server_conf))), *cfg.Version)
+	handlerRegistry.Register(fmt.Sprintf("POST /%s/group", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleAddNew_Group(cfg, qm, server_conf))), *cfg.Version)
+	handlerRegistry.Register(fmt.Sprintf("DELETE /%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleDelete(cfg, qm, server_conf))), *cfg.Version)
+	handlerRegistry.Register(fmt.Sprintf("DELETE /%s/group", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleDelete_Group(cfg, qm, server_conf))), *cfg.Version)
 
 	// Handle diff routes
 	if cfg.Allow_diff != nil && *cfg.Allow_diff {
-		handlerRegistry.Register(fmt.Sprintf("GET /%s/diff", *cfg.End_point), auth(dynamicGetDiff(cfg, qm)), *cfg.Version)
-		handlerRegistry.Register(fmt.Sprintf("POST /%s/diff", *cfg.End_point), auth(dynamicCreateDiff(cfg, qm)), *cfg.Version)
-		handlerRegistry.Register(fmt.Sprintf("PUT /%s/diff", *cfg.End_point), auth(dynamicActionDiff(cfg, qm)), *cfg.Version)
+		handlerRegistry.Register(fmt.Sprintf("GET /%s/diff", *cfg.End_point), auth(dynamicGetDiff(cfg, qm, server_conf.Get())), *cfg.Version)
+		handlerRegistry.Register(fmt.Sprintf("POST /%s/diff", *cfg.End_point), auth(dynamicCreateDiff(cfg, qm, server_conf.Get())), *cfg.Version)
+		handlerRegistry.Register(fmt.Sprintf("PUT /%s/diff", *cfg.End_point), auth(dynamicActionDiff(cfg, qm, server_conf.Get())), *cfg.Version)
 	}
 
 	// Handle specific function in get - primarily aggregate
-	handlerRegistry.Register(fmt.Sprintf("GET /%s/{function}", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleGet(cfg, qm))), *cfg.Version)
+	handlerRegistry.Register(fmt.Sprintf("GET /%s/{function}", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleGet(cfg, qm, server_conf))), *cfg.Version)
 }
 
-func handleGet(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
+func handleGet(cfg *models.DataModel, qm *tools.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
 	if cfg.End_points_allowed != nil && cfg.End_points_allowed.GET != nil {
-		return getResource(qm, cfg)
+		return getResource(qm, cfg, svr_cfg.Get())
 	}
 	return notAllowed(cfg.End_points_allowed)
 }
 
-func handleAddNew(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
+func handleAddNew(cfg *models.DataModel, qm *tools.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
 	if cfg.End_points_allowed != nil && cfg.End_points_allowed.POST != nil {
-		return addNewResource(qm, cfg)
+		return addNewResource(qm, cfg, svr_cfg.Get())
 	}
 	return notAllowed(cfg.End_points_allowed)
 }
 
-func handleAddNew_Group(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
+func handleAddNew_Group(cfg *models.DataModel, qm *tools.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
 	if cfg.End_points_allowed != nil && cfg.End_points_allowed.POST_GROUP != nil {
-		return addNewResources_Group(qm, cfg)
+		return addNewResources_Group(qm, cfg, svr_cfg.Get())
 	}
 	return notAllowed(cfg.End_points_allowed)
 }
 
-func handleUpdate(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
+func handleUpdate(cfg *models.DataModel, qm *tools.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
 	if cfg.End_points_allowed != nil && cfg.End_points_allowed.PUT != nil {
-		return updateResource(qm, cfg)
+		return updateResource(qm, cfg, svr_cfg.Get())
 	}
 	return notAllowed(cfg.End_points_allowed)
 }
 
-func handleUpdate_Group(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
+func handleUpdate_Group(cfg *models.DataModel, qm *tools.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
 	if cfg.End_points_allowed != nil && cfg.End_points_allowed.PUT_GROUP != nil {
-		return updateResource_Group(qm, cfg)
+		return updateResource_Group(qm, cfg, svr_cfg.Get())
 	}
 	return notAllowed(cfg.End_points_allowed)
 }
 
-func handleDelete(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
+func handleDelete(cfg *models.DataModel, qm *tools.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
 	if cfg.End_points_allowed != nil && cfg.End_points_allowed.DELETE != nil {
-		return deleteResource(qm, cfg)
+		return deleteResource(qm, cfg, svr_cfg.Get())
 	}
 	return notAllowed(cfg.End_points_allowed)
 }
 
-func handleDelete_Group(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
+func handleDelete_Group(cfg *models.DataModel, qm *tools.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
 	if cfg.End_points_allowed != nil && cfg.End_points_allowed.DELETE_GROUP != nil {
-		return deleteResource_Group(qm, cfg)
+		return deleteResource_Group(qm, cfg, svr_cfg.Get())
 	}
 	return notAllowed(cfg.End_points_allowed)
 }
@@ -103,6 +103,7 @@ func handleDelete_Group(cfg *models.DataModel, qm *tools.QueueManager) http.Hand
 func addNewResource(
 	qm *tools.QueueManager,
 	cfg *models.DataModel,
+	svr_cfg *models.ServerConfig,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Add Resource"
@@ -121,7 +122,7 @@ func addNewResource(
 		w.Header().Set("Content-Type", "application/json")
 
 		// Check that a user is allowed to inteface with this command
-		if !middleware.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.POST) {
+		if !middleware.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.POST, svr_cfg) {
 			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
 			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
 			return
@@ -177,6 +178,7 @@ func addNewResource(
 func addNewResources_Group(
 	qm *tools.QueueManager,
 	cfg *models.DataModel,
+	svr_cfg *models.ServerConfig,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Add Bulk Resources"
@@ -195,7 +197,7 @@ func addNewResources_Group(
 		w.Header().Set("Content-Type", "application/json")
 
 		// Check that a user is allowed to inteface with this command
-		if !middleware.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.POST_GROUP) {
+		if !middleware.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.POST_GROUP, svr_cfg) {
 			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
 			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
 			return
@@ -250,6 +252,7 @@ func addNewResources_Group(
 func getResource(
 	qm *tools.QueueManager,
 	cfg *models.DataModel,
+	svr_cfg *models.ServerConfig,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Get Resource"
@@ -267,7 +270,7 @@ func getResource(
 		response := map[string]any{"task_type": task_type}
 
 		// Check that a user is allowed to inteface with this command
-		if !middleware.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.GET) {
+		if !middleware.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.GET, svr_cfg) {
 			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
 			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
 			return
@@ -323,6 +326,7 @@ func getResource(
 func updateResource(
 	qm *tools.QueueManager,
 	cfg *models.DataModel,
+	svr_cfg *models.ServerConfig,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Update Resource"
@@ -341,7 +345,7 @@ func updateResource(
 		w.Header().Set("Content-Type", "application/json")
 
 		// Check that a user is allowed to inteface with this command
-		if !middleware.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.PUT) {
+		if !middleware.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.PUT, svr_cfg) {
 			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
 			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
 			return
@@ -410,6 +414,7 @@ func updateResource(
 func updateResource_Group(
 	qm *tools.QueueManager,
 	cfg *models.DataModel,
+	svr_cfg *models.ServerConfig,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Update Multiple Resources"
@@ -428,7 +433,7 @@ func updateResource_Group(
 		w.Header().Set("Content-Type", "application/json")
 
 		// Check that a user is allowed to inteface with this command
-		if !middleware.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.PUT_GROUP) {
+		if !middleware.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.PUT_GROUP, svr_cfg) {
 			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
 			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
 			return
@@ -483,6 +488,7 @@ func updateResource_Group(
 func dynamicGetDiff(
 	cfg *models.DataModel,
 	qm *tools.QueueManager,
+	svr_cfg *models.ServerConfig,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user_key := middleware.Contextkey("user")
@@ -496,7 +502,7 @@ func dynamicGetDiff(
 		w.Header().Set("Content-Type", "application/json")
 
 		// Check that a user is allowed to inteface with this command
-		if !middleware.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.GET) {
+		if !middleware.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.GET, svr_cfg) {
 			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
 			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
 			return
@@ -537,6 +543,7 @@ func dynamicGetDiff(
 func dynamicCreateDiff(
 	cfg *models.DataModel,
 	qm *tools.QueueManager,
+	svr_cfg *models.ServerConfig,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Create Diff"
@@ -553,7 +560,7 @@ func dynamicCreateDiff(
 		w.Header().Set("Content-Type", "application/json")
 
 		// Check that a user is allowed to inteface with this command
-		if !middleware.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.POST) {
+		if !middleware.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.POST, svr_cfg) {
 			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
 			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
 			return
@@ -607,6 +614,7 @@ func dynamicCreateDiff(
 func dynamicActionDiff(
 	cfg *models.DataModel,
 	qm *tools.QueueManager,
+	svr_cfg *models.ServerConfig,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Action Diff"
@@ -621,7 +629,7 @@ func dynamicActionDiff(
 		w.Header().Set("Content-Type", "application/json")
 
 		// Check that a user is allowed to inteface with this command
-		if !middleware.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.PUT) {
+		if !middleware.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.PUT, svr_cfg) {
 			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
 			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
 			return
@@ -713,6 +721,7 @@ func dynamicActionDiff(
 func deleteResource(
 	qm *tools.QueueManager,
 	cfg *models.DataModel,
+	svr_cfg *models.ServerConfig,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Delete Resource"
@@ -730,7 +739,7 @@ func deleteResource(
 		w.Header().Set("Content-Type", "application/json")
 
 		// Check that a user is allowed to inteface with this command
-		if !middleware.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.DELETE) {
+		if !middleware.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.DELETE, svr_cfg) {
 			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
 			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
 			return
@@ -793,6 +802,7 @@ func deleteResource(
 func deleteResource_Group(
 	qm *tools.QueueManager,
 	cfg *models.DataModel,
+	svr_cfg *models.ServerConfig,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Delete Multiple Resources"
@@ -810,7 +820,7 @@ func deleteResource_Group(
 		w.Header().Set("Content-Type", "application/json")
 
 		// Check that a user is allowed to inteface with this command
-		if !middleware.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.DELETE_GROUP) {
+		if !middleware.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.DELETE_GROUP, svr_cfg) {
 			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
 			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
 			return

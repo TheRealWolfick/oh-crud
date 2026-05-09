@@ -8,8 +8,15 @@ type CorsConfig struct {
 	Allow_Credentials *bool  `yaml:"allow-credentials"`
 }
 
+type RBACConfig struct {
+	Admin_role         string    `yaml:"admin-role"`
+	Default_user_role  string    `yaml:"default-user-role"`
+	Custom_roles       []string  `yaml:"custom-roles"`
+}
+
 type ServerConfig struct {
 	CORS *CorsConfig `yaml:"cors"`
+	RBAC *RBACConfig `yaml:"rbac"`
 }
 
 type SwappableServerConfig struct {

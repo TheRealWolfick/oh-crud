@@ -15,7 +15,8 @@ cors:
   allow-credentials: true
   
 # RBAC
-admin-role: administrator
-default-user-role: user
-custom-roles:
-  - report
+rbac:
+  admin-role: administrator
+  default-user-role: user
+  custom-roles:
+    - report
