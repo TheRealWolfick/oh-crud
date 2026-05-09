@@ -1,6 +1,6 @@
 ---
 name: Condition Ratings
-version: 1.1.2
+version: 1.2.0
 table-name: condition_ratings
 end-point: condition/rating
 allow-diff: false
@@ -8,13 +8,13 @@ allow-diff: false
 primary-key: condition_rating
 
 end-points-allowed:
-  GET: true
-  PUT: true
-  POST: true
-  DELETE: true
-  PUT-GROUP: true
-  POST-GROUP: true
-  DELETE-GROUP: true
+  GET: []
+  PUT: []
+  POST: []
+  DELETE: []
+  PUT-GROUP: []
+  POST-GROUP: []
+  DELETE-GROUP: []
 
 fields:
   condition_rating:

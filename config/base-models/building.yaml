@@ -1,6 +1,6 @@
 ---
 name: Building
-version: 1.1.1
+version: 1.2.0
 table-name: buildings
 end-point: building
 allow-diff: false
@@ -26,13 +26,13 @@ unique-keys:
       - db_domain
 
 end-points-allowed:
-  GET: true
-  PUT: true
-  POST: true
-  DELETE: true
-  PUT-GROUP: true
-  POST-GROUP: true
-  DELETE-GROUP: true
+  GET: []
+  PUT: []
+  POST: []
+  DELETE: []
+  PUT-GROUP: []
+  POST-GROUP: []
+  DELETE-GROUP: []
 
 fields:
   building_id:

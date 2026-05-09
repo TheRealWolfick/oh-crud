@@ -1,6 +1,6 @@
 ---
 name: Department
-version: 1.1.0
+version: 1.2.0
 table-name: departments
 end-point: department
 allow-diff: false
@@ -26,13 +26,13 @@ foreign-keys:
     foreign-key-on-update: CASCADE
 
 end-points-allowed:
-  GET: true
-  PUT: true
-  POST: true
-  DELETE: true
-  PUT-GROUP: true
-  POST-GROUP: true
-  DELETE-GROUP: true
+  GET: []
+  PUT: []
+  POST: []
+  DELETE: []
+  PUT-GROUP: []
+  POST-GROUP: []
+  DELETE-GROUP: []
 
 fields:
   dept_id:

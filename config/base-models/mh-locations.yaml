@@ -1,18 +1,18 @@
 ---
 
 name: mh-locations
-version: 1.0.0
+version: 1.2.0
 table-name: mh_locations
 end-point: locations
 primary-key: location
 end-points-allowed:
-  GET: true
-  POST: true
-  PUT: true
-  DELETE: true
-  PUT-GROUP: true
-  POST-GROUP: true
-  DELETE-GROUP: true
+  GET: []
+  POST: []
+  PUT: []
+  DELETE: []
+  PUT-GROUP: []
+  POST-GROUP: []
+  DELETE-GROUP: []
 fields:
   location:
     type: string

@@ -1,6 +1,6 @@
 ---
 name: Floor
-version: 1.1.1
+version: 1.2.0
 table-name: floors
 end-point: floor
 allow-diff: false
@@ -13,13 +13,11 @@ unique-keys:
       - floor
 
 end-points-allowed:
-  GET: true
-  PUT: true
-  POST: true
-  DELETE: false
-  PUT-GROUP: true
-  POST-GROUP: true
-  DELETE-GROUP: false
+  GET: []
+  PUT: []
+  POST: []
+  PUT-GROUP: []
+  POST-GROUP: []
 
 fields:
   floor_id:

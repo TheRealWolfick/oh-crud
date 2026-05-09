@@ -1,6 +1,6 @@
 ---
 name: Asset Data
-version: 1.1.4
+version: 1.2.0
 table-name: asset_data
 end-point: asset/data
 allow-diff: true
@@ -58,13 +58,13 @@ unique-keys:
       - asset_no
 
 end-points-allowed:
-  GET: true
-  PUT: true
-  POST: true
-  DELETE: true
-  PUT-GROUP: true
-  POST-GROUP: true
-  DELETE-GROUP: true
+  GET: []
+  PUT: []
+  POST: []
+  DELETE: []
+  PUT-GROUP: []
+  POST-GROUP: []
+  DELETE-GROUP: []
 
 fields:
   asset_id:

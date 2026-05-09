@@ -1,6 +1,6 @@
 ---
 name: Asset Categories
-version: 1.1.1
+version: 1.2.0
 table-name: asset_categories
 end-point: asset/category
 allow-diff: false
@@ -8,13 +8,13 @@ allow-diff: false
 primary-key: cat_code
 
 end-points-allowed:
-  GET: true
-  PUT: true
-  POST: true
-  DELETE: true
-  PUT-GROUP: true
-  POST-GROUP: true
-  DELETE-GROUP: true
+  GET: []
+  PUT: []
+  POST: []
+  DELETE: []
+  PUT-GROUP: []
+  POST-GROUP: []
+  DELETE-GROUP: []
 
 fields:
   cat_code:

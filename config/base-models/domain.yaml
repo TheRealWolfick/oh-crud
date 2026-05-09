@@ -1,6 +1,6 @@
 ---
 name: Domain
-version: 1.1.1
+version: 1.2.0
 table-name: domains
 end-point: domain
 allow-diff: false
@@ -8,13 +8,13 @@ allow-diff: false
 primary-key: domain_code
 
 end-points-allowed:
-  GET: true
-  PUT: true
-  POST: true
-  DELETE: true
-  PUT-GROUP: true
-  POST-GROUP: true
-  DELETE-GROUP: true
+  GET: []
+  PUT: []
+  POST: []
+  DELETE: []
+  PUT-GROUP: []
+  POST-GROUP: []
+  DELETE-GROUP: []
 
 fields:
   domain_code:

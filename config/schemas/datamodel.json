@@ -17,13 +17,13 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "GET":          { "type": "boolean" },
-        "POST":         { "type": "boolean" },
-        "POST-GROUP":   { "type": "boolean" },
-        "PUT":          { "type": "boolean" },
-        "PUT-GROUP":    { "type": "boolean" },
-        "DELETE":       { "type": "boolean" },
-        "DELETE-GROUP": { "type": "boolean" }
+        "GET":          { "type": "array", "items": { "type": "string" } },
+        "POST":         { "type": "array", "items": { "type": "string" } },
+        "POST-GROUP":   { "type": "array", "items": { "type": "string" } },
+        "PUT":          { "type": "array", "items": { "type": "string" } },
+        "PUT-GROUP":    { "type": "array", "items": { "type": "string" } },
+        "DELETE":       { "type": "array", "items": { "type": "string" } },
+        "DELETE-GROUP": { "type": "array", "items": { "type": "string" } }
       }
     },
 
