@@ -23,16 +23,15 @@ func makeDataModel() *models.DataModel {
 	name := "test"
 	endpoint := "test"
 	version := "1.0.0"
-	t, f := true, false
 	return &models.DataModel{
 		Name:     &name,
 		End_point: &endpoint,
 		Version:  &version,
 		End_points_allowed: &models.End_pointsAllowed{
-			GET:    &t,
-			POST:   &t,
-			PUT:    &t,
-			DELETE: &f,
+			GET:    []string{},
+			POST:   []string{},
+			PUT:    []string{},
+			DELETE: []string{},
 		},
 	}
 }
@@ -80,7 +79,7 @@ func TestCors_DisallowedOrigin(t *testing.T) {
 func TestCors_PreflightNoAuth(t *testing.T) {
 	origin := "http://192.168.2.93:3000"
 	cfg := makeDataModel()
-	serverConf := makeServerConf([]string{origin}, []string{"Content-Type", "X-API-Key", "X-Username"})
+	serverConf := makeServerConf([]string{origin}, []string{"Content-Type", "X-API-Key"})
 
 	// emptyResponse mirrors the actual handler used for OPTIONS — just 200, no auth.
 	preflightHandler := Cors(cfg, serverConf)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

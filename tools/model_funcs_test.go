@@ -17,9 +17,9 @@ func basicModel() models.DataModel {
 		End_point:   ptr("test"),
 		Primary_key: ptr("id"),
 		End_points_allowed: &models.End_pointsAllowed{
-			GET:  ptr(true),
-			POST: ptr(true),
-			PUT:  ptr(true),
+			GET:  []string{},
+			POST: []string{},
+			PUT:  []string{},
 		},
 		Unique_keys: map[string]models.UniqueKey{
 			"test_uq_code": {Fields: []string{"code"}},

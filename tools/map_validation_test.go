@@ -20,9 +20,9 @@ func mapTestModel() *models.DataModel {
 		End_point:   ptr("map-test"),
 		Primary_key: ptr("id"),
 		End_points_allowed: &models.End_pointsAllowed{
-			GET:  ptr(true),
-			POST: ptr(true),
-			PUT:  ptr(true),
+			GET:  []string{},
+			POST: []string{},
+			PUT:  []string{},
 		},
 		Unique_keys: map[string]models.UniqueKey{
 			"uq_code": {Fields: []string{"code"}},

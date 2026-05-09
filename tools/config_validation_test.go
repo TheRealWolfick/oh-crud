@@ -25,9 +25,9 @@ func configTestModel() *models.DataModel {
 		Primary_key: ptr("id"),
 		Diff_comparator: ptr("code"),
 		End_points_allowed: &models.End_pointsAllowed{
-			GET:  ptr(true),
-			POST: ptr(true),
-			PUT:  ptr(true),
+			GET:  []string{"user","report"},
+			POST: []string{"user"},
+			PUT:  []string{"user"},
 		},
 		Unique_keys: map[string]models.UniqueKey{
 			"test_uq_code": {Fields: []string{"code"}},
