@@ -89,6 +89,7 @@ func ModelToHCL(m *models.DataModel) (string, error) {
 	sb.WriteString("# Auto-generated — source of truth is the YAML config. DO NOT EDIT.\n\n")
 	sb.WriteString("schema \"public\" {}\n\n")
 	sb.WriteString(tableBlock(m))
+	if m.Track_History != nil && *m.Track_History { sb.WriteString(tableHistoryBlock(m)) }
 	return sb.String(), nil
 }
 
@@ -119,6 +120,9 @@ func AllModelsToHCL(ms []*models.DataModel) (string, error) {
 		}
 		sb.WriteString(tableBlock(m))
 		sb.WriteString("\n")
+		if m.Track_History != nil && *m.Track_History {
+			sb.WriteString(tableHistoryBlock(m))
+		}
 	}
 	return sb.String(), nil
 }
@@ -239,6 +243,64 @@ func uniqueKeyBlock(name string, uk models.UniqueKey) string {
 	sb.WriteString(fmt.Sprintf("    columns = [%s]\n", strings.Join(cols, ", ")))
 	sb.WriteString("  }\n")
 	return sb.String()
+}
+
+func tableHistoryBlock(m *models.DataModel) string {
+	var sb strings.Builder
+	tbl := fmt.Sprintf("%s_history", *m.Table_name)
+
+	sb.WriteString(fmt.Sprintf("\ntable %s  {\n", tbl))
+	sb.WriteString(            "    schema = schema.public\n\n")
+
+	// columns
+	sb.WriteString(fmt.Sprintf("    column %q {\n", "change_id"))
+	sb.WriteString(fmt.Sprintf("      type = %s\n", hclType("serial")))
+	sb.WriteString(            "    }\n\n")
+
+	sb.WriteString(fmt.Sprintf("    column %q {\n", "record"))
+	sb.WriteString(fmt.Sprintf("      type = %s\n", hclType(*m.Fields[*m.Primary_key].DB_type)))
+	sb.WriteString(            "    }\n\n")
+
+	sb.WriteString(fmt.Sprintf("    column %q {\n", "changed_by"))
+	sb.WriteString(fmt.Sprintf("      type = %s\n", hclType("character varying(20)")))
+	sb.WriteString(            "    }\n\n")
+
+	sb.WriteString(fmt.Sprintf("    column %q {\n", "changed_at"))
+	sb.WriteString(fmt.Sprintf("      type = %s\n", hclType("timestamp")))
+	sb.WriteString(            "    }\n\n")
+
+	sb.WriteString(fmt.Sprintf("    column %q {\n", "old_values"))
+	sb.WriteString(fmt.Sprintf("      type = %s\n", hclType("jsonb")))
+	sb.WriteString(            "      null = true\n")
+	sb.WriteString(            "    }\n\n")
+
+	sb.WriteString(fmt.Sprintf("    column %q {\n", "new_values"))
+	sb.WriteString(fmt.Sprintf("      type = %s\n", hclType("jsonb")))
+	sb.WriteString(            "      null = true\n")
+	sb.WriteString(            "    }\n\n")
+
+	// Primary key
+	sb.WriteString(            "    primary_key {\n")
+	sb.WriteString(            "      columns = [column.record]\n")
+	sb.WriteString(            "    }\n\n")
+
+	// Foreign keys
+	sb.WriteString(fmt.Sprintf("    foreign_key %q {\n", fmt.Sprintf("fk_%s_history_pk", *m.Table_name)))
+	sb.WriteString(            "      columns     = [column.record]\n")
+	sb.WriteString(fmt.Sprintf("      ref_columns = [table.%s.column.%s]\n", *m.Table_name, *m.Primary_key))
+	sb.WriteString(            "      on_update   = CASCADE\n")
+	sb.WriteString(            "      on_delete   = CASCADE\n")
+	sb.WriteString(            "    }\n\n")
+
+	sb.WriteString(fmt.Sprintf("    foreign_key %q {\n", fmt.Sprintf("fk_%s_history_user", *m.Table_name)))
+	sb.WriteString(            "      columns     = [column.changed_by]\n")
+	sb.WriteString(            "      ref_columns = [table.users.column.username]\n")
+	sb.WriteString(            "      on_update   = CASCADE\n")
+	sb.WriteString(            "      on_delete   = CASCADE\n")
+	sb.WriteString(            "    }\n}\n")
+
+	return sb.String()
+
 }
 
 // ---------------------------------------------------------------------------

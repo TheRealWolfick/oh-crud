@@ -60,9 +60,10 @@ type End_pointsAllowed struct {
 // DataModel is the top-level representation of a YAML config file.
 type DataModel struct {
 	// Model metadata
-	Name    *string `yaml:"name"`
-	Type    *string `yaml:"type"`
-	Version *string `yaml:"version"`
+	Name           *string  `yaml:"name"`
+	Type           *string  `yaml:"type"`
+	Version        *string  `yaml:"version"`
+	Track_History  *bool    `yaml:"track-history"`
 	// Database metadata
 	Table_name          *string                   `yaml:"table-name"`
 	End_point           *string                   `yaml:"end-point"`

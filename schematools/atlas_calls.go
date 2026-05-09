@@ -190,6 +190,7 @@ func BootstrapModels(ctx context.Context, pool *pgxpool.Pool, loadedModels []mod
 	// Check whether any model needs a sync.
 	anyNeedsSync := false
 	for _, m := range ptrs {
+		// Read if a sync is needed based on the sidecar version file, and the version in the config
 		if needsSync(m, hclPathFor(*m.Table_name)) {
 			anyNeedsSync = true
 			break
