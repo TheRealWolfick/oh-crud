@@ -11,9 +11,9 @@ import (
 	"lotusforge.au/api-server/models"
 )
 
-func validateAPIKey(ctx context.Context, db *pgxpool.Pool, username string, api_key string) (result *models.User, err error) {
+func validateAPIKey(ctx context.Context, db *pgxpool.Pool, api_key string) (result *models.User, err error) {
 	// Early validation
-	if username == "" || api_key == "" {
+	if api_key == "" {
 		return nil, errors.New("Missing credentials")
 	}
 
@@ -21,7 +21,7 @@ func validateAPIKey(ctx context.Context, db *pgxpool.Pool, username string, api_
 	user := &models.User{}
 	
 	// Query db
-	err = db.QueryRow(ctx, "SELECT username, email, mobile, api_access, roles FROM users WHERE username = $1 and api_key = $2;", username, api_key).Scan(&user.Username, &user.Email, &user.Mobile, &user.Api_Access, &user.Roles)
+	err = db.QueryRow(ctx, "SELECT username, email, mobile, api_access, roles FROM users WHERE api_key = $1;", api_key).Scan(&user.Username, &user.Email, &user.Mobile, &user.Api_Access, &user.Roles)
 
 	// validate
 	if err != nil {
@@ -41,12 +41,11 @@ func RequireAuth(db *pgxpool.Pool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Extract info
-			username := r.Header.Get("X-Username")
 			api_key := r.Header.Get("X-API-Key")
 			var user *models.User
 
 			// Get the row
-			user, err := validateAPIKey(r.Context(), db, username, api_key)			
+			user, err := validateAPIKey(r.Context(), db, api_key)			
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusUnauthorized)
 				return
