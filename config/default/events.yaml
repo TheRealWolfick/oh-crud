@@ -1,11 +1,11 @@
 name: events
-version: 1.0.3
+version: 1.2.0
 table-name: events
 end-point: events
 primary-key: event_id
 end-points-allowed:
-  GET: true
-  DELETE: true
+  GET: []
+  DELETE: []
 
 foreign-keys:
   fk_events_event_user:

@@ -1,5 +1,5 @@
 name: users
-version: 1.0.0
+version: 1.2.0
 table-name: users
 end-point: user
 primary-key: username
@@ -10,9 +10,9 @@ unique-keys:
       - api_key
 
 end-points-allowed:
-  GET: true
-  PUT: true
-  POST: true
+  GET: []
+  PUT: []
+  POST: []
 fields:
   username:
     type: string
