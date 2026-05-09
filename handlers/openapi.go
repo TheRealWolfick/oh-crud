@@ -342,19 +342,19 @@ func isEnabled(allowed *models.End_pointsAllowed, method string) bool {
 	}
 	switch method {
 	case "GET":
-		return allowed.GET != nil && *allowed.GET
+		return allowed.GET != nil
 	case "POST":
-		return allowed.POST != nil && *allowed.POST
+		return allowed.POST != nil
 	case "PUT":
-		return allowed.PUT != nil && *allowed.PUT
+		return allowed.PUT != nil
 	case "DELETE":
-		return allowed.DELETE != nil && *allowed.DELETE
+		return allowed.DELETE != nil
 	case "POST_GROUP":
-		return allowed.POST_GROUP != nil && *allowed.POST_GROUP
+		return allowed.POST_GROUP != nil
 	case "PUT_GROUP":
-		return allowed.PUT_GROUP != nil && *allowed.PUT_GROUP
+		return allowed.PUT_GROUP != nil
 	case "DELETE_GROUP":
-		return allowed.DELETE_GROUP != nil && *allowed.DELETE_GROUP
+		return allowed.DELETE_GROUP != nil
 	}
 	return false
 }
