@@ -67,7 +67,7 @@ func CheckUserHasAllowedRole(ctx context.Context, allowed_roles []string) bool {
 	user_roles, ok := ctx.Value(userRolesKey).([]string)
 	if ok {
 		for _, role := range allowed_roles {
-			return slices.Contains(user_roles, role)
+			if slices.Contains(user_roles, role) { return true }
 		}
 	}
 	return false

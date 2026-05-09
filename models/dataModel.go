@@ -48,13 +48,13 @@ type DataModelField struct {
 
 // End_pointsAllowed controls which HTTP methods are enabled for a given endpoint.
 type End_pointsAllowed struct {
-	GET          *bool `yaml:"GET"`
-	PUT          *bool `yaml:"PUT"`
-	POST         *bool `yaml:"POST"`
-	DELETE       *bool `yaml:"DELETE"`
-	PUT_GROUP    *bool `yaml:"PUT-GROUP"`
-	POST_GROUP   *bool `yaml:"POST-GROUP"`
-	DELETE_GROUP *bool `yaml:"DELETE-GROUP"`
+	GET          []string `yaml:"GET"`
+	PUT          []string `yaml:"PUT"`
+	POST         []string `yaml:"POST"`
+	DELETE       []string `yaml:"DELETE"`
+	PUT_GROUP    []string `yaml:"PUT-GROUP"`
+	POST_GROUP   []string `yaml:"POST-GROUP"`
+	DELETE_GROUP []string `yaml:"DELETE-GROUP"`
 }
 
 // DataModel is the top-level representation of a YAML config file.

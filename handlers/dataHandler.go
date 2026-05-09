@@ -51,49 +51,49 @@ func RegisterRoutes(
 }
 
 func handleGet(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
-	if cfg.End_points_allowed != nil && cfg.End_points_allowed.GET != nil && *cfg.End_points_allowed.GET {
+	if cfg.End_points_allowed != nil && cfg.End_points_allowed.GET != nil {
 		return getResource(qm, cfg)
 	}
 	return notAllowed(cfg.End_points_allowed)
 }
 
 func handleAddNew(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
-	if cfg.End_points_allowed != nil && cfg.End_points_allowed.POST != nil && *cfg.End_points_allowed.POST {
+	if cfg.End_points_allowed != nil && cfg.End_points_allowed.POST != nil {
 		return addNewResource(qm, cfg)
 	}
 	return notAllowed(cfg.End_points_allowed)
 }
 
 func handleAddNew_Group(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
-	if cfg.End_points_allowed != nil && cfg.End_points_allowed.POST_GROUP != nil && *cfg.End_points_allowed.POST_GROUP {
+	if cfg.End_points_allowed != nil && cfg.End_points_allowed.POST_GROUP != nil {
 		return addNewResources_Group(qm, cfg)
 	}
 	return notAllowed(cfg.End_points_allowed)
 }
 
 func handleUpdate(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
-	if cfg.End_points_allowed != nil && cfg.End_points_allowed.PUT != nil && *cfg.End_points_allowed.PUT {
+	if cfg.End_points_allowed != nil && cfg.End_points_allowed.PUT != nil {
 		return updateResource(qm, cfg)
 	}
 	return notAllowed(cfg.End_points_allowed)
 }
 
 func handleUpdate_Group(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
-	if cfg.End_points_allowed != nil && cfg.End_points_allowed.PUT_GROUP != nil && *cfg.End_points_allowed.PUT_GROUP {
+	if cfg.End_points_allowed != nil && cfg.End_points_allowed.PUT_GROUP != nil {
 		return updateResource_Group(qm, cfg)
 	}
 	return notAllowed(cfg.End_points_allowed)
 }
 
 func handleDelete(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
-	if cfg.End_points_allowed != nil && cfg.End_points_allowed.DELETE != nil && *cfg.End_points_allowed.DELETE {
+	if cfg.End_points_allowed != nil && cfg.End_points_allowed.DELETE != nil {
 		return deleteResource(qm, cfg)
 	}
 	return notAllowed(cfg.End_points_allowed)
 }
 
 func handleDelete_Group(cfg *models.DataModel, qm *tools.QueueManager) http.HandlerFunc {
-	if cfg.End_points_allowed != nil && cfg.End_points_allowed.DELETE_GROUP != nil && *cfg.End_points_allowed.DELETE_GROUP {
+	if cfg.End_points_allowed != nil && cfg.End_points_allowed.DELETE_GROUP != nil {
 		return deleteResource_Group(qm, cfg)
 	}
 	return notAllowed(cfg.End_points_allowed)
@@ -120,6 +120,13 @@ func addNewResource(
 		response := map[string]any{"task_type": task_type}
 		w.Header().Set("Content-Type", "application/json")
 
+		// Check that a user is allowed to inteface with this command
+		if !middleware.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.POST) {
+			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
+			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
+			return
+		}
+
 		// Read incoming data
 		var raw map[string]any
 		err = json.NewDecoder(r.Body).Decode(&raw)
@@ -129,8 +136,8 @@ func addNewResource(
 			return
 		}
 		if len(raw) == 0 {
-			http.Error(w, "No valid json supplied", http.StatusBadRequest)
 			log.Error("REQUEST_ERROR", "error", "no valid json supplied")
+			http.Error(w, "No valid json supplied", http.StatusBadRequest)
 			return
 		}
 
@@ -186,6 +193,13 @@ func addNewResources_Group(
 		// Response intialization
 		response := map[string]any{"task_type": task_type}
 		w.Header().Set("Content-Type", "application/json")
+
+		// Check that a user is allowed to inteface with this command
+		if !middleware.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.POST_GROUP) {
+			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
+			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
+			return
+		}
 
 		var raw []map[string]any
 		err = json.NewDecoder(r.Body).Decode(&raw)
@@ -251,6 +265,13 @@ func getResource(
 		// Response intialization
 		w.Header().Set("Content-Type", "application/json")
 		response := map[string]any{"task_type": task_type}
+
+		// Check that a user is allowed to inteface with this command
+		if !middleware.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.GET) {
+			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
+			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
+			return
+		}
 
 		// Create new query builder and save it into the context of the request
 		qb := tools.NewQueryBuilder(log)
@@ -318,6 +339,13 @@ func updateResource(
 		// Response intialization
 		response := map[string]any{"task_type": task_type}
 		w.Header().Set("Content-Type", "application/json")
+
+		// Check that a user is allowed to inteface with this command
+		if !middleware.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.PUT) {
+			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
+			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
+			return
+		}
 
 		var raw map[string]any
 		err = json.NewDecoder(r.Body).Decode(&raw)
@@ -399,6 +427,13 @@ func updateResource_Group(
 		response := map[string]any{"task_type": task_type}
 		w.Header().Set("Content-Type", "application/json")
 
+		// Check that a user is allowed to inteface with this command
+		if !middleware.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.PUT_GROUP) {
+			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
+			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
+			return
+		}
+
 		var raw []map[string]any
 		err = json.NewDecoder(r.Body).Decode(&raw)
 		valid_resources, invalid_resources := tools.Validate_SliceOfMaps_AgainstConfig(cfg, raw, true, false)
@@ -455,9 +490,17 @@ func dynamicGetDiff(
 		req_id, _ := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
 		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", "Get Diff", "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
+		ctx := middleware.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
 		w.Header().Set("Content-Type", "application/json")
+
+		// Check that a user is allowed to inteface with this command
+		if !middleware.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.GET) {
+			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
+			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
+			return
+		}
 
 		diffCols := []string{"diff_id", "diff_type", "task_id", "missing_from_supplied", "missing_from_stored", "diffs", "generated_by_user", "checksum", "created", "note", "batched", "batched_date"}
 		qb := tools.NewQueryBuilder(log)
@@ -508,6 +551,13 @@ func dynamicCreateDiff(
 		log.Info("REQUEST_RECEIVED")
 		response := map[string]any{"task_type": task_type}
 		w.Header().Set("Content-Type", "application/json")
+
+		// Check that a user is allowed to inteface with this command
+		if !middleware.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.POST) {
+			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
+			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
+			return
+		}
 
 		var raw []map[string]any
 		err = json.NewDecoder(r.Body).Decode(&raw)
@@ -565,9 +615,17 @@ func dynamicActionDiff(
 		req_id, _ := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
 		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
+		ctx := middleware.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
 		w.Header().Set("Content-Type", "application/json")
+
+		// Check that a user is allowed to inteface with this command
+		if !middleware.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.PUT) {
+			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
+			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
+			return
+		}
 
 		checksum := tools.GetChecksum(r)
 		if checksum == "" {
@@ -671,6 +729,13 @@ func deleteResource(
 		response := map[string]any{"task_type": task_type}
 		w.Header().Set("Content-Type", "application/json")
 
+		// Check that a user is allowed to inteface with this command
+		if !middleware.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.DELETE) {
+			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
+			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
+			return
+		}
+
 		var raw map[string]any
 		err = json.NewDecoder(r.Body).Decode(&raw)
 		log.Debug("Decoded", "read data", fmt.Sprint(raw))
@@ -744,6 +809,13 @@ func deleteResource_Group(
 		response := map[string]any{"task_type": task_type}
 		w.Header().Set("Content-Type", "application/json")
 
+		// Check that a user is allowed to inteface with this command
+		if !middleware.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.DELETE_GROUP) {
+			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
+			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
+			return
+		}
+
 		var raw []map[string]any
 		err = json.NewDecoder(r.Body).Decode(&raw)
 		if err != nil {
@@ -793,13 +865,13 @@ func notAllowed(
 	return func(w http.ResponseWriter, r *http.Request) {
 		var allowed_methods []string
 		if allowed != nil {
-			if allowed.GET != nil && *allowed.GET           { allowed_methods = append(allowed_methods, "GET") }
-			if allowed.POST != nil && *allowed.POST         { allowed_methods = append(allowed_methods, "POST") }
-			if allowed.PUT != nil && *allowed.PUT           { allowed_methods = append(allowed_methods, "PUT") }
-			if allowed.DELETE != nil && *allowed.DELETE     { allowed_methods = append(allowed_methods, "DELETE") }
-			if allowed.POST_GROUP != nil && *allowed.POST_GROUP     { allowed_methods = append(allowed_methods, "POST-GROUP") }
-			if allowed.PUT_GROUP != nil && *allowed.PUT_GROUP       { allowed_methods = append(allowed_methods, "PUT-GROUP") }
-			if allowed.DELETE_GROUP != nil && *allowed.DELETE_GROUP { allowed_methods = append(allowed_methods, "DELETE-GROUP") }
+			if allowed.GET != nil           { allowed_methods = append(allowed_methods, "GET") }
+			if allowed.POST != nil          { allowed_methods = append(allowed_methods, "POST") }
+			if allowed.PUT != nil           { allowed_methods = append(allowed_methods, "PUT") }
+			if allowed.DELETE != nil        { allowed_methods = append(allowed_methods, "DELETE") }
+			if allowed.POST_GROUP != nil    { allowed_methods = append(allowed_methods, "POST-GROUP") }
+			if allowed.PUT_GROUP != nil     { allowed_methods = append(allowed_methods, "PUT-GROUP") }
+			if allowed.DELETE_GROUP != nil  { allowed_methods = append(allowed_methods, "DELETE-GROUP") }
 		}
 		if len(allowed_methods) > 0 {
 			w.Header().Set("Allow", strings.Join(allowed_methods, ", "))
