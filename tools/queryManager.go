@@ -613,8 +613,8 @@ func (qb *QueryBuilder) ApplyPagination(r *http.Request) {
 	if page_size != "" && page_size != "0" && IsInt(page_size) {
 		page_size_int = ConvertToInt(page_size)
 	}
-	if page_size_int < 0 { page_size_int = 0 }
-	if page_int < 0 { page_int = 0 }
+	if page_size_int < 0 { page_size_int = 25 }
+	if page_int < 0 { page_int = 1 }
 
 	if strings.ToLower(page) != "all" {
 		qb.SetLimit(page_size_int)
@@ -822,6 +822,7 @@ func (qb *QueryBuilder) ProcessHistoryURLParams(r *http.Request) error {
 		return err
 	}
 
+	qb.logger.Debug("Parsed form successfully")
 	allowed := make(map[string]struct{}, len(HistoryColumns))
 	for _, c := range HistoryColumns { allowed[c] = struct{}{} }
 	resolve := func(name string) (string, bool) {
@@ -831,11 +832,14 @@ func (qb *QueryBuilder) ProcessHistoryURLParams(r *http.Request) error {
 	}
 
 	qb.ApplyPagination(r)
+	qb.logger.Debug("Applied pagination")
 	qb.processFieldSelect(r, resolve)
+	qb.logger.Debug("Processed field select")
 
 	if changedBy := r.FormValue("changed_by"); changedBy != "" {
 		qb.SetWhereAbsolute("changed_by", changedBy)
 	}
+	qb.logger.Debug("Checked changed by")
 	if from := r.FormValue("from"); from != "" {
 		t, err := parseDate(from)
 		if err != nil {
@@ -852,9 +856,11 @@ func (qb *QueryBuilder) ProcessHistoryURLParams(r *http.Request) error {
 	}
 
 	qb.processSort(r, resolve)
+	qb.logger.Debug("Process sort")
 	if len(qb.sort) == 0 {
 		qb.sort = append(qb.sort, "changed_at DESC")
 	}
+	qb.logger.Debug("Set auto sort")
 	return nil
 }
 

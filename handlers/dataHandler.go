@@ -278,10 +278,10 @@ func getResource(
 		task_type := "Get Resource"
 		user_key := middleware.Contextkey("user")
 		req_ip := tools.GetIP(r)
-		req_id, err := tools.Generate32CharString()
+		req_id, _ := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
 		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
-		ctx := middleware.SetLogger(r.Context(), log)
+		ctx := middleware.SetLogger(context.WithoutCancel(r.Context()), log)
 
 		log.Info("REQUEST_RECEIVED")
 
@@ -317,20 +317,29 @@ func getResource(
 
 		// Get the rows
 		var (
-			rows  pgx.Rows
-			count pgx.Rows
-		)
-		g, ctx := errgroup.WithContext(ctx)
+			data        []map[string]any
+			total_count int
+		)	
+		g, queryCtx := errgroup.WithContext(ctx)
 
+		// Run the queries
 		g.Go(func() error {
-			var err error
-			rows, err = qm.Db.Query(ctx, query, qb.GetArgs()...)
+			r, err := qm.Db.Query(queryCtx, query, qb.GetArgs()...)
+			if err != nil {
+				return err
+			}
+			defer r.Close()
+			data, err = pgx.CollectRows(r, pgx.RowToMap)
 			return err
 		})
 
 		g.Go(func() error {
-			var err error
-			count, err = qm.Db.Query(ctx, qb.BuildCount(*cfg.Table_name))
+			r, err := qm.Db.Query(queryCtx, qb.BuildCount(*cfg.Table_name))
+			if err != nil {
+				return err
+			}
+			defer r.Close()
+			total_count, err = pgx.CollectOneRow(r, pgx.RowTo[int])
 			return err
 		})
 
@@ -340,17 +349,8 @@ func getResource(
 			return
 		}	
 
-		// Handle the rows
-		defer rows.Close()
-		defer count.Close()
-		response["data"], err = pgx.CollectRows(rows, pgx.RowToMap)
-		response["total_count"], err = pgx.CollectOneRow(count, pgx.RowTo[int])
-
-		// Handle error
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
+		response["data"] = data
+		response["total_count"] = total_count
 
 		// Return
 		json.NewEncoder(w).Encode(response)
@@ -369,7 +369,7 @@ func getResourceHistory(
 		task_type := "Get Resource History"
 		user_key := middleware.Contextkey("user")
 		req_ip := tools.GetIP(r)
-		req_id, err := tools.Generate32CharString()
+		req_id, _ := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
 		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "end_point", *cfg.End_point, "table", historyTable, "request_id", req_id)
 		ctx := middleware.SetLogger(r.Context(), log)
@@ -420,20 +420,29 @@ func getResourceHistory(
 		// Get the rows and count in parallel — both share qb.args because the count uses
 		// the same WHERE clauses.
 		var (
-			rows  pgx.Rows
-			count pgx.Rows
-		)
-		g, ctx := errgroup.WithContext(ctx)
+			data        []map[string]any
+			total_count int
+		)	
+		g, queryCtx := errgroup.WithContext(ctx)
 
+		// Run the queries
 		g.Go(func() error {
-			var err error
-			rows, err = qm.Db.Query(ctx, query, qb.GetArgs()...)
+			r, err := qm.Db.Query(queryCtx, query, qb.GetArgs()...)
+			if err != nil {
+				return err
+			}
+			defer r.Close()
+			data, err = pgx.CollectRows(r, pgx.RowToMap)
 			return err
 		})
 
 		g.Go(func() error {
-			var err error
-			count, err = qm.Db.Query(ctx, count_query, qb.GetArgs()...)
+			r, err := qm.Db.Query(queryCtx, count_query, qb.GetArgs()...)
+			if err != nil {
+				return err
+			}
+			defer r.Close()
+			total_count, err = pgx.CollectOneRow(r, pgx.RowTo[int])
 			return err
 		})
 
@@ -441,29 +450,13 @@ func getResourceHistory(
 			log.Error("GET_ERROR", "error", err)
 			http.Error(w, fmt.Sprintf("Error with the query:\n%v", err), http.StatusInternalServerError)
 			return
-		}
+		}	
 
-		defer rows.Close()
-		defer count.Close()
-
-		data, err := pgx.CollectRows(rows, pgx.RowToMap)
-		if err != nil {
-			log.Error("GET_ERROR", "error", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
 		// pgx returns jsonb columns as []byte; decode them so they render as nested JSON.
 		decodeHistoryJSONB(data)
 
-		total, err := pgx.CollectOneRow(count, pgx.RowTo[int])
-		if err != nil {
-			log.Error("GET_ERROR", "error", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
 		response["data"] = data
-		response["total_count"] = total
+		response["total_count"] = total_count
 
 		json.NewEncoder(w).Encode(response)
 	}
