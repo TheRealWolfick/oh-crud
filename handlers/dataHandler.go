@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
+	"golang.org/x/sync/errgroup"
 	"lotusforge.au/api-server/middleware"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/tools"
@@ -48,11 +49,27 @@ func RegisterRoutes(
 
 	// Handle specific function in get - primarily aggregate
 	handlerRegistry.Register(fmt.Sprintf("GET /%s/{function}", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleGet(cfg, qm, server_conf))), *cfg.Version)
+
+	// History route — only when the model opts in via track-history.
+	if cfg.Track_history != nil && *cfg.Track_history {
+		handlerRegistry.Register(
+			fmt.Sprintf("GET /%s/{key}/history", *cfg.End_point),
+			middleware.Cors(cfg, server_conf)(auth(handleGetHistory(cfg, qm, server_conf))),
+			*cfg.Version,
+		)
+	}
 }
 
 func handleGet(cfg *models.DataModel, qm *tools.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
 	if cfg.End_points_allowed != nil && cfg.End_points_allowed.GET != nil {
 		return getResource(qm, cfg, svr_cfg.Get())
+	}
+	return notAllowed(cfg.End_points_allowed)
+}
+
+func handleGetHistory(cfg *models.DataModel, qm *tools.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
+	if cfg.End_points_allowed != nil && cfg.End_points_allowed.GET != nil {
+		return getResourceHistory(qm, cfg, svr_cfg.Get())
 	}
 	return notAllowed(cfg.End_points_allowed)
 }
@@ -281,7 +298,7 @@ func getResource(
 
 		if err := qb.ProcessURLParams(r, cfg); err != nil {
 			log.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", err)
-			http.Error(w, "Error in parsing where clauses", http.StatusBadRequest)
+			http.Error(w, fmt.Sprintf("Error in parsing where clauses: %v", err.Error()), http.StatusBadRequest)
 			return
 		}
 
@@ -296,14 +313,29 @@ func getResource(
 		response["page_size"] = qb.GetPageSize()
 
 		// Get the rows
-		rows, err := qm.Db.Query(ctx, query, qb.GetArgs()...)
-		count, err := qm.Db.Query(ctx, qb.BuildCount(*cfg.Table_name))
+		var (
+			rows  pgx.Rows
+			count pgx.Rows
+		)
+		g, ctx := errgroup.WithContext(ctx)
 
-		if err != nil {
+		g.Go(func() error {
+			var err error
+			rows, err = qm.Db.Query(ctx, query, qb.GetArgs()...)
+			return err
+		})
+
+		g.Go(func() error {
+			var err error
+			count, err = qm.Db.Query(ctx, qb.BuildCount(*cfg.Table_name))
+			return err
+		})
+
+		if err := g.Wait(); err != nil {
 			log.Error("GET_ERROR", "error", err)
 			http.Error(w, fmt.Sprintf("Error with the query:\n%v", err), http.StatusInternalServerError)
 			return
-		}
+		}	
 
 		// Handle the rows
 		defer rows.Close()
@@ -319,6 +351,143 @@ func getResource(
 
 		// Return
 		json.NewEncoder(w).Encode(response)
+	}
+}
+
+
+func getResourceHistory(
+	qm *tools.QueueManager,
+	cfg *models.DataModel,
+	svr_cfg *models.ServerConfig,
+) http.HandlerFunc {
+	historyTable := fmt.Sprintf("%s_history", *cfg.Table_name)
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		task_type := "Get Resource History"
+		user_key := middleware.Contextkey("user")
+		req_ip := tools.GetIP(r)
+		req_id, err := tools.Generate32CharString()
+		req_username := r.Context().Value(user_key).(*models.User).Username
+		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "end_point", *cfg.End_point, "table", historyTable, "request_id", req_id)
+		ctx := middleware.SetLogger(r.Context(), log)
+
+		log.Info("REQUEST_RECEIVED")
+
+		// Response intialization
+		w.Header().Set("Content-Type", "application/json")
+		response := map[string]any{"task_type": task_type}
+
+		// Check that a user is allowed to inteface with this command
+		if !middleware.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.GET, svr_cfg) {
+			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
+			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
+			return
+		}
+
+		// Path key — the asset identifier, matched against history.record (FK to the
+		// model's track-history-field).
+		key := r.PathValue("key")
+		if key == "" {
+			http.Error(w, "Missing record key in path", http.StatusBadRequest)
+			return
+		}
+
+		qb := tools.NewQueryBuilder(log)
+		qb.SetWhereAbsolute("record", key)
+
+		if err := qb.ProcessHistoryURLParams(r); err != nil {
+			log.Error("REQUEST_ERROR", "error", err)
+			http.Error(w, fmt.Sprintf("Error parsing query parameters: %v", err.Error()), http.StatusBadRequest)
+			return
+		}
+
+		// Column list: explicit selection if provided, otherwise the full history schema.
+		cols := tools.HistoryColumns
+		if qb.HasFields() {
+			cols = qb.GetFields()
+		}
+
+		query := qb.BuildSelect(historyTable, cols)
+		count_query := qb.BuildCountWithWhere(historyTable)
+
+		// Save the page data into the response
+		response["page"] = qb.GetPage()
+		response["page_size"] = qb.GetPageSize()
+
+		// Get the rows and count in parallel — both share qb.args because the count uses
+		// the same WHERE clauses.
+		var (
+			rows  pgx.Rows
+			count pgx.Rows
+		)
+		g, ctx := errgroup.WithContext(ctx)
+
+		g.Go(func() error {
+			var err error
+			rows, err = qm.Db.Query(ctx, query, qb.GetArgs()...)
+			return err
+		})
+
+		g.Go(func() error {
+			var err error
+			count, err = qm.Db.Query(ctx, count_query, qb.GetArgs()...)
+			return err
+		})
+
+		if err := g.Wait(); err != nil {
+			log.Error("GET_ERROR", "error", err)
+			http.Error(w, fmt.Sprintf("Error with the query:\n%v", err), http.StatusInternalServerError)
+			return
+		}
+
+		defer rows.Close()
+		defer count.Close()
+
+		data, err := pgx.CollectRows(rows, pgx.RowToMap)
+		if err != nil {
+			log.Error("GET_ERROR", "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		// pgx returns jsonb columns as []byte; decode them so they render as nested JSON.
+		decodeHistoryJSONB(data)
+
+		total, err := pgx.CollectOneRow(count, pgx.RowTo[int])
+		if err != nil {
+			log.Error("GET_ERROR", "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		response["data"] = data
+		response["total_count"] = total
+
+		json.NewEncoder(w).Encode(response)
+	}
+}
+
+// decodeHistoryJSONB converts the raw []byte values returned by pgx for jsonb columns
+// (old_values, new_values) into decoded maps so they serialise as nested JSON rather
+// than base64 blobs.
+func decodeHistoryJSONB(rows []map[string]any) {
+	for _, row := range rows {
+		for _, col := range []string{"old_values", "new_values"} {
+			raw, ok := row[col]
+			if !ok || raw == nil {
+				continue
+			}
+			var decoded any
+			switch v := raw.(type) {
+			case []byte:
+				if json.Unmarshal(v, &decoded) == nil {
+					row[col] = decoded
+				}
+			case string:
+				if json.Unmarshal([]byte(v), &decoded) == nil {
+					row[col] = decoded
+				}
+			}
+		}
 	}
 }
 

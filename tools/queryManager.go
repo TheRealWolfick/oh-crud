@@ -15,18 +15,19 @@ import (
 )
 
 type QueryBuilder struct {
-	values   map[string]uint
-	where    map[string]uint
-	args     []any
-	fields   []string
-	groups   []string
-	pos      uint
-	wheremod map[string]string
-	query    string
-	logger   *slog.Logger
-	limit    int
-	offset   int
-	sort     []string
+	values       map[string]uint
+	where        map[string]uint
+	whereExtras  []string
+	args         []any
+	fields       []string
+	groups       []string
+	pos          uint
+	wheremod     map[string]string
+	query        string
+	logger       *slog.Logger
+	limit        int
+	offset       int
+	sort         []string
 }
 
 type SetCallback interface {
@@ -36,18 +37,19 @@ type SetCallback interface {
 // NewQueryBuilder creates a fresh query builder with no values or clauses set.
 func NewQueryBuilder(logger *slog.Logger) *QueryBuilder {
 	return &QueryBuilder{
-		values:   make(map[string]uint),
-		where:    make(map[string]uint),
-		args:     []any{},
-		fields:   []string{},
-		groups:   []string{},
-		pos:      1,
-		wheremod: make(map[string]string),
-		query:    "",
-		logger:   logger,
-		limit:    0,
-		offset:   0,
-		sort:     []string{},
+		values:      make(map[string]uint),
+		where:       make(map[string]uint),
+		whereExtras: []string{},
+		args:        []any{},
+		fields:      []string{},
+		groups:      []string{},
+		pos:         1,
+		wheremod:    make(map[string]string),
+		query:       "",
+		logger:      logger,
+		limit:       0,
+		offset:      0,
+		sort:        []string{},
 	}
 }
 
@@ -121,6 +123,17 @@ func (qb *QueryBuilder) innerSetWhere(field string, value any, mod string) {
 		qb.args[qb.values[field]] = value
 		qb.wheremod[field] = mod
 	}
+}
+
+// AppendWhere adds a free-form WHERE clause that does NOT deduplicate by field name.
+// Use this for range queries on the same column (e.g. changed_at >= $1 AND changed_at <= $2).
+func (qb *QueryBuilder) AppendWhere(field, mod string, value any) {
+	if value == nil {
+		return
+	}
+	qb.args = append(qb.args, value)
+	qb.whereExtras = append(qb.whereExtras, fmt.Sprintf("%s %s $%d", field, mod, qb.pos))
+	qb.pos++
 }
 
 func (qb *QueryBuilder) SetWhereAbsolute(field string, value any) {
@@ -378,7 +391,19 @@ func (qb *QueryBuilder) buildInsertHistory(cfg *models.DataModel, old_values map
 	old_vals := []byte{}
 	pk_field := *cfg.Primary_key
 	if cfg.Track_history_field != nil { pk_field = *cfg.Track_history_field }
-	record_field, _ := old_values[pk_field]
+
+	// Use the post-update value of the reference field as `record` whenever the caller
+	// supplied it. The asset_data_history.record FK has ON UPDATE CASCADE, so existing
+	// history rows have already been migrated by the time we insert. Falling back to
+	// old_values keeps inserts (where old_values is empty) working.
+	var record_field any
+	if t == "update" {
+		if v, ok := new_values[0][pk_field]; ok && v != nil {
+			record_field = v
+		} else {
+			record_field = old_values[pk_field]
+		}
+	}
 
 	// If it is an update, delete anything that isn't a change
 	if t == "update" {
@@ -478,22 +503,29 @@ func (qb *QueryBuilder) buildInsertHistory(cfg *models.DataModel, old_values map
 	return qb.query
 }
 
+// buildWhereClause assembles the WHERE fragment from qb.where and qb.whereExtras.
+// Returns the empty string if neither is populated, otherwise " WHERE a AND b ...".
+func (qb *QueryBuilder) buildWhereClause() string {
+	if len(qb.where) == 0 && len(qb.whereExtras) == 0 {
+		return ""
+	}
+	w := make([]string, 0, len(qb.where)+len(qb.whereExtras))
+	for key, val := range qb.where {
+		if reflect.TypeOf(qb.args[val-1]).Kind() == reflect.Slice {
+			w = append(w, fmt.Sprintf("%s IN $%d", key, val))
+		} else {
+			w = append(w, fmt.Sprintf("%s %s $%d", key, qb.wheremod[key], val))
+		}
+	}
+	w = append(w, qb.whereExtras...)
+	return fmt.Sprintf(" WHERE %s", strings.Join(w, " AND "))
+}
+
 func (qb *QueryBuilder) BuildSelect(table string, select_fields []string) string {
 	sb := strings.Builder{}
 
 	sb.WriteString(fmt.Sprintf("SELECT %s FROM %s", strings.Join(select_fields, ", "), table))
-
-	if len(qb.where) > 0 {
-		w := make([]string, 0)
-		for key, val := range qb.where {
-			if reflect.TypeOf(qb.args[val-1]).Kind() == reflect.Slice {
-				w = append(w, fmt.Sprintf("%s IN $%d", key, val))
-			} else {
-				w = append(w, fmt.Sprintf("%s %s $%d", key, qb.wheremod[key], val))
-			}
-		}
-		sb.WriteString(fmt.Sprintf(" WHERE %s", strings.Join(w, " AND ")))
-	}
+	sb.WriteString(qb.buildWhereClause())
 
 	if len(qb.groups) > 0 {
 		sb.WriteString(fmt.Sprintf(" GROUP BY %s", strings.Join(qb.groups, ", ")))
@@ -515,6 +547,12 @@ func (qb *QueryBuilder) BuildSelect(table string, select_fields []string) string
 
 func (qb *QueryBuilder) BuildCount(table string) string {
 	return fmt.Sprintf("SELECT COUNT(*) FROM %s;", table)
+}
+
+// BuildCountWithWhere is like BuildCount but applies the same WHERE clauses as BuildSelect.
+// It shares qb.args, so the same args slice must be passed to the count query.
+func (qb *QueryBuilder) BuildCountWithWhere(table string) string {
+	return fmt.Sprintf("SELECT COUNT(*) FROM %s%s;", table, qb.buildWhereClause())
 }
 
 // BuildUpdate builds a parameterized UPDATE query from the where and value clauses
@@ -556,8 +594,140 @@ func (qb *QueryBuilder) BuildDelete(cfg *models.DataModel) string {
 	return qb.query
 }
 
+// FieldResolver maps a user-supplied field token (URL param, sort key, fields list)
+// to its real database column name. Returns ("", false) if the token isn't allowed.
+type FieldResolver func(string) (string, bool)
+
+// processPagination reads `page` and `page_size` and sets limit/offset.
+// `page=all` disables pagination. Defaults: page=1, page_size=25.
+func (qb *QueryBuilder) processPagination(r *http.Request) {
+	page := r.FormValue("page")
+	page_size := r.FormValue("page_size")
+
+	page_int := 1
+	if page != "" && page != "0" && IsInt(page) {
+		page_int = ConvertToInt(page)
+	}
+	page_size_int := 25
+	if page_size != "" && page_size != "0" && IsInt(page_size) {
+		page_size_int = ConvertToInt(page_size)
+	}
+	if page_size_int < 0 { page_size_int = 0 }
+	if page_int < 0 { page_int = 0 }
+
+	if strings.ToLower(page) != "all" {
+		qb.SetLimit(page_size_int)
+		qb.SetOffset(page_size_int * (page_int - 1))
+	}
+}
+
+// processFieldSelect reads the `fields` URL param and adds each token that resolves
+// to a real column to qb.fields.
+func (qb *QueryBuilder) processFieldSelect(r *http.Request, resolve FieldResolver) {
+	raw := r.FormValue("fields")
+	if raw == "" { return }
+	for field := range strings.SplitSeq(raw, ",") {
+		if f, ok := resolve(field); ok {
+			qb.fields = append(qb.fields, f)
+		}
+	}
+}
+
+// processSort reads `sort_by` ("col,col2~desc,...") and appends valid entries to qb.sort.
+// Default direction is ASC. Tokens that don't resolve are silently skipped.
+func (qb *QueryBuilder) processSort(r *http.Request, resolve FieldResolver) {
+	raw := r.FormValue("sort_by")
+	if raw == "" { return }
+	for s := range strings.SplitSeq(raw, ",") {
+		temp := strings.Split(s, "~")
+		field_name, found := resolve(strings.Trim(temp[0], " "))
+		if !found { continue }
+		if len(temp) > 1 {
+			qb.sort = append(qb.sort, fmt.Sprintf("%s %s", field_name, ASCorDESC(temp[1])))
+		} else {
+			qb.sort = append(qb.sort, fmt.Sprintf("%s %s", field_name, "ASC"))
+		}
+	}
+}
+
+// processWhereFromConfig walks every field in the model and adds a WHERE clause for any
+// URL param matching the field's JSON name. Honors absolute-match and field type for
+// operator inference.
+func (qb *QueryBuilder) processWhereFromConfig(r *http.Request, cfg *models.DataModel) error {
+	for field_name, field_cfg := range cfg.Fields {
+		if field_cfg.JSON == nil || *field_cfg.JSON == "" { continue }
+		url_value := r.FormValue(*field_cfg.JSON)
+		if url_value == "" { continue }
+		if field_cfg.Type == nil { continue }
+		dereferenced := ValueDeref(field_cfg.Type)
+		if !dereferenced.IsValid() {
+			return fmt.Errorf("invalid data type found in config %q", *cfg.Name)
+		}
+		field_type, err := DecodeFieldType(dereferenced.Interface().(string))
+		if err != nil { return err }
+
+		is_abs := field_cfg.Absolute_match != nil && *field_cfg.Absolute_match
+		if is_abs {
+			if !ValidateValue(field_type, url_value) { continue }
+			qb.SetWhereAbsolute(field_name, url_value)
+		} else {
+			qb.SetWhere(field_name, url_value, field_type)
+		}
+	}
+	return nil
+}
+
+// processAggregate handles the GET /{endpoint}/aggregate route — group_by + aggregate +
+// sort_by, all keyed off model fields.
+func (qb *QueryBuilder) processAggregate(r *http.Request, cfg *models.DataModel) error {
+	if r.Method != "GET" { return nil }
+
+	gf := r.FormValue("group_by")
+	af := r.FormValue("aggregate")
+	sf := r.FormValue("sort_by")
+
+	if gf == "" && af == "" && sf == "" {
+		return fmt.Errorf("can't call aggregate with no aggregate methods")
+	}
+
+	for field := range strings.SplitSeq(gf, ",") {
+		f, allowed := CheckFieldGetValid(field, cfg)
+		if allowed {
+			qb.groups = append(qb.groups, f)
+			qb.fields = append(qb.fields, f)
+		}
+	}
+
+	for field := range strings.SplitSeq(af, ",") {
+		parsed_field, valid := ParseAggregateFuncString(field, qb, cfg)
+		if !valid { continue }
+		if slices.Contains(qb.fields, parsed_field) { continue }
+		qb.fields = append(qb.fields, parsed_field)
+	}
+
+	if sf != "" {
+		for field := range strings.SplitSeq(sf, ",") {
+			sort_slice := strings.Split(field, "~")
+			parsed_field, valid := ParseAggregateFuncString(sort_slice[0], qb, cfg)
+			if !valid {
+				if !slices.Contains(qb.groups, sort_slice[0]) { continue }
+				parsed_field = sort_slice[0]
+			}
+			if slices.Contains(qb.fields, parsed_field) {
+				if len(sort_slice) > 1 {
+					qb.sort = append(qb.sort, fmt.Sprintf("%s %s", sort_slice[0], ASCorDESC(sort_slice[1])))
+				} else {
+					qb.sort = append(qb.sort, fmt.Sprintf("%s %s", sort_slice[0], "ASC"))
+				}
+			}
+		}
+	}
+	return nil
+}
+
 // ProcessURLParams reads URL query parameters and applies matching WHERE clauses
-// to the query builder based on the DataModel field config.
+// to the query builder based on the DataModel field config. Dispatches on the
+// {function} path value.
 func (qb *QueryBuilder) ProcessURLParams(r *http.Request, cfg *models.DataModel) error {
 	qb.logger.Debug("Setting where values from URL")
 	if err := r.ParseForm(); err != nil {
@@ -566,155 +736,65 @@ func (qb *QueryBuilder) ProcessURLParams(r *http.Request, cfg *models.DataModel)
 
 	switch r.PathValue("function") {
 	case "aggregate":
-		// Only GET is allowed at this current time
-		if r.Method != "GET" { break }
-
-		// Extract all form values
-		gf := r.FormValue("group_by")
-		af := r.FormValue("aggregate")
-		sf := r.FormValue("sort_by")
-
-		if gf == "" && af == "" && sf == "" {
-			return fmt.Errorf("Can't call aggregate with no aggregate methods")
-		}
-
-		// Group by logic
-		for field := range strings.SplitSeq(gf, ",") {
-			f, allowed := CheckFieldGetValid(field, cfg)
-			if allowed { 
-				qb.groups = append(qb.groups, f) 
-				qb.fields = append(qb.fields, f)
-			}
-		}
-
-		// Aggregated fields
-		for field := range strings.SplitSeq(af, ",") {
-			// Parse and soft continue if invalid
-			parsed_field, valid := ParseAggregateFuncString(field, qb, cfg)
-			if !valid { continue }
-
-			// Check if field is already in fields, soft continue if yes
-			if slices.Contains(qb.fields, parsed_field) { continue }
-
-			// Add field to list'
-			qb.fields = append(qb.fields, parsed_field)
-		}
-
-		// Having logic
-
-		// Sort logic
-		if sf != "" {
-			for field := range strings.SplitSeq(sf, ",") {
-				// Extract the sort order from the string first
-				sort_slice := strings.Split(field, "~")
-
-				// Parse and soft continue if invalid
-				parsed_field, valid := ParseAggregateFuncString(sort_slice[0], qb, cfg)
-				if !valid { 
-					// It may be a grouped fields and not an aggregated fields. Check and update
-					if !slices.Contains(qb.groups, sort_slice[0]) { continue }
-					parsed_field = sort_slice[0]
-				}
-
-				// Check if it is in the select fields (can be sorted by)
-				if slices.Contains(qb.fields, parsed_field) {
-					if len(sort_slice) > 1 {
-						qb.sort = append(qb.sort, fmt.Sprintf("%s %s", sort_slice[0], ASCorDESC(sort_slice[1])))
-					} else {
-						qb.sort = append(qb.sort, fmt.Sprintf("%s %s", sort_slice[0], "ASC"))
-					}
-				}
-			}
-		}
-
+		return qb.processAggregate(r, cfg)
 	case "":
-		var page_int int
-		var page_size_int int
-		page := r.FormValue("page")
-		page_size := r.FormValue("page_size")
-		fields := r.FormValue("fields")
+		qb.processPagination(r)
+		qb.processFieldSelect(r, func(f string) (string, bool) { return CheckFieldGetValid(f, cfg) })
+		if err := qb.processWhereFromConfig(r, cfg); err != nil {
+			return err
+		}
+		qb.processSort(r, func(f string) (string, bool) { return CheckFieldExists(strings.Trim(f, " "), cfg) })
+		return nil
+	default:
+		return fmt.Errorf("invalid function %q", r.PathValue("function"))
+	}
+}
 
-		// Page logic
-		if page == "" || page == "0" || !IsInt(page) {
-			page_int = 1
-			qb.logger.Debug("Set page_int to default value of 1")
-		} else {
-			page_int = ConvertToInt(page)
-		}
-		if page_size == "" || page_size == "0" || !IsInt(page_size) {
-			page_size_int = 25
-			qb.logger.Debug("Set page_size_int to default value of 25")
-		} else {
-			page_size_int = ConvertToInt(page_size)
-		}
-		if page_size_int < 0 {
-			page_size_int = 0
-		}
-		if page_int < 0 {
-			page_int = 0
-		}
-		if strings.ToLower(page) != "all" {
-			qb.SetLimit(page_size_int)
-			qb.SetOffset(page_size_int * (page_int - 1))
-		}
+// HistoryColumns is the fixed set of columns on every <table>_history table.
+var HistoryColumns = []string{"change_id", "record", "changed_by", "changed_at", "old_values", "new_values"}
 
-		// Fields logic
-		if fields != "" {
-			for field := range strings.SplitSeq(fields, ",") {
-				f, allowed := CheckFieldGetValid(field, cfg)
-				if allowed { qb.fields = append(qb.fields, f) }
-			}
-		}
-
-		// Process all valid fields in the url query for the where clause
-		for field_name, field_cfg := range cfg.Fields {
-			if field_cfg.JSON == nil || *field_cfg.JSON == "" {
-				continue
-			}
-			url_value := r.FormValue(*field_cfg.JSON)
-			if url_value == "" {
-				continue
-			}
-			if field_cfg.Type == nil {
-				continue
-			}
-			dereferenced := ValueDeref(field_cfg.Type)
-			if !dereferenced.IsValid() {
-				return fmt.Errorf("invalid data type found in config %q", *cfg.Name)
-			}
-			field_type, err := DecodeFieldType(dereferenced.Interface().(string))
-			if err != nil {
-				return err
-			}
-
-			is_abs := field_cfg.Absolute_match != nil && *field_cfg.Absolute_match
-			if is_abs {
-				if !ValidateValue(field_type, url_value) {
-					continue
-				}
-				qb.SetWhereAbsolute(field_name, url_value)
-			} else {
-				qb.SetWhere(field_name, url_value, field_type)
-			}
-		}
-		// Sort logic
-		sort_string := r.FormValue("sort_by")
-		if sort_string != "" {
-			for s := range strings.SplitSeq(sort_string, ",") {
-				temp := strings.Split(s, "~")
-				field_name, found := CheckFieldExists(strings.Trim(temp[0], " "), cfg)
-				if found {
-					if len(temp) > 1 {
-						qb.sort = append(qb.sort, fmt.Sprintf("%s %s", field_name, ASCorDESC(temp[1])))
-					} else {
-						qb.sort = append(qb.sort, fmt.Sprintf("%s %s", field_name, "ASC"))
-					}
-					qb.logger.Debug("Appended a sort column", "field_name", field_name)
-				}
-			}
-		}
+// ProcessHistoryURLParams reads URL query parameters for the history endpoint.
+// Supports: page, page_size, fields, changed_by, from, to (range on changed_at), sort_by.
+// Defaults to ORDER BY changed_at DESC if the caller didn't specify.
+func (qb *QueryBuilder) ProcessHistoryURLParams(r *http.Request) error {
+	qb.logger.Debug("Setting where values from URL for history")
+	if err := r.ParseForm(); err != nil {
+		return err
 	}
 
+	allowed := make(map[string]struct{}, len(HistoryColumns))
+	for _, c := range HistoryColumns { allowed[c] = struct{}{} }
+	resolve := func(name string) (string, bool) {
+		name = strings.Trim(name, " ")
+		if _, ok := allowed[name]; ok { return name, true }
+		return "", false
+	}
+
+	qb.processPagination(r)
+	qb.processFieldSelect(r, resolve)
+
+	if changedBy := r.FormValue("changed_by"); changedBy != "" {
+		qb.SetWhereAbsolute("changed_by", changedBy)
+	}
+	if from := r.FormValue("from"); from != "" {
+		t, err := parseDate(from)
+		if err != nil {
+			return fmt.Errorf("invalid 'from' date %q: %v", from, err)
+		}
+		qb.AppendWhere("changed_at", ">=", t)
+	}
+	if to := r.FormValue("to"); to != "" {
+		t, err := parseDate(to)
+		if err != nil {
+			return fmt.Errorf("invalid 'to' date %q: %v", to, err)
+		}
+		qb.AppendWhere("changed_at", "<=", t)
+	}
+
+	qb.processSort(r, resolve)
+	if len(qb.sort) == 0 {
+		qb.sort = append(qb.sort, "changed_at DESC")
+	}
 	return nil
 }
 
