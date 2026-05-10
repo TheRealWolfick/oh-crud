@@ -182,6 +182,9 @@ func BootstrapModels(ctx context.Context, pool *pgxpool.Pool, loadedModels []mod
 		}
 		ptrs = append(ptrs, m)
 		tableNames = append(tableNames, *m.Table_name)
+		if m.Track_history != nil && *m.Track_history {
+		  tableNames = append(tableNames, fmt.Sprintf("%s_history", *m.Table_name))
+		}
 	}
 	if len(ptrs) == 0 {
 		return
@@ -296,6 +299,11 @@ func syncModel(ctx context.Context, pool *pgxpool.Pool, model *models.DataModel,
 		// Brand-new table not yet in the registry — append it.
 		ptrs = append(ptrs, model)
 		tableNames = append(tableNames, tableName)
+	}
+
+	// Check if this model has a history table
+	if model.Track_history != nil && *model.Track_history {
+		tableNames = append(tableNames, fmt.Sprintf("%s_history", *model.Table_name))
 	}
 
 	// Write individual per-table HCL files to disk (includes FKs, for documentation).

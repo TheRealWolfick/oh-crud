@@ -209,6 +209,16 @@ func recursiveBatchInsertProcess(
 	if err == nil {
 		log.Debug("Insert successful", "count", cmdTag.RowsAffected())
 		result.SuccessCount = int(cmdTag.RowsAffected())
+		// If this table tracks changes via a history, insert into the history table
+		if cfg.Track_history != nil && *cfg.Track_history {
+			qb_history := NewQueryBuilder(log)                                                // Use a new querybuilder
+			user, _ := middleware.GetUser(ctx) 																								// Get the user
+			query_history := qb_history.BuildMultiInsertHistory(cfg, items, user.Username)		// Build the insert
+			_, err := db.Exec(ctx, query_history, qb_history.GetArgs()...)														// Execute the insert
+			if err != nil {
+				qb_history.logger.Error("Error creating insert history records", "error", err) 	// Gracefully handle any errors
+			}
+		}
 		return result
 	}
 

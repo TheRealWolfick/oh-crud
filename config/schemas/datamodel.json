@@ -10,6 +10,7 @@
     "table-name": { "type": "string" },
     "end-point":  { "type": "string" },
     "track-history": { "type": "boolean" },
+    "track-history-field": { "type": "string" },
     "allow-diff": { "type": "boolean" },
     "diff-comparator": { "type": "string" },
     "primary-key": { "type": "string" },

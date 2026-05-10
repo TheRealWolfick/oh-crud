@@ -1,6 +1,6 @@
 ---
 name: Asset Categories
-version: 1.2.0
+version: 1.2.2
 table-name: asset_categories
 end-point: asset/category
 allow-diff: false
@@ -41,3 +41,4 @@ fields:
     type: string
     json: description
     db-type: character varying(60)
+    default: ""

@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -304,29 +305,33 @@ func (qb *QueryBuilder) BuildMultiInsert(cfg *models.DataModel, data []map[strin
 		return qb.query
 	}
 
-	c := []string{}
-	v := []string{}
+	c := []string{} // Columns
+	v := []string{} // Values
 	insert_time := time.Now().UTC()
 
+	// For each item to be inserted
 	for pos, row := range data {
-		qb.logger.Debug("Inserting row", "pos", pos, "row", fmt.Sprint(row))
+		// Store the values for the this item
 		local_values := []string{}
 
+		// Read through the fields / columns of the config
 		for field_name, field_cfg := range cfg.Fields {
+			// Skip if this field cannot be inserted
 			if field_cfg.Skip_insert != nil && *field_cfg.Skip_insert {
 				qb.logger.Debug("Field set to skip insert", "field", field_name)
 				continue
 			}
-			if pos == 0 {
-				c = append(c, field_name)
-			}
+			// If this is the first row, save the column
+			if pos == 0 { c = append(c, field_name) }
 
+			// Read this column info from the row data. If this column is not present, it will be !ok
 			val, ok := row[field_name]
 			if ok {
-				local_values = append(local_values, fmt.Sprintf("$%d", qb.pos))
-				qb.pos++
-				qb.args = append(qb.args, val)
+				qb.args = append(qb.args, val)																		// Save the value into the query builder args list
+				local_values = append(local_values, fmt.Sprintf("$%d", qb.pos))   // Save the position of this value in the query builder args list
+				qb.pos++																													// Increase the position marker for the next value
 			} else {
+				// Handle default values if it was not present
 				if field_cfg.Default == nil {
 					qb.args = append(qb.args, nil)
 				} else if *field_cfg.Default == "" {
@@ -342,21 +347,99 @@ func (qb *QueryBuilder) BuildMultiInsert(cfg *models.DataModel, data []map[strin
 						qb.args = append(qb.args, parsed)
 					}
 				}
+				// Save this item into the local value (row level) struture
 				local_values = append(local_values, fmt.Sprintf("$%d", qb.pos))
 				qb.pos++
 			}
 		}
+		// Build the local (row level) sql
 		v = append(v, fmt.Sprintf("(%s)", strings.Join(local_values, ", ")))
 	}
 
+	// Create the final sql by combining the columns and all the row level insert sql strings
 	qb.query = fmt.Sprintf("INSERT INTO %s (%s) VALUES %s;", *cfg.Table_name, strings.Join(c, ", "), strings.Join(v, ", "))
-	fmt.Println(qb.query)
+	return qb.query
+}
+
+func (qb *QueryBuilder) BuildMultiInsertHistory(cfg *models.DataModel, data []map[string]any, user string) string {
+	if qb.query != "" {
+		qb.logger.Warn("Called BuildMultiInsertHistory after a query had already been built")
+		return qb.query
+	}
+
+	added_at := time.Now().UTC()
+	default_fields := []string{}
+	default_values := []any{}
+	row_strings := []string{}
+	pk_field := *cfg.Primary_key
+	if cfg.Track_history_field != nil { pk_field = *cfg.Track_history_field }
+
+	// Iterate through the fields of the config (to handle defaults)
+	for field_name, field_cfg := range cfg.Fields {
+		// Skip if not a default field or if it is a now() field as recalculating this will no longer be accurate. We are calculating this separately
+		if field_cfg.Default == nil || *field_cfg.Default == "now()" { continue }
+		default_fields = append(default_fields, field_name)
+		default_values = append(default_values, *field_cfg.Default)
+	}
+
+	// For each item that was added
+	for _, item := range data {
+		//
+		local_string := []string{}
+
+		// Default 
+		for i, field := range default_fields {
+			_, ok := item[field]
+			if !ok { continue }
+			// value was not included in the supplied data, so the default value must have been lost
+			item[field] = default_values[i]
+		}
+
+		// Marshal the values to json
+		item_json, err := json.Marshal(item)
+		if err != nil {
+			qb.logger.Error("Error marshalling inserted item", "item", item)
+		}
+
+		qb.logger.Debug("Values passed in", "row", item, "primary_key", *cfg.Primary_key, "pk_value", item[*cfg.Primary_key], "json", item_json)
+
+		// Add record to query builder
+		qb.args = append(qb.args, item[pk_field])
+		local_string = append(local_string, fmt.Sprintf("$%d", qb.pos))
+		qb.pos++
+
+		// Add changed_by to string
+		qb.args = append(qb.args, user)
+		local_string = append(local_string, fmt.Sprintf("$%d", qb.pos))
+		qb.pos++
+
+		// Add changed_at to query builder
+		qb.args = append(qb.args, added_at.Format(time.RFC3339))
+		local_string = append(local_string, fmt.Sprintf("$%d", qb.pos))
+		qb.pos++
+
+		// Add old_values to query builder
+		qb.args = append(qb.args, nil)
+		local_string = append(local_string, fmt.Sprintf("$%d", qb.pos))
+		qb.pos++
+
+		// Add new_values to query builder
+		qb.args = append(qb.args, item_json)
+		local_string = append(local_string, fmt.Sprintf("$%d", qb.pos))
+		qb.pos++
+
+		// Add fully build local string to row strings
+		row_strings = append(row_strings, fmt.Sprintf("(%s)",strings.Join(local_string, ", ")))
+	}
+	
+	// Build query string
+	qb.query = fmt.Sprintf("INSERT INTO %s (record, changed_by, changed_at, old_values, new_values) VALUES %s", fmt.Sprintf("%s_history",*cfg.Table_name), strings.Join(row_strings, ", "))
 	return qb.query
 }
 
 func (qb *QueryBuilder) BuildSelect(table string, select_fields []string) string {
 	sb := strings.Builder{}
-	
+
 	sb.WriteString(fmt.Sprintf("SELECT %s FROM %s", strings.Join(select_fields, ", "), table))
 
 	if len(qb.where) > 0 {

@@ -89,7 +89,7 @@ func ModelToHCL(m *models.DataModel) (string, error) {
 	sb.WriteString("# Auto-generated — source of truth is the YAML config. DO NOT EDIT.\n\n")
 	sb.WriteString("schema \"public\" {}\n\n")
 	sb.WriteString(tableBlock(m))
-	if m.Track_History != nil && *m.Track_History { sb.WriteString(tableHistoryBlock(m)) }
+	if m.Track_history != nil && *m.Track_history { sb.WriteString(tableHistoryBlock(m)) }
 	return sb.String(), nil
 }
 
@@ -120,7 +120,7 @@ func AllModelsToHCL(ms []*models.DataModel) (string, error) {
 		}
 		sb.WriteString(tableBlock(m))
 		sb.WriteString("\n")
-		if m.Track_History != nil && *m.Track_History {
+		if m.Track_history != nil && *m.Track_history {
 			sb.WriteString(tableHistoryBlock(m))
 		}
 	}
@@ -249,16 +249,23 @@ func tableHistoryBlock(m *models.DataModel) string {
 	var sb strings.Builder
 	tbl := fmt.Sprintf("%s_history", *m.Table_name)
 
-	sb.WriteString(fmt.Sprintf("\ntable %s  {\n", tbl))
+	// Determine the field "record" references — track-history-field takes precedence over primary-key.
+	refField := *m.Primary_key
+	if m.Track_history_field != nil {
+		refField = *m.Track_history_field
+	}
+	// FK columns must not be serial types (those belong only on the source table).
+	refDBType := serialBaseType(*m.Fields[refField].DB_type)
+
+	sb.WriteString(fmt.Sprintf("\ntable %q  {\n", tbl))
 	sb.WriteString(            "    schema = schema.public\n\n")
 
-	// columns
 	sb.WriteString(fmt.Sprintf("    column %q {\n", "change_id"))
 	sb.WriteString(fmt.Sprintf("      type = %s\n", hclType("serial")))
 	sb.WriteString(            "    }\n\n")
 
 	sb.WriteString(fmt.Sprintf("    column %q {\n", "record"))
-	sb.WriteString(fmt.Sprintf("      type = %s\n", hclType(*m.Fields[*m.Primary_key].DB_type)))
+	sb.WriteString(fmt.Sprintf("      type = %s\n", hclType(refDBType)))
 	sb.WriteString(            "    }\n\n")
 
 	sb.WriteString(fmt.Sprintf("    column %q {\n", "changed_by"))
@@ -279,15 +286,13 @@ func tableHistoryBlock(m *models.DataModel) string {
 	sb.WriteString(            "      null = true\n")
 	sb.WriteString(            "    }\n\n")
 
-	// Primary key
 	sb.WriteString(            "    primary_key {\n")
 	sb.WriteString(            "      columns = [column.record]\n")
 	sb.WriteString(            "    }\n\n")
 
-	// Foreign keys
 	sb.WriteString(fmt.Sprintf("    foreign_key %q {\n", fmt.Sprintf("fk_%s_history_pk", *m.Table_name)))
 	sb.WriteString(            "      columns     = [column.record]\n")
-	sb.WriteString(fmt.Sprintf("      ref_columns = [table.%s.column.%s]\n", *m.Table_name, *m.Primary_key))
+	sb.WriteString(fmt.Sprintf("      ref_columns = [table.%s.column.%s]\n", *m.Table_name, refField))
 	sb.WriteString(            "      on_update   = CASCADE\n")
 	sb.WriteString(            "      on_delete   = CASCADE\n")
 	sb.WriteString(            "    }\n\n")
@@ -300,7 +305,6 @@ func tableHistoryBlock(m *models.DataModel) string {
 	sb.WriteString(            "    }\n}\n")
 
 	return sb.String()
-
 }
 
 // ---------------------------------------------------------------------------
@@ -540,6 +544,22 @@ func hclDefault(raw string, dbType string) string {
 func isSerialType(dbType string) bool {
 	lower := strings.ToLower(strings.TrimSpace(dbType))
 	return lower == "serial" || lower == "bigserial" || lower == "smallserial"
+}
+
+// serialBaseType returns the base integer type for serial pseudo-types.
+// Used when a column references a serial PK via FK — the FK column must use
+// the plain integer type, not serial (which would create an unwanted sequence).
+func serialBaseType(dbType string) string {
+	switch strings.ToLower(strings.TrimSpace(dbType)) {
+	case "serial":
+		return "integer"
+	case "bigserial":
+		return "bigint"
+	case "smallserial":
+		return "smallint"
+	default:
+		return dbType
+	}
 }
 
 func isNumericDBType(lower string) bool {
