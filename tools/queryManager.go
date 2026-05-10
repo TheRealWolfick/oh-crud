@@ -379,16 +379,28 @@ func (qb *QueryBuilder) buildInsertHistory(cfg *models.DataModel, old_values map
 	old_vals := []byte{}
 	pk_field := *cfg.Primary_key
 	if cfg.Track_history_field != nil { pk_field = *cfg.Track_history_field }
-	record_field, _ := new_values[0][pk_field]
-  for k, v := range old_values {
-		updated, ok := new_values[0][k]
-		if ok && updated == v {
-			delete(new_values[0], k)
-			delete(old_values, k)
+	record_field, _ := old_values[pk_field]
+
+	// If it is an update, delete anything that isn't a change
+	if t == "update" {
+		// Delete any fields that haven't changed or are only in old values
+		for k, v := range old_values {
+			updated, ok := new_values[0][k]
+			if ok && updated == v {
+				delete(new_values[0], k)
+				delete(old_values, k)
+				continue
+			}
+			if !ok { delete(old_values, k) }
 		}
-		// return early if there are no updated values
-		if len(new_values[0]) == 0 { return "" }
+		// Delete any values only in new values as well
+		for k, _ := range new_values[0] {
+			_, ok := old_values[k]; if !ok { delete(new_values[0], k) }
+		}
 	}
+
+	// return early if there are no updated values
+	if len(new_values[0]) == 0 { return "" }
 	// Process old values
 	if old_values != nil && t == "update" {
 		// If old values is present, it is assumed there is only one item in new values as it is an update.
