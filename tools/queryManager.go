@@ -382,7 +382,20 @@ func (qb *QueryBuilder) buildInsertHistory(cfg *models.DataModel, old_values map
 	old_vals := []byte{}
 	pk_field := *cfg.Primary_key
 	if cfg.Track_history_field != nil { pk_field = *cfg.Track_history_field }
-	if old_values != nil { 
+	record_field, _ := new_values[0][pk_field]
+  for k, v := range old_values {
+		updated, ok := new_values[0][k]
+		if ok && updated == v {
+			delete(new_values[0], k)
+			delete(old_values, k)
+		}
+		// return early if there are no updated values
+		if len(new_values[0]) == 0 { return "" }
+	}
+	// Process old values
+	if old_values != nil && t == "update" {
+		// If old values is present, it is assumed there is only one item in new values as it is an update.
+
 		temp_vals, err := json.Marshal(old_values) 
 		if err != nil {
 			lgr.Debug("Error unmarshalling existing values", "error", err)
@@ -402,7 +415,7 @@ func (qb *QueryBuilder) buildInsertHistory(cfg *models.DataModel, old_values map
 
 	// For each item that was added, for updates, this will always be one
 	for _, item := range new_values {
-		//
+		// Build row level entry
 		local_string := []string{}
 
 		// Default 
@@ -422,7 +435,11 @@ func (qb *QueryBuilder) buildInsertHistory(cfg *models.DataModel, old_values map
 		lgr.Debug("Values passed in", "row", item, "primary_key", *cfg.Primary_key, "pk_value", item[*cfg.Primary_key], "json", item_json)
 
 		// Add record to query builder
-		qb.args = append(qb.args, item[pk_field])
+		if t == "update" {
+			qb.args = append(qb.args, record_field)
+		} else {
+			qb.args = append(qb.args, item[pk_field])
+		}
 		local_string = append(local_string, fmt.Sprintf("$%d", qb.pos))
 		qb.pos++
 

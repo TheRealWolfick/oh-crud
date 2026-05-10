@@ -335,8 +335,10 @@ func multiUpdate(
 				qb_history := NewQueryBuilder(log)                                                                  // Use a new querybuilder
 				user, _ := middleware.GetUser(ctx) 																								                  // Get the user
 				query_history := qb_history.BuildUpdateHistory(cfg, existing_data, row, user.Username)	            // Build the insert
-				_, err := db.Exec(ctx, query_history, qb_history.GetArgs()...)												              // Execute the insert
-				if err != nil { qb_history.logger.Error("Error creating update history records", "error", err) } 	  // Gracefully handle any errors
+				if query_history != "" {
+					_, err := db.Exec(ctx, query_history, qb_history.GetArgs()...)												              // Execute the insert
+					if err != nil { qb_history.logger.Error("Error creating update history records", "error", err) } 	  // Gracefully handle any errors
+				}
 			}
 		} else {
 			report.Errors = append(report.Errors, models.MultiUpdateError{ID: idx, Error: err})
