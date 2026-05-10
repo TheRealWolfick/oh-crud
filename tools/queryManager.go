@@ -111,7 +111,6 @@ func (qb *QueryBuilder) innerSetWhere(field string, value any, mod string) {
 	if value == nil {
 		return
 	}
-	qb.logger.Debug("Setting where value", "field", field, "value", value)
 	_, exists := qb.where[field]
 	if !exists {
 		qb.where[field] = qb.pos
@@ -119,7 +118,6 @@ func (qb *QueryBuilder) innerSetWhere(field string, value any, mod string) {
 		qb.args = append(qb.args, value)
 		qb.pos++
 	} else {
-		qb.logger.Debug("Field already exists in where map")
 		qb.args[qb.values[field]] = value
 		qb.wheremod[field] = mod
 	}
@@ -129,7 +127,6 @@ func (qb *QueryBuilder) SetWhereAbsolute(field string, value any) {
 	if value == nil {
 		return
 	}
-	qb.logger.Debug("Setting absolute where value", "field", field, "value", value)
 	_, exists := qb.where[field]
 	if !exists {
 		qb.where[field] = qb.pos
@@ -504,7 +501,6 @@ func (qb *QueryBuilder) BuildSelect(table string, select_fields []string) string
 	}
 
 	sb.WriteString(";")
-	qb.logger.Debug("Query string built", "qry", sb.String())
 	return sb.String()
 }
 
