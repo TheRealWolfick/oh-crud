@@ -416,7 +416,7 @@ func (qb *QueryBuilder) buildInsertHistory(cfg *models.DataModel, old_values map
 		// Iterate through the fields of the config (to handle defaults)
 		for field_name, field_cfg := range cfg.Fields {
 			// Skip if not a default field or if it is a now() field as recalculating this will no longer be accurate. We are calculating this separately
-			if field_cfg.Default == nil || *field_cfg.Default == "now()" { continue }
+			if field_cfg.Default == nil || *field_cfg.Default == "now()" || *field_cfg.Default == "" { continue }
 			default_fields = append(default_fields, field_name)
 			default_values = append(default_values, *field_cfg.Default)
 		}
@@ -430,7 +430,7 @@ func (qb *QueryBuilder) buildInsertHistory(cfg *models.DataModel, old_values map
 		// Default 
 		for i, field := range default_fields {
 			_, ok := item[field]
-			if !ok { continue }
+			if ok { continue }
 			// value was not included in the supplied data, so the default value must have been lost
 			item[field] = default_values[i]
 		}
