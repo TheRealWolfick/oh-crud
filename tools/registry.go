@@ -102,3 +102,16 @@ func (r *ModelRegistry) All() []models.DataModel {
 	}
 	return out
 }
+
+// ByEndpoint returns the model whose End_point matches the given path, or
+// (nil, false) if no model claims that endpoint.
+func (r *ModelRegistry) ByEndpoint(end_point string) (*models.DataModel, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, m := range r.models {
+		if m.End_point != nil && *m.End_point == end_point {
+			return m, true
+		}
+	}
+	return nil, false
+}

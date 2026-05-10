@@ -47,13 +47,16 @@ func RegisterRoutes(
 		handlerRegistry.Register(fmt.Sprintf("PUT /%s/diff", *cfg.End_point), auth(dynamicActionDiff(cfg, qm, server_conf.Get())), *cfg.Version)
 	}
 
-	// Handle specific function in get - primarily aggregate
-	handlerRegistry.Register(fmt.Sprintf("GET /%s/{function}", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleGet(cfg, qm, server_conf))), *cfg.Version)
+	// Built-in functions live under /fn/{function}. Today this dispatches to
+	// the aggregate handler; user-defined functions are registered separately.
+	handlerRegistry.Register(fmt.Sprintf("GET /%s/fn/{function}", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleGet(cfg, qm, server_conf))), *cfg.Version)
 
 	// History route — only when the model opts in via track-history.
+	// Path shape mirrors /fn/{function} so a literal segment sits at the same
+	// position, avoiding ambiguity with /{key}/history vs /fn/{function}.
 	if cfg.Track_history != nil && *cfg.Track_history {
 		handlerRegistry.Register(
-			fmt.Sprintf("GET /%s/{key}/history", *cfg.End_point),
+			fmt.Sprintf("GET /%s/history/{key}", *cfg.End_point),
 			middleware.Cors(cfg, server_conf)(auth(handleGetHistory(cfg, qm, server_conf))),
 			*cfg.Version,
 		)

@@ -22,6 +22,7 @@ func main() {
 	default_models_dir := "./config/default"
 	models_dir := "./config/base-models"
 	special_models_dir := "./config/special-models"
+	functions_dir := "./config/functions"
 
 	// Load the logger
 	logger := tools.LoadLogger()
@@ -83,11 +84,20 @@ func main() {
 		handlers.RegisterRoutes(&dm, handlerRegister, authMiddleware, qm, server_conf)
 	}
 
+	// Load and register declarative functions. Must happen after models are
+	// registered because each function validates against its bound model.
+	functionRegister := tools.NewFunctionRegistry()
+	for _, fn := range tools.LoadFunctionsFromDir(functions_dir, modelRegister, logger) {
+		functionRegister.Register(fn)
+		handlers.RegisterFunctionRoutes(fn, modelRegister, handlerRegister, authMiddleware, qm, server_conf)
+	}
+
 	// OpenAPI spec endpoint
 	mux.Handle("GET /openapi.json", handlers.NewOpenAPIHandler(modelRegister))
 
 	// Load the file watchers
 	go monitors.ModelsMonitor(handlerRegister, modelRegister, authMiddleware, qm, gate, server_conf)
+	go monitors.FunctionsMonitor(handlerRegister, modelRegister, functionRegister, authMiddleware, qm, server_conf)
 	go monitors.ServerConfigMonitor(server_conf, logger)
 
 	// Launch the server

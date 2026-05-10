@@ -1,0 +1,22 @@
+---
+name: assets-by-building
+version: 1.0.0
+bound-to: asset/data
+description: |
+  Sample declarative function. Counts assets grouped by building, with an
+  optional ?category=<cat_code> filter. Demonstrates the basic shape of a
+  function YAML — fixed `where` (none here), declared `parameters`, and an
+  aggregating output (group-by + aggregate).
+
+# URL params accepted: ?category=...
+parameters:
+  - name: category
+    field: asset_category
+  - name: status
+    field: asset_status
+
+# Aggregating: GROUP BY building, count(*), avg(condition_rating).
+fields: [building]
+group-by: [building]
+aggregate: [count, avg:condition_rating]
+sort-by: [count~desc]

@@ -598,9 +598,10 @@ func (qb *QueryBuilder) BuildDelete(cfg *models.DataModel) string {
 // to its real database column name. Returns ("", false) if the token isn't allowed.
 type FieldResolver func(string) (string, bool)
 
-// processPagination reads `page` and `page_size` and sets limit/offset.
+// ApplyPagination reads `page` and `page_size` and sets limit/offset.
 // `page=all` disables pagination. Defaults: page=1, page_size=25.
-func (qb *QueryBuilder) processPagination(r *http.Request) {
+// Exported because the function executor (handlers/functionHandler.go) reuses it.
+func (qb *QueryBuilder) ApplyPagination(r *http.Request) {
 	page := r.FormValue("page")
 	page_size := r.FormValue("page_size")
 
@@ -677,52 +678,111 @@ func (qb *QueryBuilder) processWhereFromConfig(r *http.Request, cfg *models.Data
 	return nil
 }
 
-// processAggregate handles the GET /{endpoint}/aggregate route — group_by + aggregate +
-// sort_by, all keyed off model fields.
-func (qb *QueryBuilder) processAggregate(r *http.Request, cfg *models.DataModel) error {
-	if r.Method != "GET" { return nil }
+// AggregateSpec captures the inputs that shape a query's SELECT/GROUP BY/ORDER BY,
+// independent of where they came from (URL params or a declarative function YAML).
+type AggregateSpec struct {
+	Fields    []string // plain field tokens added to SELECT (no aggregate)
+	GroupBy   []string // field tokens for GROUP BY
+	Aggregate []string // aggregate tokens (count, sum:f, avg:f, min:f, max:f)
+	SortBy    []string // sort tokens (col or col~desc)
+}
 
-	gf := r.FormValue("group_by")
-	af := r.FormValue("aggregate")
-	sf := r.FormValue("sort_by")
+// IsEmpty reports whether the spec produces any SQL contribution.
+func (s AggregateSpec) IsEmpty() bool {
+	return len(s.Fields) == 0 && len(s.GroupBy) == 0 && len(s.Aggregate) == 0 && len(s.SortBy) == 0
+}
 
-	if gf == "" && af == "" && sf == "" {
-		return fmt.Errorf("can't call aggregate with no aggregate methods")
+// IsAggregating reports whether the spec triggers GROUP BY / aggregate function output.
+func (s AggregateSpec) IsAggregating() bool {
+	return len(s.GroupBy) > 0 || len(s.Aggregate) > 0
+}
+
+// parseAggregateFromURL builds an AggregateSpec from URL params on the standard
+// aggregate route (group_by=, aggregate=, sort_by=).
+func parseAggregateFromURL(r *http.Request) AggregateSpec {
+	return AggregateSpec{
+		GroupBy:   splitCSV(r.FormValue("group_by")),
+		Aggregate: splitCSV(r.FormValue("aggregate")),
+		SortBy:    splitCSV(r.FormValue("sort_by")),
 	}
+}
 
-	for field := range strings.SplitSeq(gf, ",") {
+// splitCSV returns nil for empty input so callers can use len() == 0 cleanly.
+func splitCSV(s string) []string {
+	if s == "" { return nil }
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		t := strings.TrimSpace(p)
+		if t != "" { out = append(out, t) }
+	}
+	return out
+}
+
+// ApplyAggregateSpec resolves field tokens against the model and populates
+// qb.fields / qb.groups / qb.sort. Tokens that don't resolve are silently
+// skipped (consistent with the existing aggregate URL behaviour).
+func (qb *QueryBuilder) ApplyAggregateSpec(spec AggregateSpec, cfg *models.DataModel) error {
+	// 1. Plain SELECT fields.
+	for _, field := range spec.Fields {
 		f, allowed := CheckFieldGetValid(field, cfg)
-		if allowed {
-			qb.groups = append(qb.groups, f)
+		if !allowed { continue }
+		if !slices.Contains(qb.fields, f) {
 			qb.fields = append(qb.fields, f)
 		}
 	}
 
-	for field := range strings.SplitSeq(af, ",") {
-		parsed_field, valid := ParseAggregateFuncString(field, qb, cfg)
-		if !valid { continue }
-		if slices.Contains(qb.fields, parsed_field) { continue }
-		qb.fields = append(qb.fields, parsed_field)
+	// 2. GROUP BY columns — also added to SELECT (PostgreSQL requires it).
+	for _, field := range spec.GroupBy {
+		f, allowed := CheckFieldGetValid(field, cfg)
+		if !allowed { continue }
+		if !slices.Contains(qb.groups, f) {
+			qb.groups = append(qb.groups, f)
+		}
+		if !slices.Contains(qb.fields, f) {
+			qb.fields = append(qb.fields, f)
+		}
 	}
 
-	if sf != "" {
-		for field := range strings.SplitSeq(sf, ",") {
-			sort_slice := strings.Split(field, "~")
-			parsed_field, valid := ParseAggregateFuncString(sort_slice[0], qb, cfg)
-			if !valid {
-				if !slices.Contains(qb.groups, sort_slice[0]) { continue }
-				parsed_field = sort_slice[0]
-			}
-			if slices.Contains(qb.fields, parsed_field) {
-				if len(sort_slice) > 1 {
-					qb.sort = append(qb.sort, fmt.Sprintf("%s %s", sort_slice[0], ASCorDESC(sort_slice[1])))
-				} else {
-					qb.sort = append(qb.sort, fmt.Sprintf("%s %s", sort_slice[0], "ASC"))
-				}
-			}
+	// 3. Aggregate function expressions — added to SELECT.
+	for _, field := range spec.Aggregate {
+		parsed, valid := ParseAggregateFuncString(field, qb, cfg)
+		if !valid { continue }
+		if slices.Contains(qb.fields, parsed) { continue }
+		qb.fields = append(qb.fields, parsed)
+	}
+
+	// 4. Sort. Tokens may name an aggregate (resolved via ParseAggregateFuncString),
+	//    a group-by column, or a plain field — but the resolved column must already
+	//    appear in the SELECT list.
+	for _, field := range spec.SortBy {
+		sort_slice := strings.Split(field, "~")
+		token := strings.TrimSpace(sort_slice[0])
+		parsed, valid := ParseAggregateFuncString(token, qb, cfg)
+		if !valid {
+			if !slices.Contains(qb.groups, token) { continue }
+			parsed = token
+		}
+		if !slices.Contains(qb.fields, parsed) { continue }
+		if len(sort_slice) > 1 {
+			qb.sort = append(qb.sort, fmt.Sprintf("%s %s", sort_slice[0], ASCorDESC(sort_slice[1])))
+		} else {
+			qb.sort = append(qb.sort, fmt.Sprintf("%s %s", sort_slice[0], "ASC"))
 		}
 	}
 	return nil
+}
+
+// processAggregate handles the GET /{endpoint}/fn/aggregate route — group_by +
+// aggregate + sort_by, all keyed off model fields. Thin wrapper around
+// parseAggregateFromURL + ApplyAggregateSpec.
+func (qb *QueryBuilder) processAggregate(r *http.Request, cfg *models.DataModel) error {
+	if r.Method != "GET" { return nil }
+	spec := parseAggregateFromURL(r)
+	if spec.IsEmpty() {
+		return fmt.Errorf("can't call aggregate with no aggregate methods")
+	}
+	return qb.ApplyAggregateSpec(spec, cfg)
 }
 
 // ProcessURLParams reads URL query parameters and applies matching WHERE clauses
@@ -738,7 +798,7 @@ func (qb *QueryBuilder) ProcessURLParams(r *http.Request, cfg *models.DataModel)
 	case "aggregate":
 		return qb.processAggregate(r, cfg)
 	case "":
-		qb.processPagination(r)
+		qb.ApplyPagination(r)
 		qb.processFieldSelect(r, func(f string) (string, bool) { return CheckFieldGetValid(f, cfg) })
 		if err := qb.processWhereFromConfig(r, cfg); err != nil {
 			return err
@@ -770,7 +830,7 @@ func (qb *QueryBuilder) ProcessHistoryURLParams(r *http.Request) error {
 		return "", false
 	}
 
-	qb.processPagination(r)
+	qb.ApplyPagination(r)
 	qb.processFieldSelect(r, resolve)
 
 	if changedBy := r.FormValue("changed_by"); changedBy != "" {
