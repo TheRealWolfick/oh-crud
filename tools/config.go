@@ -80,6 +80,14 @@ func GetInsertRequiredFields(cfg *models.DataModel) []string {
 	return req_fields
 }
 
+// Get the field that is used for the history function
+func GetHistoryUniqueField(cfg *models.DataModel) string {
+	if cfg.Track_history_field != nil {
+		return *cfg.Track_history_field
+	}
+	return *cfg.Primary_key
+}
+
 // GetUpdateKeyOptions returns all valid key sets (PK + each unique key) expressed as JSON keys.
 // Currently does not handle json aliases.
 func GetUpdateKeyOptions(cfg *models.DataModel) [][]string {

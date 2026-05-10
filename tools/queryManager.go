@@ -63,6 +63,7 @@ func (qb *QueryBuilder) GetPage() int {
 func (qb *QueryBuilder) HasFields() bool { return len(qb.fields) > 0 }
 
 func (qb *QueryBuilder) GetFields() []string { return qb.fields }
+func (qb *QueryBuilder) GetValues() []any    { return qb.args }
 
 func (qb *QueryBuilder) GetPageSize() int { return qb.offset }
 
@@ -361,9 +362,16 @@ func (qb *QueryBuilder) BuildMultiInsert(cfg *models.DataModel, data []map[strin
 	return qb.query
 }
 
-func (qb *QueryBuilder) BuildMultiInsertHistory(cfg *models.DataModel, data []map[string]any, user string) string {
+func (qb *QueryBuilder) BuildUpdateHistory(cfg *models.DataModel, old_values map[string]any, new_values map[string]any, user string) string {
+  return qb.buildInsertHistory(cfg, old_values, []map[string]any{new_values}, user, "update", false)
+}
+func (qb *QueryBuilder) BuildMultiInsertHistory(cfg *models.DataModel, new_values []map[string]any, user string) string {
+  return qb.buildInsertHistory(cfg, nil, new_values, user, "insert", true)
+}
+func (qb *QueryBuilder) buildInsertHistory(cfg *models.DataModel, old_values map[string]any, new_values []map[string]any, user string, t string, use_defaults bool) string {
+	lgr := qb.logger.With("buildInsertHistory_type", t)
 	if qb.query != "" {
-		qb.logger.Warn("Called BuildMultiInsertHistory after a query had already been built")
+		lgr.Warn("Called BuildMultiInsertHistory after a query had already been built")
 		return qb.query
 	}
 
@@ -371,19 +379,29 @@ func (qb *QueryBuilder) BuildMultiInsertHistory(cfg *models.DataModel, data []ma
 	default_fields := []string{}
 	default_values := []any{}
 	row_strings := []string{}
+	old_vals := []byte{}
 	pk_field := *cfg.Primary_key
 	if cfg.Track_history_field != nil { pk_field = *cfg.Track_history_field }
+	if old_values != nil { 
+		temp_vals, err := json.Marshal(old_values) 
+		if err != nil {
+			lgr.Debug("Error unmarshalling existing values", "error", err)
+		}
+		old_vals = temp_vals
+	} else { old_vals = nil }
 
-	// Iterate through the fields of the config (to handle defaults)
-	for field_name, field_cfg := range cfg.Fields {
-		// Skip if not a default field or if it is a now() field as recalculating this will no longer be accurate. We are calculating this separately
-		if field_cfg.Default == nil || *field_cfg.Default == "now()" { continue }
-		default_fields = append(default_fields, field_name)
-		default_values = append(default_values, *field_cfg.Default)
+	if use_defaults {
+		// Iterate through the fields of the config (to handle defaults)
+		for field_name, field_cfg := range cfg.Fields {
+			// Skip if not a default field or if it is a now() field as recalculating this will no longer be accurate. We are calculating this separately
+			if field_cfg.Default == nil || *field_cfg.Default == "now()" { continue }
+			default_fields = append(default_fields, field_name)
+			default_values = append(default_values, *field_cfg.Default)
+		}
 	}
 
-	// For each item that was added
-	for _, item := range data {
+	// For each item that was added, for updates, this will always be one
+	for _, item := range new_values {
 		//
 		local_string := []string{}
 
@@ -398,10 +416,10 @@ func (qb *QueryBuilder) BuildMultiInsertHistory(cfg *models.DataModel, data []ma
 		// Marshal the values to json
 		item_json, err := json.Marshal(item)
 		if err != nil {
-			qb.logger.Error("Error marshalling inserted item", "item", item)
+			lgr.Error("Error marshalling item", "item", item)
 		}
 
-		qb.logger.Debug("Values passed in", "row", item, "primary_key", *cfg.Primary_key, "pk_value", item[*cfg.Primary_key], "json", item_json)
+		lgr.Debug("Values passed in", "row", item, "primary_key", *cfg.Primary_key, "pk_value", item[*cfg.Primary_key], "json", item_json)
 
 		// Add record to query builder
 		qb.args = append(qb.args, item[pk_field])
@@ -419,7 +437,7 @@ func (qb *QueryBuilder) BuildMultiInsertHistory(cfg *models.DataModel, data []ma
 		qb.pos++
 
 		// Add old_values to query builder
-		qb.args = append(qb.args, nil)
+		qb.args = append(qb.args, old_vals)
 		local_string = append(local_string, fmt.Sprintf("$%d", qb.pos))
 		qb.pos++
 
@@ -431,7 +449,7 @@ func (qb *QueryBuilder) BuildMultiInsertHistory(cfg *models.DataModel, data []ma
 		// Add fully build local string to row strings
 		row_strings = append(row_strings, fmt.Sprintf("(%s)",strings.Join(local_string, ", ")))
 	}
-	
+
 	// Build query string
 	qb.query = fmt.Sprintf("INSERT INTO %s (record, changed_by, changed_at, old_values, new_values) VALUES %s", fmt.Sprintf("%s_history",*cfg.Table_name), strings.Join(row_strings, ", "))
 	return qb.query

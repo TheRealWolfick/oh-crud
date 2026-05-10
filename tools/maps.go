@@ -161,3 +161,11 @@ func setFromMap(m map[string]any, setFunc func(string, any)) {
 		setFunc(k, v)
 	}
 }
+
+// Turns a slice of keys and a slice of values of equivalent sizes into a map
+func BuildMapFromSlices(k []string, v []any) map[string]any {
+	if len(k) != len(v) { return nil }
+	r_map := map[string]any{}
+	for i, key := range k { r_map[key] = v[i] }
+	return r_map
+}

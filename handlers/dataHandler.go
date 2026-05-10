@@ -375,29 +375,15 @@ func updateResource(
 			return
 		}
 
-		// Determine which key fields (PK or unique key) are present — they become the WHERE clause
-		where_fields, ok := tools.FindRowKeyFields(valid_resources[0], cfg)
-		if !ok {
-			log.Error("No key fields found for update")
-			http.Error(w, "No identifying key (primary key or unique key) supplied for update", http.StatusBadRequest)
-			return
-		}
-
-		// Create new query builder
-		qb := tools.NewQueryBuilder(log)
-		tools.SetValueAndWhereFromMap(qb, valid_resources[0], where_fields)
-
-		// Build the query
-		query := qb.BuildUpdate(cfg)
-
 		// Queue the query
 		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type))
-		task_id, err := qm.QueueExec(ctx_preserve, query, note, qb.GetArgs()...)
+		task_id, err := qm.QueueFunction(ctx_preserve, tools.MultiUpdate(ctx_preserve, qm.Db, cfg, valid_resources), note)
 		if err != nil {
 			qm.Logger.Error("TASK_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", err)
 			http.Error(w, fmt.Sprintf("Error creating update task\nError: %v", err), http.StatusInternalServerError)
 			return
 		}
+
 
 		// Build and return
 		response["task_id"] = task_id

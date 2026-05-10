@@ -287,7 +287,7 @@ func tableHistoryBlock(m *models.DataModel) string {
 	sb.WriteString(            "    }\n\n")
 
 	sb.WriteString(            "    primary_key {\n")
-	sb.WriteString(            "      columns = [column.record]\n")
+	sb.WriteString(            "      columns = [column.change_id]\n")
 	sb.WriteString(            "    }\n\n")
 
 	sb.WriteString(fmt.Sprintf("    foreign_key %q {\n", fmt.Sprintf("fk_%s_history_pk", *m.Table_name)))

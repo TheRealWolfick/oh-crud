@@ -1,6 +1,6 @@
 ---
 name: Asset Data
-version: 1.2.4
+version: 1.2.5
 table-name: asset_data
 end-point: asset/data
 track-history: true
