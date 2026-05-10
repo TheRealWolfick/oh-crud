@@ -316,7 +316,6 @@ func (qb *QueryBuilder) BuildMultiInsert(cfg *models.DataModel, data []map[strin
 		for field_name, field_cfg := range cfg.Fields {
 			// Skip if this field cannot be inserted
 			if field_cfg.Skip_insert != nil && *field_cfg.Skip_insert {
-				qb.logger.Debug("Field set to skip insert", "field", field_name)
 				continue
 			}
 			// If this is the first row, save the column
@@ -407,7 +406,7 @@ func (qb *QueryBuilder) buildInsertHistory(cfg *models.DataModel, old_values map
 
 		temp_vals, err := json.Marshal(old_values) 
 		if err != nil {
-			lgr.Debug("Error unmarshalling existing values", "error", err)
+			lgr.Error("Error unmarshalling existing values", "error", err)
 		}
 		old_vals = temp_vals
 	} else { old_vals = nil }
@@ -440,8 +439,6 @@ func (qb *QueryBuilder) buildInsertHistory(cfg *models.DataModel, old_values map
 		if err != nil {
 			lgr.Error("Error marshalling item", "item", item)
 		}
-
-		lgr.Debug("Values passed in", "row", item, "primary_key", *cfg.Primary_key, "pk_value", item[*cfg.Primary_key], "json", item_json)
 
 		// Add record to query builder
 		if t == "update" {
