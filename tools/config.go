@@ -515,6 +515,7 @@ func parseVersion(v string) ([3]int, error) {
 // Call this after YAML unmarshalling and before any DB or handler registration.
 func ValidateDataModel(m models.DataModel) error {
 	var errs []string
+	reserved_fields := []string{"delete_flag"}
 
 	if m.Name == nil || strings.TrimSpace(*m.Name) == "" {
 		errs = append(errs, "name is required")
@@ -557,6 +558,9 @@ func ValidateDataModel(m models.DataModel) error {
 
 	for fieldName, field := range m.Fields {
 		prefix := fmt.Sprintf("fields.%s", fieldName)
+		if slices.Contains(reserved_fields, fieldName) {
+			errs = append(errs, fmt.Sprintf("%s: field name is reserved and cannot be set manually", fieldName))
+		}
 
 		if field.Type == nil || strings.TrimSpace(*field.Type) == "" {
 			errs = append(errs, fmt.Sprintf("%s: type is required", prefix))

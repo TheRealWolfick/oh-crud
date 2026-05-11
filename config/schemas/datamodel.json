@@ -11,6 +11,7 @@
     "end-point":  { "type": "string" },
     "track-history": { "type": "boolean" },
     "track-history-field": { "type": "string" },
+    "soft-delete": { "type": "boolean" },
     "allow-diff": { "type": "boolean" },
     "diff-comparator": { "type": "string" },
     "primary-key": { "type": "string" },

@@ -65,6 +65,7 @@ type DataModel struct {
 	Version              *string  `yaml:"version"`
 	Track_history        *bool    `yaml:"track-history"`
 	Track_history_field  *string  `yaml:"track-history-field"`
+	Soft_delete          *bool    `yaml:"soft-delete"`
 	// Database metadata
 	Table_name          *string                   `yaml:"table-name"`
 	End_point           *string                   `yaml:"end-point"`
@@ -75,4 +76,19 @@ type DataModel struct {
 	Foreign_keys        map[string]ForeignKey     `yaml:"foreign-keys"`
 	Unique_keys         map[string]UniqueKey      `yaml:"unique-keys"`
 	Fields              map[string]DataModelField `yaml:"fields"`
+}
+
+
+func ptr[T any](v T) *T { return &v }
+
+func GetSoftDeleteConfig() *DataModelField {
+	return &DataModelField{
+		Type: ptr("bool"),
+    JSON: ptr("deleted"),
+		JSON_alias: []string{"is_deleted", "delete_flag"},
+    DB_type: ptr("boolean"),
+    Default: ptr("false"),
+		Skip_insert: ptr(true),
+    Include_in_diff: ptr(false),
+	}
 }
