@@ -58,7 +58,7 @@ func getFunctionResource(
 		task_type := "Get Function"
 		user_key := middleware.Contextkey("user")
 		req_ip := tools.GetIP(r)
-		req_id, err := tools.Generate32CharString()
+		req_id, _ := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
 		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", *fn.Name, "end_point", *fn.Bound_to, "request_id", req_id)
 		ctx := middleware.SetLogger(r.Context(), log)
@@ -100,20 +100,19 @@ func getFunctionResource(
 
 		qb := tools.NewQueryBuilder(log)
 
-		// 1. Static `where` — always-applied equality filters.
+		// Apply default wheres from the function
 		for k, v := range fn.Where {
 			qb.SetWhereAbsolute(k, v)
 		}
 
-		// 2. Declared parameters — translate URL values to WHERE clauses.
+		// Apply the parameters to the query. The user can filter based on parameters in the function
 		if err := applyParameters(qb, fn.Parameters, cfg, r); err != nil {
 			log.Error("REQUEST_ERROR", "error", err)
 			http.Error(w, fmt.Sprintf("Parameter error: %v", err), http.StatusBadRequest)
 			return
 		}
 
-		// 3. Build and apply the aggregate-shaped spec from YAML, with user
-		//    sort_by appended as secondary sort tokens.
+		// build aggregate spec from the function model. User can append additional sorts
 		spec := buildSpecFromFunction(fn, r)
 		if err := qb.ApplyAggregateSpec(spec, cfg); err != nil {
 			log.Error("REQUEST_ERROR", "error", err)
@@ -121,13 +120,10 @@ func getFunctionResource(
 			return
 		}
 
-		// 4. Pagination (page / page_size) — `fields=` URL param is intentionally ignored.
+		// Apply pagination.
 		qb.ApplyPagination(r)
 
-		// 5. SELECT column list. If the spec produced any qb.fields entries
-		//    (group-by, aggregates, or YAML-declared fields) use those. Otherwise
-		//    default to all columns of the bound model — same behaviour as the
-		//    standard GET endpoint.
+		// Build queries for the data and total counts
 		var query string
 		if qb.HasFields() {
 			query = qb.BuildSelect(*cfg.Table_name, qb.GetFields())
@@ -139,21 +135,30 @@ func getFunctionResource(
 		response["page"] = qb.GetPage()
 		response["page_size"] = qb.GetPageSize()
 
+		// Execute queries and read the data asyncronously
 		var (
-			rows  pgx.Rows
-			count pgx.Rows
-		)
-		g, ctx := errgroup.WithContext(ctx)
+			data        []map[string]any
+			total_count int
+		)	
+		g, queryCtx := errgroup.WithContext(ctx)
 
 		g.Go(func() error {
-			var err error
-			rows, err = qm.Db.Query(ctx, query, qb.GetArgs()...)
+			r, err := qm.Db.Query(queryCtx, query, qb.GetArgs()...)
+			if err != nil {
+				return err
+			}
+			defer r.Close()
+			data, err = pgx.CollectRows(r, pgx.RowToMap)
 			return err
 		})
 
 		g.Go(func() error {
-			var err error
-			count, err = qm.Db.Query(ctx, count_query, qb.GetArgs()...)
+			r, err := qm.Db.Query(queryCtx, count_query, qb.GetArgs()...)
+			if err != nil {
+				return err
+			}
+			defer r.Close()
+			total_count, err = pgx.CollectOneRow(r, pgx.RowTo[int])
 			return err
 		})
 
@@ -161,20 +166,10 @@ func getFunctionResource(
 			log.Error("GET_ERROR", "error", err)
 			http.Error(w, fmt.Sprintf("Error with the query:\n%v", err), http.StatusInternalServerError)
 			return
-		}
-		defer rows.Close()
-		defer count.Close()
+		}	
 
-		response["data"], err = pgx.CollectRows(rows, pgx.RowToMap)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		response["total_count"], err = pgx.CollectOneRow(count, pgx.RowTo[int])
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
+		response["data"] = data
+		response["total_count"] = total_count
 
 		json.NewEncoder(w).Encode(response)
 	}

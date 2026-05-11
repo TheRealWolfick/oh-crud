@@ -315,14 +315,13 @@ func getResource(
 		response["page"] = qb.GetPage()
 		response["page_size"] = qb.GetPageSize()
 
-		// Get the rows
+		// Run the queries and extract the data asyncronously
 		var (
 			data        []map[string]any
 			total_count int
 		)	
 		g, queryCtx := errgroup.WithContext(ctx)
 
-		// Run the queries
 		g.Go(func() error {
 			r, err := qm.Db.Query(queryCtx, query, qb.GetArgs()...)
 			if err != nil {
