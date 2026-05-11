@@ -921,30 +921,21 @@ func deleteResource(
 			return
 		}
 
-		where_fields, ok := tools.FindRowKeyFields(valid_resources[0], cfg)
-		if !ok {
-			log.Error("No key fields found for delete")
-			http.Error(w, "No identifying key (primary key or unique key) supplied for delete", http.StatusBadRequest)
-			return
-		}
-
-		qb := tools.NewQueryBuilder(log)
-		for _, k := range where_fields {
-			qb.SetWhereAbsolute(k, valid_resources[0][k])
-		}
-
-		query := qb.BuildDelete(cfg)
-
 		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type))
-		task_id, err := qm.QueueExec(ctx_preserve, query, note, qb.GetArgs()...)
+		task_id, err := qm.QueueFunction(ctx_preserve, tools.MultiDelete(ctx_preserve, qm.Db, cfg, valid_resources), note)
 		if err != nil {
 			log.Error("TASK_ERROR", "error", err)
-			http.Error(w, fmt.Sprintf("Error creating delete task\nError: %v", err), http.StatusInternalServerError)
+			http.Error(w, fmt.Sprintf("Error creating bulk delete task\nError: %v", err), http.StatusInternalServerError)
 			return
 		}
 
 		response["task_id"] = task_id
 		response["successful_submission"] = true
+		response["rows_received"] = len(raw)
+		response["rows_valid"] = len(valid_resources)
+		response["rows_invalid"] = len(invalid_resources)
+		response["invalid"] = invalid_resources
+
 		json.NewEncoder(w).Encode(response)
 	}
 }

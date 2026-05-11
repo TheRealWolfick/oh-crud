@@ -269,7 +269,7 @@ func (qb *QueryBuilder) SetDefaults(cfg *models.DataModel, r *http.Request) erro
 	}
 	// Handle soft delete
 	if cfg.Soft_delete != nil && *cfg.Soft_delete && r.FormValue("deleted") != "all" {
-		qb.SetWhereAbsolute("delete_flag", false)
+		qb.SetWhereAbsolute("deleted_flag", false)
 	}
 
 	return nil
@@ -420,6 +420,7 @@ func (qb *QueryBuilder) buildInsertHistory(cfg *models.DataModel, old_values map
 			record_field = old_values[pk_field]
 		}
 	}
+	lgr.Debug("vals", "old_values", old_values, "new_values", new_values)
 
 	// If it is an update, delete anything that isn't a change
 	if t == "update" {
@@ -597,7 +598,7 @@ func (qb *QueryBuilder) HasUpdates() bool { return len(qb.values) > 0 }
 // BuildDelete builds a parameterized DELETE query from the where clauses already set.
 func (qb *QueryBuilder) BuildDelete(cfg *models.DataModel) string {
 	if cfg.Soft_delete != nil && *cfg.Soft_delete {
-		qb.SetValue("delete_flag", true)
+		qb.SetValue("deleted_flag", true)
 		return qb.BuildUpdate(cfg)
 	}
 	if qb.query != "" {

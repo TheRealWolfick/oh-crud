@@ -515,7 +515,7 @@ func parseVersion(v string) ([3]int, error) {
 // Call this after YAML unmarshalling and before any DB or handler registration.
 func ValidateDataModel(m models.DataModel) error {
 	var errs []string
-	reserved_fields := []string{"delete_flag"}
+	reserved_fields := []string{"deleted_flag"}
 
 	if m.Name == nil || strings.TrimSpace(*m.Name) == "" {
 		errs = append(errs, "name is required")
@@ -729,6 +729,6 @@ func DynamicGetDatabaseColumns(cfg *models.DataModel, pk_only bool, req_only boo
 func ProcessModelAdditionalFields(m *models.DataModel) {
 	// Add soft delete field
 	if m.Soft_delete != nil && *m.Soft_delete {
-		m.Fields["delete_flag"] = *models.GetSoftDeleteConfig()
+		m.Fields["deleted_flag"] = *models.GetSoftDeleteConfig()
 	}
 }

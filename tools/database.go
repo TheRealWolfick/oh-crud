@@ -358,7 +358,7 @@ func multiUpdate(
 
 func multiDelete(
 	ctx context.Context,
-	db models.DBExecutor,
+	db models.DBExecQuery,
 	cfg *models.DataModel,
 	supplied []map[string]any,
 ) (map[string]any, error) {
@@ -373,6 +373,11 @@ func multiDelete(
 		log = GetBasicLogger()
 	}
 
+	log_history := false
+	if cfg.Track_history != nil && *cfg.Track_history {
+		log_history = true
+	}
+
 	for idx, row := range supplied {
 		where_fields, ok := FindRowKeyFields(row, cfg)
 		if !ok {
@@ -381,17 +386,57 @@ func multiDelete(
 			continue
 		}
 
+		// Map the where fields to check if the passed in value is a where field, or a value field
+		where_set := map[string]bool{}
+		for _, f := range where_fields {
+			where_set[f] = true
+		}
+
 		qb := NewQueryBuilder(log.With("key_fields", where_fields))
 		for _, f := range where_fields {
 			qb.SetWhereAbsolute(f, row[f])
+		}
+
+		// Update data for history logging
+		existing_data := map[string]any{}
+		if log_history { 
+			desired_fields_for_values := []string{GetHistoryUniqueField(cfg)}
+			fmt.Println("Desired field: ", desired_fields_for_values)
+
+			// Create a query builder
+			qb_existing_vals := NewQueryBuilder(log.With("special_logger", "getting historical values including reference", "key_fields", where_fields))
+
+			// Build the query
+			for k, v := range row { if where_set[k] { qb_existing_vals.SetWhereAbsolute(k, v) } else { desired_fields_for_values = append(desired_fields_for_values, k) }}
+			query := qb_existing_vals.BuildSelect(*cfg.Table_name, append(desired_fields_for_values, "deleted_flag"))
+			fmt.Println(query)
+
+			// Execute the query
+			rows, err := db.Query(ctx, query, qb_existing_vals.args...)
+			if err != nil {
+				qb_existing_vals.logger.Error("Error querying existing values", "error", err)
+			} else {
+				// Read the data
+				existing_data, err = pgx.CollectOneRow(rows, pgx.RowToMap)
+			}
 		}
 
 		query := qb.BuildDelete(cfg)
 		cmdtag, err := db.Exec(ctx, query, qb.GetArgs()...)
 		if err == nil && cmdtag.RowsAffected() > 0 {
 			report.SuccessCount = report.SuccessCount + int(cmdtag.RowsAffected())
-		} else {
-			report.Errors = append(report.Errors, models.MultiUpdateError{ID: idx, Error: err})
+
+			if log_history { 
+				log.Debug("log history is true")
+				qb_history := NewQueryBuilder(log)                                                                  // Use a new querybuilder
+				user, _ := middleware.GetUser(ctx) 																								                  // Get the user
+				query_history := qb_history.BuildUpdateHistory(cfg, existing_data, map[string]any{"deleted_flag": true}, user.Username)	            // Build the insert
+				log.Debug("query history built", "query", query_history)
+				if query_history != "" {
+					_, err := db.Exec(ctx, query_history, qb_history.GetArgs()...)												              // Execute the insert
+					if err != nil { qb_history.logger.Error("Error creating update history records", "error", err) } 	  // Gracefully handle any errors
+				}
+			}
 		}
 	}
 

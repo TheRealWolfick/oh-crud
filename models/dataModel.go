@@ -85,7 +85,7 @@ func GetSoftDeleteConfig() *DataModelField {
 	return &DataModelField{
 		Type: ptr("bool"),
     JSON: ptr("deleted"),
-		JSON_alias: []string{"is_deleted", "delete_flag"},
+		JSON_alias: []string{"is_deleted", "deleted_flag"},
     DB_type: ptr("boolean"),
     Default: ptr("false"),
 		Skip_insert: ptr(true),
