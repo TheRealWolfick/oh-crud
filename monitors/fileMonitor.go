@@ -28,6 +28,7 @@ func ModelsMonitor(handlerRegistry *tools.HandlerRegistry, modelRegistry *tools.
 				}
 				if event.Has(fsnotify.Write) {
 					updated_config, err := tools.LoadYAMLIntoModel[models.DataModel](event.Name)
+					tools.ProcessModelAdditionalFields(updated_config)
 					if err != nil {
 						qm.Logger.Error("Updated YAML failed to load. Skipping updating routes", "error", err)
 					} else {

@@ -59,6 +59,9 @@ func main() {
 	// Load config-driven models from special-models dir
 	all_models = append(all_models, loadModelsFromDir(special_models_dir, logger)...)
 
+	// Process models
+
+
 	// Sync database schema for all loaded models.
 	// Destructive changes are recorded in the gate and blocked until manually approved.
 	gate := schematools.NewPendingApprovalGate()
@@ -133,6 +136,7 @@ func loadModelsFromDir(dir string, logger interface{ Warn(string, ...any); Error
 			continue
 		}
 		data, err := tools.LoadYAMLIntoModel[models.DataModel](fmt.Sprintf("%s/%s", dir, info.Name()))
+		result = append(result, *data)
 		if err != nil {
 			logger.Warn(fmt.Sprintf("Failed to load config file: %s", info.Name()), "error", err)
 			continue
@@ -141,7 +145,7 @@ func loadModelsFromDir(dir string, logger interface{ Warn(string, ...any); Error
 			logger.Warn(fmt.Sprintf("Config file failed validation: %s", info.Name()), "error", err)
 			continue
 		}
-		result = append(result, *data)
+		tools.ProcessModelAdditionalFields(data)
 	}
 
 	return result

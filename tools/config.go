@@ -722,3 +722,13 @@ func DynamicGetDatabaseColumns(cfg *models.DataModel, pk_only bool, req_only boo
 	}
 	return database_columns
 }
+
+
+// ── Model transformers ────────────────────────────────────────────────────────────
+
+func ProcessModelAdditionalFields(m *models.DataModel) {
+	// Add soft delete field
+	if m.Soft_delete != nil && *m.Soft_delete {
+		m.Fields["delete_flag"] = *models.GetSoftDeleteConfig()
+	}
+}
