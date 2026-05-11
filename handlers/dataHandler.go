@@ -167,7 +167,7 @@ func addNewResource(
 		if len(valid_resources) < 1 {
 			log.Warn("Request with no valid resources")
 			response["successful_submission"] = false
-			response["rows_received"] = len(raw)
+			response["rows_received"] = 1
 			response["rows_valid"] = len(valid_resources)
 			response["rows_invalid"] = len(invalid_resources)
 			response["invalid"] = invalid_resources
@@ -298,7 +298,7 @@ func getResource(
 
 		// Create new query builder and save it into the context of the request
 		qb := tools.NewQueryBuilder(log)
-	  qb.SetDefaults(cfg)
+	  qb.SetDefaults(cfg, r)
 
 		if err := qb.ProcessURLParams(r, cfg); err != nil {
 			log.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", err)
@@ -334,7 +334,7 @@ func getResource(
 		})
 
 		g.Go(func() error {
-			r, err := qm.Db.Query(queryCtx, qb.BuildCount(*cfg.Table_name))
+			r, err := qm.Db.Query(queryCtx, qb.BuildCountWithWhere(*cfg.Table_name), qb.GetArgs()...)
 			if err != nil {
 				return err
 			}
@@ -396,7 +396,6 @@ func getResourceHistory(
 		}
 
 		qb := tools.NewQueryBuilder(log)
-	  qb.SetDefaults(cfg)
 		qb.SetWhereAbsolute("record", key)
 
 		if err := qb.ProcessHistoryURLParams(r); err != nil {

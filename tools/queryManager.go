@@ -261,15 +261,18 @@ func (qb *QueryBuilder) SetWhere(field string, value any, fieldType reflect.Kind
 
 // Read through a data model and set default cluases. At the current moment,
 // that is only where clauses
-func (qb *QueryBuilder) SetDefaults(cfg *models.DataModel) {
-	if cfg == nil { return }
+func (qb *QueryBuilder) SetDefaults(cfg *models.DataModel, r *http.Request) error {
+	if cfg == nil { return nil }
 
+	if err := r.ParseForm(); err != nil {
+		return err
+	}
 	// Handle soft delete
-	if cfg.Soft_delete != nil && *cfg.Soft_delete {
+	if cfg.Soft_delete != nil && *cfg.Soft_delete && r.FormValue("deleted") != "all" {
 		qb.SetWhereAbsolute("delete_flag", false)
 	}
 
-	return
+	return nil
 }
 
 func (qb *QueryBuilder) BuildInsert(table string, mod any) string {

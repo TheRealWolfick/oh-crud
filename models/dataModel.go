@@ -90,6 +90,5 @@ func GetSoftDeleteConfig() *DataModelField {
     Default: ptr("false"),
 		Skip_insert: ptr(true),
     Include_in_diff: ptr(false),
-		Private: ptr(true),
 	}
 }
