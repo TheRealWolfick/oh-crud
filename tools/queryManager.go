@@ -259,6 +259,19 @@ func (qb *QueryBuilder) SetWhere(field string, value any, fieldType reflect.Kind
 	setWhere(field, value, fieldType, qb.innerSetWhere)
 }
 
+// Read through a data model and set default cluases. At the current moment,
+// that is only where clauses
+func (qb *QueryBuilder) SetDefaults(cfg *models.DataModel) {
+	if cfg == nil { return }
+
+	// Handle soft delete
+	if cfg.Soft_delete != nil && *cfg.Soft_delete {
+		qb.SetWhereAbsolute("delete_flag", false)
+	}
+
+	return
+}
+
 func (qb *QueryBuilder) BuildInsert(table string, mod any) string {
 	if qb.query != "" {
 		return qb.query
@@ -580,6 +593,10 @@ func (qb *QueryBuilder) HasUpdates() bool { return len(qb.values) > 0 }
 
 // BuildDelete builds a parameterized DELETE query from the where clauses already set.
 func (qb *QueryBuilder) BuildDelete(cfg *models.DataModel) string {
+	if cfg.Soft_delete != nil && *cfg.Soft_delete {
+		qb.SetValue("delete_flag", true)
+		return qb.BuildUpdate(cfg)
+	}
 	if qb.query != "" {
 		qb.logger.Warn("Called BuildDelete_Dynamic after query had already been built")
 		return qb.query

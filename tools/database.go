@@ -58,6 +58,8 @@ func createDiff(
 	for field_name := range cfg.Fields {
 		cols = append(cols, field_name)
 	}
+	
+	// Create the query builder and set any default clauses
 	qb := NewQueryBuilder(log)
 	query := qb.BuildSelect(*cfg.Table_name, cols)
 
@@ -212,7 +214,9 @@ func recursiveBatchInsertProcess(
 	if !ok {
 		log = GetBasicLogger()
 	}
+
 	qb := NewQueryBuilder(log)
+	qb.SetDefaults(cfg)
 	query := qb.BuildMultiInsert(cfg, items)
 
 	cmdTag, err := db.Exec(ctx, query, qb.GetArgs()...)
