@@ -1,10 +1,13 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -28,6 +31,7 @@ type Task struct {
 	Note         string                                              `json:"note"`
 	Function     func(context.Context, ...any) (map[string]any, error) `json:"-"`
 	Args         []any                                               `json:"-"`
+	Cfg          models.DataModel                                   `json:"-"`
 }
 
 type QueueManager struct {
@@ -69,19 +73,19 @@ func NewQueue(db *pgxpool.Pool, num_workers int, logger *slog.Logger) *QueueMana
 func (qm *QueueManager) createTask(ctx context.Context, sql string, note string, args ...any) (*Task, error) {
 	task, ok := middleware.GetTask(ctx)
 	if !ok {
-		new_task_id, _ := Generate32CharString()
-		task.Id = new_task_id
+		return nil, fmt.Errorf("Task information was not saved into the context")
 	}
 	t := &Task{
-		TaskID:   task.Id,
-		TaskType: task.Type,
-		ExecType: "exec",
+		TaskID:    task.Id,
+		TaskType:  task.Type,
+		ExecType:  "exec",
 		StartTime: time.Now(),
-		Status:   "queued",
-		Ctx:      ctx,
-		Args:     args,
-		Note:     note,
-		Sql:      sql,
+		Status:    "queued",
+		Ctx:       ctx,
+		Args:      args,
+		Note:      note,
+		Sql:       sql,
+		Cfg:       *task.Cfg,
 	}
 	qm.logDatabaseEvent(ctx, "TASK_CREATE", t.logMiniUnsafe())
 	return t, nil
@@ -90,19 +94,19 @@ func (qm *QueueManager) createTask(ctx context.Context, sql string, note string,
 func (qm *QueueManager) createFunctionTask(ctx context.Context, function func(context.Context, ...any) (map[string]any, error), note string, args ...any) (*Task, error) {
 	task, ok := middleware.GetTask(ctx)
 	if !ok {
-		new_task_id, _ := Generate32CharString()
-		task.Id = new_task_id
+		return nil, fmt.Errorf("Task information was not saved into the context")
 	}
 	t := &Task{
-		TaskID:   task.Id,
-		TaskType: task.Type,
-		ExecType: "function",
+		TaskID:    task.Id,
+		TaskType:  task.Type,
+		ExecType:  "function",
 		StartTime: time.Now(),
-		Status:   "queued",
-		Ctx:      ctx,
-		Note:     note,
-		Args:     args,
-		Function: function,
+		Status:    "queued",
+		Ctx:       ctx,
+		Note:      note,
+		Args:      args,
+		Function:  function,
+		Cfg:       *task.Cfg,
 	}
 	qm.logDatabaseEvent(ctx, "TASK_CREATE", t.logMiniUnsafe())
 	return t, nil
@@ -136,6 +140,89 @@ func (qm *QueueManager) reportWork(w *Worker, status string, res map[string]any)
 			qm.logDatabaseEvent(w.TaskActioning.Ctx, "TASK_COMPLETE", log)
 		}
 	}
+	
+	// Run any webhooks
+	qm.actionWebhookReport(w)
+}
+
+func (qm *QueueManager) getReportableTaskInfo(w *Worker) map[string]any {
+	switch w.TaskActioning.Status {
+	case "error":
+		return map[string]any{
+			"task_id": w.TaskActioning.TaskID,
+			"task_type": w.TaskActioning.TaskType,
+			"task_start": w.TaskActioning.StartTime,
+			"task_end": w.TaskActioning.CompleteTime,
+			"task_status": w.TaskActioning.Status,
+			"task_error": w.TaskActioning.Response,
+		}
+	case "complete":
+		return map[string]any{
+			"task_id": w.TaskActioning.TaskID,
+			"task_type": w.TaskActioning.TaskType,
+			"task_start": w.TaskActioning.StartTime,
+			"task_end": w.TaskActioning.CompleteTime,
+			"task_status": w.TaskActioning.Status,
+			"task_response": w.TaskActioning.Response,
+		}
+	case "queued":
+		return map[string]any{
+			"task_id": w.TaskActioning.TaskID,
+			"task_type": w.TaskActioning.TaskType,
+			"task_start": w.TaskActioning.StartTime,
+			"task_status": w.TaskActioning.Status,
+		}
+	}
+	return map[string]any{
+		"task_id": w.TaskActioning.TaskID,
+		"task_type": w.TaskActioning.TaskType,
+		"task_start": w.TaskActioning.StartTime,
+		"task_status": w.TaskActioning.Status,
+	}
+}
+
+func (qm *QueueManager) actionWebhookReport(w *Worker) error {
+	// Send out any webhooks
+	if w.TaskActioning.Cfg.Webhooks != nil {
+		// Variable init
+		var res *http.Response
+		var err error
+
+		// Generate default reportable data
+		reportable_task_info := qm.getReportableTaskInfo(w)
+		json, err := json.Marshal(reportable_task_info)
+		if err != nil { return fmt.Errorf("Could not generate reportable task info") }
+
+
+		// Different reporting routes
+		switch w.TaskActioning.TaskType {
+		case "Add Resource", "Add Bulk Resources":
+			if w.TaskActioning.Cfg.Webhooks.On_insert != nil { 
+				res, err = http.Post(*w.TaskActioning.Cfg.Webhooks.On_insert, "application/json", bytes.NewReader(json))
+			} else if w.TaskActioning.Cfg.Webhooks.On_any != nil { 
+				res, err = http.Post(*w.TaskActioning.Cfg.Webhooks.On_any, "application/json", bytes.NewReader(json))
+			} 
+		case "Update Resource", "Update Multiple Resources":
+			if w.TaskActioning.Cfg.Webhooks.On_update != nil { 
+				res, err = http.Post(*w.TaskActioning.Cfg.Webhooks.On_update, "application/json", bytes.NewReader(json))
+			} else if w.TaskActioning.Cfg.Webhooks.On_any != nil { 
+				res, err = http.Post(*w.TaskActioning.Cfg.Webhooks.On_any, "application/json", bytes.NewReader(json))
+			} 
+		case "Delete Resource", "Delete Multiple Resources":
+			if w.TaskActioning.Cfg.Webhooks.On_delete != nil { 
+				res, err = http.Post(*w.TaskActioning.Cfg.Webhooks.On_delete, "application/json", bytes.NewReader(json))
+			} else if w.TaskActioning.Cfg.Webhooks.On_any != nil { 
+				res, err = http.Post(*w.TaskActioning.Cfg.Webhooks.On_any, "application/json", bytes.NewReader(json))
+			} 
+		default:
+			if w.TaskActioning.Cfg.Webhooks.On_any != nil { 
+				res, err = http.Post(*w.TaskActioning.Cfg.Webhooks.On_any, "application/json", bytes.NewReader(json))
+			} 
+		}
+		if res.StatusCode != 200 { qm.reportWork(w, "error: webhook", map[string]any{"error_code": res.Status}) }
+	}
+
+	return nil
 }
 
 func (qm *QueueManager) lookForTask() *Task {
@@ -195,6 +282,7 @@ func (qm *QueueManager) work(w *Worker) {
 			qm.reportWork(w, "success", func_response)
 		}
 	}
+
 
 	t := qm.lookForTask()
 	if t == nil {

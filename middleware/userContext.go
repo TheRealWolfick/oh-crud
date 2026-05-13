@@ -13,6 +13,7 @@ type Contextkey string
 type TaskContext struct {
 	Id string
 	Type string
+	Cfg *models.DataModel
 }
 
 const userContextKey Contextkey = "user"
@@ -29,9 +30,9 @@ func GetUser(ctx context.Context) (*models.User, bool) {
 	return user, ok
 }
 
-func StartTask(ctx context.Context, task_type string) context.Context {
+func StartTask(ctx context.Context, task_type string, cfg *models.DataModel) context.Context {
 	id, _ := generateRandomString(32)
-	task := TaskContext{Id: id, Type: task_type}
+	task := TaskContext{Id: id, Type: task_type, Cfg: cfg}
 	return context.WithValue(ctx, taskContextKey, task)
 }
 

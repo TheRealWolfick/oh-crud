@@ -18,6 +18,13 @@ type UniqueKey struct {
 	Fields []string `yaml:"unique-key-fields"`
 }
 
+type Webhook struct {
+	On_insert *string `yaml:"on-insert"`
+	On_update *string `yaml:"on-update"`
+	On_delete *string `yaml:"on-delete"`
+	On_any    *string `yaml:"on-any"`
+}
+
 type DataModelFieldRules struct {
 	Min *int         `yaml:"min"`
 	Max *int         `yaml:"max"`
@@ -61,7 +68,6 @@ type DataModelFieldPublicSchema struct {
 	Rules              *DataModelFieldRules `yaml:"rules"`
 }
 
-
 // End_pointsAllowed controls which HTTP methods are enabled for a given endpoint.
 type End_pointsAllowed struct {
 	GET          []string `yaml:"GET"`
@@ -82,6 +88,7 @@ type DataModel struct {
 	Track_history        *bool    `yaml:"track-history"`
 	Track_history_field  *string  `yaml:"track-history-field"`
 	Soft_delete          *bool    `yaml:"soft-delete"`
+	Webhooks             *Webhook `yaml:"web-hooks"`
 	// Database metadata
 	Table_name          *string                   `yaml:"table-name"`
 	End_point           *string                   `yaml:"end-point"`
@@ -97,10 +104,11 @@ type DataModel struct {
 // DataModelPublicSchema is available item that can be sent back to the end user / exposed.
 type DataModelPublicSchema struct {
 	// Model metadata
-	Name                 string  `yaml:"name"`
-	Version              string  `yaml:"version"`
+	Name                 string                                `yaml:"name"`
+	Version              string                                `yaml:"version"`
 	// Database metadata
-	Primary_key          string                   `yaml:"primary-key"`
+	Primary_key          string                                `yaml:"primary-key"`
+	Unique_keys          [][]string                            `yaml:"-"`
 	Fields               map[string]DataModelFieldPublicSchema `yaml:"fields"`
 }
 

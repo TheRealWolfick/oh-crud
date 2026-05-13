@@ -218,7 +218,6 @@ func recursiveBatchInsertProcess(
 	qb := NewQueryBuilder(log)
 	query := qb.BuildMultiInsert(cfg, items)
 
-	log.Debug("Running the query", "query", query, "args", qb.GetArgs())
 	cmdTag, err := db.Exec(ctx, query, qb.GetArgs()...)
 
 	if err == nil {

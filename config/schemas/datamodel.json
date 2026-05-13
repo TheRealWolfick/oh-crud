@@ -16,6 +16,17 @@
     "diff-comparator": { "type": "string" },
     "primary-key": { "type": "string" },
 
+    "web-hooks": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "on-insert": { "type": "string" },
+        "on-update": { "type": "string" },
+        "on-delete": { "type": "string" },
+        "on-any":    { "type": "string" }
+      }
+    },
+
     "end-points-allowed": {
       "type": "object",
       "additionalProperties": false,

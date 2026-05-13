@@ -568,10 +568,19 @@ func (qb *QueryBuilder) BuildSelect(table string, select_fields []string) string
 // Primarily for returning the fields, field types etc so a frontend solution can build tables based on that
 // Can be expanded in the future to enable selections of the schema with url query strings
 func (qb *QueryBuilder) BuildSchema(cfg *models.DataModel) *models.DataModelPublicSchema {
+	// Build the unique key lists
+	unique_keys := [][]string{}
+	for _, v := range cfg.Unique_keys {
+    if v.Fields != nil {
+			unique_keys = append(unique_keys, v.Fields)
+		}
+	}
+
 	schema := &models.DataModelPublicSchema{
 		Name: StringDeref(cfg.Name),
 		Version: StringDeref(cfg.Version),
 		Primary_key: StringDeref(cfg.Primary_key),
+		Unique_keys: unique_keys,
 		Fields: map[string]models.DataModelFieldPublicSchema{},
 	}
 	

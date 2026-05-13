@@ -108,7 +108,7 @@ GET /asset/data?description=pump
 Per-endpoint functions live under `/{endpoint}/fn/{function}`. Two kinds of
 functions are dispatched by this route:
 
-- **Built-in** — implemented in code (`aggregate`).
+- **Built-in** — implemented in code (`aggregate`, `schema`).
 - **Declarative** — defined in YAML files under `config/functions/` and
   reloaded automatically when the file changes.
 
@@ -117,13 +117,13 @@ function, the response is a 404.
 
 ---
 
-## 5. Built-in: `aggregate`
+### 5.1 Built-in: `aggregate`
 
 `GET /{endpoint}/fn/aggregate` runs an ad-hoc grouped query. It's most
 useful when you need a one-off summary that doesn't justify creating a
 declarative function.
 
-### URL parameters
+#### URL parameters
 
 | Parameter  | Form                              | Notes                                                |
 |------------|-----------------------------------|------------------------------------------------------|
@@ -131,7 +131,7 @@ declarative function.
 | `aggregate`| `count,sum:value,avg:rating,...`  | At least one of `group_by`/`aggregate`/`sort_by` must be supplied. |
 | `sort_by`  | `count~desc,col~asc`              | Sortable column must already appear in SELECT.       |
 
-### Aggregate function syntax
+#### Aggregate function syntax
 
 | Token        | Renders to                |
 |--------------|---------------------------|
@@ -144,7 +144,7 @@ declarative function.
 `field` must resolve via the same rules as `?fields=` (model field name or
 JSON alias, not `private`).
 
-### Example
+#### Example
 
 ```text
 GET /asset/data/fn/aggregate?group_by=building&aggregate=count,avg:condition_rating&sort_by=count~desc
@@ -160,6 +160,82 @@ ORDER BY count DESC;
 ```
 
 Standard pagination params (`page`, `page_size`) apply on top.
+
+---
+
+### 5.2 Built-in: `schema`
+
+`GET /{endpoint}/fn/schema` bypasses all SQL queries and directly returns a
+schema of the data for that endpoint. This is useful for a frontend being able
+to build a table or form dynamically. It does not currently support any URL
+parameters.
+
+It does not return any fields that are marked as private in the config file
+
+The required field specifies what is required to create a new resource, while
+a call to use an update must fulfil either a primary or unique key in the supplied
+fields. If a unique key is to be updated, the primary key must be specified
+
+The backend does not support the update of primary keys via the api, so it is
+recommended that serials are used for primary keys and unique keys for other
+constraints
+
+#### Example
+
+```text
+GET /asset/data/fn/building
+```
+
+Returns:
+
+```json
+{
+  "Name": "Building",
+  "Version": "1.3.6",
+  "Primary_key": "building_id",
+  "Unique_keys": [
+    [
+      "building"
+    ],
+    [
+      "building",
+      "db_domain"
+    ]
+  ],
+  "Fields": {
+    "building": {
+      "Type": "string",
+      "JSON": "building",
+      "Required": true,
+      "Skip_insert": false,
+      "DB_type": "character varying(15)",
+      "Nullable": false,
+      "Default": "",
+      "Rules": null
+    },
+    "building_address": {
+      "Type": "string",
+      "JSON": "building_address",
+      "Required": false,
+      "Skip_insert": false,
+      "DB_type": "character varying(200)",
+      "Nullable": true,
+      "Default": "",
+      "Rules": null
+    },
+    "building_description": {
+      "Type": "string",
+      "JSON": "building_description",
+      "Required": false,
+      "Skip_insert": false,
+      "DB_type": "character varying(200)",
+      "Nullable": true,
+      "Default": "",
+      "Rules": null
+    }...
+  }
+}
+```
 
 ---
 

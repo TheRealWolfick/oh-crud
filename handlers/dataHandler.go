@@ -178,7 +178,7 @@ func addNewResource(
 		}
 
 		// Extract context and queue action
-		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type))
+		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type, cfg))
 		task_id, err := qm.QueueFunction(ctx_preserve, tools.SingleInsert(ctx_preserve, qm.Db, cfg, valid_resources[0]), note)
 
 		if err != nil {
@@ -248,7 +248,7 @@ func addNewResources_Group(
 			return
 		}
 
-		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type))
+		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type, cfg))
 		task_id, err := qm.QueueFunction(ctx_preserve, tools.RecursiveBatchInsert(ctx_preserve, qm.Db, cfg, valid_resources), note)
 		if err != nil {
 			qm.Logger.Error("TASK_ERROR", "error", err)
@@ -547,7 +547,7 @@ func updateResource(
 		}
 
 		// Queue the query
-		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type))
+		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type, cfg))
 		task_id, err := qm.QueueFunction(ctx_preserve, tools.MultiUpdate(ctx_preserve, qm.Db, cfg, valid_resources), note)
 		if err != nil {
 			qm.Logger.Error("TASK_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", err)
@@ -620,7 +620,7 @@ func updateResource_Group(
 		}
 
 		// Queue the query
-		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type))
+		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type, cfg))
 		task_id, err := qm.QueueFunction(ctx_preserve, tools.MultiUpdate(ctx_preserve, qm.Db, cfg, valid_resources), note)
 		if err != nil {
 			log.Error("TASK_ERROR", "error", err)
@@ -750,7 +750,7 @@ func dynamicCreateDiff(
 			return
 		}
 
-		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type))
+		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type, cfg))
 		task_id, err := qm.QueueFunction(ctx_preserve, tools.CreateDiff(ctx_preserve, qm.Db, cfg, valid_resources, note), note)
 		if err != nil {
 			log.Error("TASK_ERROR", "error", err)
@@ -927,7 +927,7 @@ func deleteResource(
 			return
 		}
 
-		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type))
+		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type, cfg))
 		task_id, err := qm.QueueFunction(ctx_preserve, tools.MultiDelete(ctx_preserve, qm.Db, cfg, valid_resources), note)
 		if err != nil {
 			log.Error("TASK_ERROR", "error", err)
@@ -997,7 +997,7 @@ func deleteResource_Group(
 			return
 		}
 
-		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type))
+		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type, cfg))
 		task_id, err := qm.QueueFunction(ctx_preserve, tools.MultiDelete(ctx_preserve, qm.Db, cfg, valid_resources), note)
 		if err != nil {
 			log.Error("TASK_ERROR", "error", err)
