@@ -294,6 +294,9 @@ func syncModel(ctx context.Context, pool *pgxpool.Pool, model *models.DataModel,
 			ptrs = append(ptrs, m)
 		}
 		tableNames = append(tableNames, *m.Table_name)
+		if m.Track_history != nil && *m.Track_history {
+		  tableNames = append(tableNames, fmt.Sprintf("%s_history", *m.Table_name))
+		}
 	}
 	if !seen {
 		// Brand-new table not yet in the registry — append it.

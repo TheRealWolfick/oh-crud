@@ -28,7 +28,6 @@ func ModelsMonitor(handlerRegistry *tools.HandlerRegistry, modelRegistry *tools.
 				}
 				if event.Has(fsnotify.Write) {
 					updated_config, err := tools.LoadYAMLIntoModel[models.DataModel](event.Name)
-					tools.ProcessModelAdditionalFields(updated_config)
 					if err != nil {
 						qm.Logger.Error("Updated YAML failed to load. Skipping updating routes", "error", err)
 					} else {
@@ -36,6 +35,7 @@ func ModelsMonitor(handlerRegistry *tools.HandlerRegistry, modelRegistry *tools.
 						if err := tools.ValidateDataModel(*updated_config); err != nil {
 							qm.Logger.Error("Updated YAML failed validation, routes not updated", "error", err)
 						} else {
+							tools.ProcessModelAdditionalFields(updated_config)
 							modelRegistry.Register(updated_config)
 							handlers.RegisterRoutes(updated_config, handlerRegistry, auth, qm, server_conf)
 							schematools.SyncModelIfNeeded(context.Background(), qm.Db, updated_config, modelRegistry.All(), qm.Logger, gate)
