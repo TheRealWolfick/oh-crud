@@ -28,6 +28,7 @@ type QueryBuilder struct {
 	limit        int
 	offset       int
 	sort         []string
+	schemaBuilder bool
 }
 
 type SetCallback interface {
@@ -37,19 +38,20 @@ type SetCallback interface {
 // NewQueryBuilder creates a fresh query builder with no values or clauses set.
 func NewQueryBuilder(logger *slog.Logger) *QueryBuilder {
 	return &QueryBuilder{
-		values:      make(map[string]uint),
-		where:       make(map[string]uint),
-		whereExtras: []string{},
-		args:        []any{},
-		fields:      []string{},
-		groups:      []string{},
-		pos:         1,
-		wheremod:    make(map[string]string),
-		query:       "",
-		logger:      logger,
-		limit:       0,
-		offset:      0,
-		sort:        []string{},
+		values:         make(map[string]uint),
+		where:          make(map[string]uint),
+		whereExtras:    []string{},
+		args:           []any{},
+		fields:         []string{},
+		groups:         []string{},
+		pos:            1,
+		wheremod:       make(map[string]string),
+		query:          "",
+		logger:         logger,
+		limit:          0,
+		offset:         0,
+		sort:           []string{},
+		schemaBuilder:  false,
 	}
 }
 
@@ -63,6 +65,7 @@ func (qb *QueryBuilder) GetPage() int {
 }
 
 func (qb *QueryBuilder) HasFields() bool { return len(qb.fields) > 0 }
+func (qb *QueryBuilder) IsSchemaBuilder() bool { return qb.schemaBuilder }
 
 func (qb *QueryBuilder) GetFields() []string { return qb.fields }
 func (qb *QueryBuilder) GetValues() []any    { return qb.args }
@@ -562,6 +565,35 @@ func (qb *QueryBuilder) BuildSelect(table string, select_fields []string) string
 	return sb.String()
 }
 
+// Primarily for returning the fields, field types etc so a frontend solution can build tables based on that
+// Can be expanded in the future to enable selections of the schema with url query strings
+func (qb *QueryBuilder) BuildSchema(cfg *models.DataModel) *models.DataModelPublicSchema {
+	schema := &models.DataModelPublicSchema{
+		Name: StringDeref(cfg.Name),
+		Version: StringDeref(cfg.Version),
+		Primary_key: StringDeref(cfg.Primary_key),
+		Fields: map[string]models.DataModelFieldPublicSchema{},
+	}
+	
+	// Record all the fields
+	for k, v := range cfg.Fields {
+		if v.Private == nil || *v.Private == false {
+			schema.Fields[k] = models.DataModelFieldPublicSchema{
+				Type: StringDeref(v.Type),
+				JSON: StringDeref(v.JSON),
+				Required: BoolDeref(v.Required_on_insert),
+				Skip_insert: BoolDeref(v.Skip_insert),
+				DB_type: StringDeref(v.DB_type),
+				Nullable: BoolDeref(v.Nullable),
+				Default: StringDeref(v.Default),
+				Rules: v.Rules,
+			}
+		}
+	}
+	
+	return schema
+}
+
 func (qb *QueryBuilder) BuildCount(table string) string {
 	return fmt.Sprintf("SELECT COUNT(*) FROM %s;", table)
 }
@@ -818,6 +850,9 @@ func (qb *QueryBuilder) ProcessURLParams(r *http.Request, cfg *models.DataModel)
 	switch r.PathValue("function") {
 	case "aggregate":
 		return qb.processAggregate(r, cfg)
+	case "schema":
+		qb.schemaBuilder = true
+		return nil
 	case "":
 		qb.ApplyPagination(r)
 		qb.processFieldSelect(r, func(f string) (string, bool) { return CheckFieldGetValid(f, cfg) })

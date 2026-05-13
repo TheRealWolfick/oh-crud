@@ -20,6 +20,7 @@ import (
 var reservedFunctionNames = map[string]struct{}{
 	"aggregate": {},
 	"diff":      {},
+	"schema":    {},
 	"history":   {},
 	"group":     {},
 }

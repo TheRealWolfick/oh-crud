@@ -46,6 +46,22 @@ type DataModelField struct {
 	Rules *DataModelFieldRules `yaml:"rules"`
 }
 
+// DataModelFieldPublicSchema is the public/exposed allowance of a datamodelfield.
+type DataModelFieldPublicSchema struct {
+	// Field metadata
+	Type               string  `yaml:"type"`
+	JSON               string  `yaml:"json"`
+	Required           bool    `yaml:"required-on-insert"`
+	Skip_insert        bool    `yaml:"skip-insert"`
+	// Database metadata
+	DB_type            string `yaml:"db-type"`
+	Nullable           bool   `yaml:"nullable"`
+	Default            string `yaml:"default"`
+	// Atlas metadata
+	Rules              *DataModelFieldRules `yaml:"rules"`
+}
+
+
 // End_pointsAllowed controls which HTTP methods are enabled for a given endpoint.
 type End_pointsAllowed struct {
 	GET          []string `yaml:"GET"`
@@ -78,6 +94,15 @@ type DataModel struct {
 	Fields              map[string]DataModelField `yaml:"fields"`
 }
 
+// DataModelPublicSchema is available item that can be sent back to the end user / exposed.
+type DataModelPublicSchema struct {
+	// Model metadata
+	Name                 string  `yaml:"name"`
+	Version              string  `yaml:"version"`
+	// Database metadata
+	Primary_key          string                   `yaml:"primary-key"`
+	Fields               map[string]DataModelFieldPublicSchema `yaml:"fields"`
+}
 
 func ptr[T any](v T) *T { return &v }
 

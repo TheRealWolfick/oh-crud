@@ -34,3 +34,11 @@ func ValueDeref(v any) reflect.Value {
 	}
 	return val
 }
+
+func StringDeref(v any) string {
+	return ValueDeref(v).String()
+}
+
+func BoolDeref(v any) bool {
+	return ValueDeref(v).Bool()
+}

@@ -306,6 +306,12 @@ func getResource(
 			return
 		}
 
+		// Return the schema if this was requested
+		if qb.IsSchemaBuilder() {
+			json.NewEncoder(w).Encode(qb.BuildSchema(cfg))
+			return 
+		}
+
 		var query string
 		if qb.HasFields() {
 			query = qb.BuildSelect(*cfg.Table_name, qb.GetFields())
