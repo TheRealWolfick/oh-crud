@@ -42,6 +42,9 @@ func main() {
 	// Create the queue for handling jobs
 	qm := tools.NewQueue(pool, 5, logger)
 
+	// Create the events handler
+	eh := tools.NewEventHub()
+
 	// Load the server config
 	intial_server_conf, err := tools.LoadYAMLIntoModel[models.ServerConfig]("./config/server/server.yaml")
 	if err != nil {
@@ -52,15 +55,10 @@ func main() {
 	logger.Debug(tools.DereferencedString(server_conf.Get()))
 
 
-	// Load default models from default dir
+	// Load default models from default, base-model, and special-models dir
 	all_models := loadModelsFromDir(default_models_dir, logger)
-	// Load config-driven models from base-models dir
 	all_models = append(all_models, loadModelsFromDir(models_dir, logger)...)
-	// Load config-driven models from special-models dir
 	all_models = append(all_models, loadModelsFromDir(special_models_dir, logger)...)
-
-	// Process models
-
 
 	// Sync database schema for all loaded models.
 	// Destructive changes are recorded in the gate and blocked until manually approved.
