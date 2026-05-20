@@ -1,5 +1,5 @@
 name: events
-version: 1.2.2
+version: 1.2.3
 table-name: events
 end-point: events
 primary-key: event_id
@@ -10,11 +10,11 @@ end-points-allowed:
 foreign-keys:
   fk_events_event_user:
     foreign-key-fields:
-      - event_user
+      - user
     foreign-key-target-table: users
     foreign-key-target-fields:
       - username
-    foreign-key-on-update: CASCADE
+    foreign-key-on-update: SET NULL
 
 fields:
   event_id:
@@ -22,22 +22,32 @@ fields:
     json: event_id
     db-type: serial
     skip-insert: true
-  type:
+  action:
     type: string
-    json: type
-    db-type: character varying(40)
+    json: action
+    db-type: character varying(10)
     required-on-insert: true
-  event_log:
+  status:
+    type: string
+    json: status
+    db-type: character varying(10)
+  topic:
+    type: string
+    json: topic
+    db-type: character varying(30)
+    nullable: true
+  log:
     type: json
     json: event_log
     db-type: jsonb
     nullable: true
-  event_time:
+  time:
     type: time
     json: event_time
     db-type: timestamp without time zone
     default: now()
-  event_user:
+  user:
     type: string
     json: event_user
     db-type: character varying(20)
+    nullable: true
