@@ -40,7 +40,7 @@ func main() {
 	logger.Info("Database connection made")
 
 	// Create the events handler
-	evh := tools.NewEventHub(27, 10, pool)
+	evh := tools.NewEventManager(27, 10, pool)
 
 	// Create the queue for handling jobs
 	qm := tools.NewQueue(pool, 5, logger, evh)

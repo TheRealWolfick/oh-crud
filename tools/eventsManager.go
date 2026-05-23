@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -16,8 +17,16 @@ import (
 	"lotusforge.au/api-server/models"
 )
 
-var ValidActions  = []string{"get", "insert", "update", "delete"}
+// -----------------------------------------------------------------
+//            Package variables
+// -----------------------------------------------------------------
+
+var ValidActions  = []string{"get", "insert", "update", "delete", "any"}
 var ValidStatuses = []string{"queued", "start", "success", "warn", "fail", "error", "all"}
+
+// -----------------------------------------------------------------
+//            Package types and type creations
+// -----------------------------------------------------------------
 
 type EventManager struct {
 	clients      map[*Client]client_topic
@@ -68,7 +77,18 @@ type ClientMessage struct {
 	Status string `json:"status"`
 }
 
-func NewEventHub(ping_sec int, timeout_sec int, db *pgxpool.Pool) *EventManager {
+// Returns a new event manager. It will build a registry of all websockets upon registering
+// endpoints via the h.EnableTopic function. It will also upgrade any connections for websocks
+// and manage them throughout their lifecycle.
+// 
+// Any events passed published to the event manager will be distributed to all registered
+// webhooks and websocks at the time of the event.
+//
+// Currently, every event is set to persist to the db
+//
+// Events are categorized by action (insert, update etc) and status (start, success, fail etc).
+// An event must have a valid action and status to be published
+func NewEventManager(ping_sec int, timeout_sec int, db *pgxpool.Pool) *EventManager {
 	return &EventManager{
 		clients: map[*Client]client_topic{},
 		targets: map[string]*Instructions{},
@@ -85,42 +105,9 @@ func NewEventHub(ping_sec int, timeout_sec int, db *pgxpool.Pool) *EventManager 
 	}
 }
 
-// Upgrade and manage a new websocket based on the topic and action. It registers for all statuses
-func (h *EventManager) RegiterTopicAction(w http.ResponseWriter, r *http.Request, topic string, action []string) error {
-	conn, err := h.upgrader.Upgrade(w, r, nil)
-	if err != nil { return err }
-
-	go h.handleClientTopicAction(conn, topic, action)
-	
-	return nil
-}
-// Upgrade and manage a new websocket based on the topic, status and action.
-func (h *EventManager) RegiterTopicStatusAction(w http.ResponseWriter, r *http.Request, topic string, action []string, status []string) error {
-	conn, err := h.upgrader.Upgrade(w, r, nil)
-	if err != nil { return err }
-
-	go h.handleClientTopicStatusAction(conn, topic, action, status)
-	
-	return nil
-}
-// Upgrade and manage a new websocket based on the topic and status, it registers for all actions
-func (h *EventManager) RegiterTopicStatus(w http.ResponseWriter, r *http.Request, topic string, status []string) error {
-	conn, err := h.upgrader.Upgrade(w, r, nil)
-	if err != nil { return err }
-
-	go h.handleClientTopicStatus(conn, topic, status)
-	
-	return nil
-}
-// Upgrade and manage a new websocket based on the topic. It registers for all actions and statuses
-func (h *EventManager) RegiterTopicOnly(w http.ResponseWriter, r *http.Request, topic string) error {
-	conn, err := h.upgrader.Upgrade(w, r, nil)
-	if err != nil { return err }
-
-	go h.HandleClientTopic(conn, topic)
-	
-	return nil
-}
+// -----------------------------------------------------------------
+//            Topic Registration Management
+// -----------------------------------------------------------------
 
 // Add a topic as a valid topic
 func (h *EventManager) EnableTopic(topic string, cfg *models.DataModel) {
@@ -169,6 +156,53 @@ func (h *EventManager) EnableTopic(topic string, cfg *models.DataModel) {
 	}
 }
 
+// -----------------------------------------------------------------
+//              Registering / Upgrading Connections
+// -----------------------------------------------------------------
+
+// Upgrade and manage a new websocket based on the topic and action. 
+// Websock registers for all statuses of the passed in topic
+func (h *EventManager) RegiterTopicAction(w http.ResponseWriter, r *http.Request, topic string, action []string) error {
+	conn, err := h.upgrader.Upgrade(w, r, nil)
+	if err != nil { return err }
+
+	go h.handleClientTopicAction(conn, topic, action)
+	
+	return nil
+}
+// Upgrade and manage a new websocket based on the topic.
+// Websock register for the specified statuses and actions.
+func (h *EventManager) RegiterTopicStatusAction(w http.ResponseWriter, r *http.Request, topic string, action []string, status []string) error {
+	conn, err := h.upgrader.Upgrade(w, r, nil)
+	if err != nil { return err }
+
+	go h.handleClientTopicStatusAction(conn, topic, action, status)
+	
+	return nil
+}
+// Upgrade and manage a new websocket based on the topic and status, it registers for all actions
+func (h *EventManager) RegiterTopicStatus(w http.ResponseWriter, r *http.Request, topic string, status []string) error {
+	conn, err := h.upgrader.Upgrade(w, r, nil)
+	if err != nil { return err }
+
+	go h.handleClientTopicStatus(conn, topic, status)
+	
+	return nil
+}
+// Upgrade and manage a new websocket based on the topic. It registers for all actions and statuses
+func (h *EventManager) RegiterTopicOnly(w http.ResponseWriter, r *http.Request, topic string) error {
+	conn, err := h.upgrader.Upgrade(w, r, nil)
+	if err != nil { return err }
+
+	go h.HandleClientTopic(conn, topic)
+	
+	return nil
+}
+
+// -----------------------------------------------------------------
+//              Client Management
+// -----------------------------------------------------------------
+
 // Register a new client connection to specific topic
 func (h *EventManager) HandleClientTopic(conn *websocket.Conn, topic string) {
 	if !h.validTopics[topic] { return }
@@ -186,7 +220,6 @@ func (h *EventManager) handleClientTopicAction(conn *websocket.Conn, topic strin
 func (h *EventManager) handleClientTopicStatusAction(conn *websocket.Conn, topic string, action []string, status []string) {
 	h.handleClient(conn, topic, action, status)
 }
-
 // Register a new client connection. It is expected to call this via a go function
 func (h *EventManager) handleClient(conn *websocket.Conn, topic string, action []string, status []string) {
 	h.mu.Lock()
@@ -337,6 +370,10 @@ func (c *Client) readLoop() {
 	close(c.done)
 }
 
+// -----------------------------------------------------------------
+//              Event Handling / Publishing
+// -----------------------------------------------------------------
+
 // Broadcase a bytes array across all clients
 func (h *EventManager) Broadcast(i *Instructions, action string, status string, data []byte) {
 	h.mu.Lock()
@@ -348,7 +385,7 @@ func (h *EventManager) Broadcast(i *Instructions, action string, status string, 
 }
 
 // This is a function that handles webhooks. Currently, it only supports webhooks as per the config file,
-// but maybe user / frontend defined in the future?
+// but maybe user / frontend defined in the future via an api function call?
 func (h *EventManager) Callback(topic string, action string, status string, data []byte) []error {
 	var res *http.Response
 	var err error
@@ -391,12 +428,14 @@ func (h *EventManager) publish(ctx context.Context, action string, status string
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	instructions := h.targets[topic]
+	instructions, ok := h.targets[topic]
+	if !ok {return fmt.Errorf("Invalid topic {%s} for an event", topic)}
+	if !slices.Contains(ValidStatuses, status) {return fmt.Errorf("Invalid status {%s} called for event", status)}
 	user, found := middleware.GetUser(ctx)
 	if !found { return fmt.Errorf("Publish called from a non user!") }
 
 	// Publish to the database
-	if instructions.persist_to_db {
+	if instructions.persist_to_db && action != "get" {
 		h.db.Exec(ctx, "INSERT INTO events(action, status, topic, log, time, user) VALUES ($, $, $, $, $)", action, status, topic, payload, timestamp, user.Username)
 	}
 

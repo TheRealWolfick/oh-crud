@@ -15,6 +15,10 @@ import (
 	"lotusforge.au/api-server/models"
 )
 
+// -----------------------------------------------------------------
+//              Queue data types
+// -----------------------------------------------------------------
+
 type Task struct {
 	TaskID       string                                                `json:"task_id"`
 	TaskType     string                                                `json:"task_type"`
@@ -30,6 +34,7 @@ type Task struct {
 	Function     func(context.Context, ...any) (map[string]any, error) `json:"-"`
 	Args         []any                                                 `json:"-"`
 	Cfg          models.DataModel                                      `json:"-"`
+	Topic        string                                                `json:"-"`
 }
 
 type QueueManager struct {
@@ -70,6 +75,11 @@ func NewQueue(db *pgxpool.Pool, num_workers int, logger *slog.Logger, evh *Event
 	}
 }
 
+// -----------------------------------------------------------------
+//              Task Creation and Management
+// -----------------------------------------------------------------
+
+// This creates a task to execute a sql command asyncronously.
 func (qm *QueueManager) createTask(ctx context.Context, sql string, note string, args ...any) (*Task, error) {
 	task, ok := middleware.GetTask(ctx)
 	if !ok {
@@ -86,11 +96,13 @@ func (qm *QueueManager) createTask(ctx context.Context, sql string, note string,
 		Note:      note,
 		Sql:       sql,
 		Cfg:       *task.Cfg,
+		Topic:     fmt.Sprintf("table:%s", *task.Cfg.Table_name),
 	}
-	qm.logDatabaseEvent(ctx, "TASK_CREATE", t.logMiniUnsafe())
 	return t, nil
 }
 
+// This creates a task to execute an arbitrary function asyncronously.
+// The scheduled function must return a payload of data in the form of a map as well as an error status
 func (qm *QueueManager) createFunctionTask(ctx context.Context, function func(context.Context, ...any) (map[string]any, error), note string, args ...any) (*Task, error) {
 	task, ok := middleware.GetTask(ctx)
 	if !ok {
@@ -107,75 +119,12 @@ func (qm *QueueManager) createFunctionTask(ctx context.Context, function func(co
 		Args:      args,
 		Function:  function,
 		Cfg:       *task.Cfg,
+		Topic:     fmt.Sprintf("table:%s", *task.Cfg.Table_name),
 	}
-	qm.logDatabaseEvent(ctx, "TASK_CREATE", t.logMiniUnsafe())
 	return t, nil
 }
 
-func (qm *QueueManager) reportWork(w *Worker, status string, res map[string]any) {
-	qm.mu.Lock()
-	w.TaskActioning.Response = res
-	w.TaskActioning.CompleteTime = time.Now()
-
-	switch status {
-	case "error":
-		w.TaskActioning.Status = "error"
-	case "success":
-		w.TaskActioning.Status = "complete"
-	}
-
-	// Prepare log data
-	log, err := w.logTaskUnsafe()
-	if err != nil {
-		qm.Logger.Error("Failed to build event data", "status", w.TaskActioning.Status, "worker", w.ID, "task_id", w.TaskActioning.TaskID, "task_type", w.TaskActioning.TaskType, "error", w.TaskActioning.Response, "log_error", err, "user", w.TaskActioning.Ctx.Value(middleware.Contextkey("user")).(*models.User).Username)
-		qm.mu.Unlock()
-	} else {
-		qm.mu.Unlock()
-		qm.logDatabaseEvent(w.TaskActioning.Ctx, "TASK_COMPLETE", log)
-	}
-
-	// Publish notification
-	qm.eventHub.PublishNoTimestampPayload(w.TaskActioning.Ctx, w.TaskActioning.TaskType, w.TaskActioning.Status, fmt.Sprintf("table:%s", *w.TaskActioning.Cfg.Table_name), log)
-
-}
-
-func (qm *QueueManager) getReportableTaskInfo(w *Worker) map[string]any {
-	switch w.TaskActioning.Status {
-	case "error":
-		return map[string]any{
-			"task_id": w.TaskActioning.TaskID,
-			"task_type": w.TaskActioning.TaskType,
-			"task_start": w.TaskActioning.StartTime,
-			"task_end": w.TaskActioning.CompleteTime,
-			"task_status": w.TaskActioning.Status,
-			"task_error": w.TaskActioning.Response,
-		}
-	case "complete":
-		return map[string]any{
-			"task_id": w.TaskActioning.TaskID,
-			"task_type": w.TaskActioning.TaskType,
-			"task_start": w.TaskActioning.StartTime,
-			"task_end": w.TaskActioning.CompleteTime,
-			"task_status": w.TaskActioning.Status,
-			"task_response": w.TaskActioning.Response,
-		}
-	case "queued":
-		return map[string]any{
-			"task_id": w.TaskActioning.TaskID,
-			"task_type": w.TaskActioning.TaskType,
-			"task_start": w.TaskActioning.StartTime,
-			"task_status": w.TaskActioning.Status,
-		}
-	}
-	return map[string]any{
-		"task_id": w.TaskActioning.TaskID,
-		"task_type": w.TaskActioning.TaskType,
-		"task_start": w.TaskActioning.StartTime,
-		"task_status": w.TaskActioning.Status,
-	}
-}
-
-
+// This function is used to look for an available task. If one is found, it will be returned.
 func (qm *QueueManager) lookForTask() *Task {
 	qm.mu.Lock()
 	defer qm.mu.Unlock()
@@ -196,6 +145,110 @@ func (qm *QueueManager) lookForTask() *Task {
 	return t
 }
 
+// UNSAFE - Returns the position of a task based on its id
+func (qm *QueueManager) getTaskPosUnsafe(identifer string) (int, bool) {
+	for index, item := range qm.tasks {
+		if item.TaskID == identifer {
+			return index, true
+		}
+	}
+	return 0, false
+}
+
+// Get the status of a current task
+func (qm *QueueManager) GetTaskStatus(identifier string) (string, bool) {
+	task_pos, exists := qm.getTaskPosUnsafe(identifier)
+	if exists {
+		return qm.tasks[task_pos].Status, true
+	}
+	return "", false
+}
+
+// -----------------------------------------------------------------
+//              Reporting
+// -----------------------------------------------------------------
+
+// This function is used to report work at the end of a task
+func (qm *QueueManager) reportWork(w *Worker, status string, res map[string]any) {
+	qm.mu.Lock()
+	w.TaskActioning.Response = res
+	w.TaskActioning.CompleteTime = time.Now()
+	qm.mu.Unlock()
+
+	switch status {
+	case "error":
+		w.TaskActioning.Status = "error"
+	case "success":
+		w.TaskActioning.Status = "success"
+	}
+
+	// Publish notification
+	qm.publish(w)
+}
+
+func (qm *QueueManager) getReportableTaskInfo(w *Worker) map[string]any {
+	switch w.TaskActioning.Status {
+	case "error":
+		return map[string]any{
+			"task_id":       w.TaskActioning.TaskID,
+			"task_type":     w.TaskActioning.TaskType,
+			"task_start":    w.TaskActioning.StartTime,
+			"task_end":      w.TaskActioning.CompleteTime,
+			"note":          w.TaskActioning.Note,
+			"task_status":   w.TaskActioning.Status,
+			"task_error":    w.TaskActioning.Response,
+		}
+	case "success", "warn":
+		return map[string]any{
+			"task_id":       w.TaskActioning.TaskID,
+			"task_type":     w.TaskActioning.TaskType,
+			"task_start":    w.TaskActioning.StartTime,
+			"task_end":      w.TaskActioning.CompleteTime,
+			"note":          w.TaskActioning.Note,
+			"task_status":   w.TaskActioning.Status,
+			"task_response": w.TaskActioning.Response,
+		}
+	case "started":
+		return map[string]any{
+			"task_id":       w.TaskActioning.TaskID,
+			"task_type":     w.TaskActioning.TaskType,
+			"note":          w.TaskActioning.Note,
+			"task_start":    w.TaskActioning.StartTime,
+			"task_status":   w.TaskActioning.Status,
+		}
+	}
+	return map[string]any{
+		"task_id":         w.TaskActioning.TaskID,
+		"task_type":       w.TaskActioning.TaskType,
+		"note":            w.TaskActioning.Note,
+		"task_start":      w.TaskActioning.StartTime,
+		"task_status":     w.TaskActioning.Status,
+	}
+}
+
+// This is an internal helper function to publish an event
+func (qm *QueueManager) publish(w *Worker) {
+	qm.eventHub.PublishNoTimestamp(w.TaskActioning.Ctx, w.TaskActioning.TaskType, w.TaskActioning.Status, w.TaskActioning.Topic, qm.getReportableTaskInfo(w))
+}
+// This is an internal helper function for publishing an event when there is no worker assigned, 
+// instead utilizing the task directly
+func (qm *QueueManager) publishTask(t *Task) {
+	qm.eventHub.PublishNoTimestamp(t.Ctx, t.TaskType, t.Status, t.Topic, map[string]any{
+			"task_id":       t.TaskID,
+			"task_type":     t.TaskType,
+			"note":          t.Note,
+			"task_start":    t.StartTime,
+			"task_status":   t.Status,
+	})
+}
+
+// -----------------------------------------------------------------
+//              Work Execution
+// -----------------------------------------------------------------
+
+// This function organizes and controls how the worker completes its task
+// At the end, a new task well be searched for to assign it to the worker,
+// else the worker will become available for the next task received.
 func (qm *QueueManager) work(w *Worker) {
 	qm.mu.Lock()
 
@@ -246,41 +299,8 @@ func (qm *QueueManager) work(w *Worker) {
 	qm.assignWorker(w, t)
 }
 
-func (qm *QueueManager) getFreeWorker() (w *Worker) {
-	qm.mu.Lock()
-	defer qm.mu.Unlock()
-
-	if qm.active_workers < qm.workers_count {
-		for _, worker := range qm.workers {
-			if !worker.islocked() {
-				worker.lock()
-				qm.active_workers++
-				return worker
-			}
-		}
-	}
-	return nil
-}
-
-func (qm *QueueManager) assignWorker(w *Worker, t *Task) {
-	qm.mu.Lock()
-	w.TaskActioning = nil
-	w.TaskActioning = t
-	t.Status = "processing"
-	qm.mu.Unlock()
-	go qm.work(w)
-}
-
-func (qm *QueueManager) logDatabaseEvent(ctx context.Context, event string, log []byte) {
-	go func() {
-		query := `INSERT INTO events (type, event_log, event_user) VALUES ($1, $2, $3)`
-		_, err := qm.Db.Exec(ctx, query, event, log, ctx.Value(middleware.Contextkey("user")).(*models.User).Username)
-		if err != nil && qm.Logger != nil {
-			qm.Logger.Error("Failed to log event", "error", err, "event", event, "user", ctx.Value(middleware.Contextkey("user")).(*models.User).Username, "log", log)
-		}
-	}()
-}
-
+// Queue a task for work, if there is a worker available, it will be asssigned
+// to the worker instead.
 func (qm *QueueManager) queue(t *Task) (string, error) {
 	worker := qm.getFreeWorker()
 
@@ -297,9 +317,43 @@ func (qm *QueueManager) queue(t *Task) (string, error) {
 	} else {
 		qm.tasks = append(qm.tasks, t)
 		qm.mu.Unlock()
+		qm.publishTask(t)
 	}
 	return t.TaskID, nil
 }
+
+// -----------------------------------------------------------------
+//              Worker Management
+// -----------------------------------------------------------------
+
+// Get a free worker if one is available, else nil
+func (qm *QueueManager) getFreeWorker() (w *Worker) {
+	qm.mu.Lock()
+	defer qm.mu.Unlock()
+
+	if qm.active_workers < qm.workers_count {
+		for _, worker := range qm.workers {
+			if !worker.islocked() {
+				worker.lock()
+				qm.active_workers++
+				return worker
+			}
+		}
+	}
+	return nil
+}
+
+// Assigns a task to a worker and splits of a goroutines to complete it.
+func (qm *QueueManager) assignWorker(w *Worker, t *Task) {
+	qm.mu.Lock()
+	w.TaskActioning = nil
+	w.TaskActioning = t
+	t.Status = "started"
+	qm.publish(w)
+	qm.mu.Unlock()
+	go qm.work(w)
+}
+
 
 // QueueFunction queues a function to run asynchronously. Returns a 32-character task ID.
 func (qm *QueueManager) QueueFunction(ctx context.Context, function func(context.Context, ...any) (map[string]any, error), note string, args ...any) (string, error) {
@@ -319,57 +373,13 @@ func (qm *QueueManager) QueueExec(ctx context.Context, sql string, note string, 
 	return qm.queue(t)
 }
 
-func (qm *QueueManager) getTaskPosUnsafe(identifer string) (int, bool) {
-	for index, item := range qm.tasks {
-		if item.TaskID == identifer {
-			return index, true
-		}
-	}
-	return 0, false
-}
 
-func (qm *QueueManager) GetTaskStatus(identifier string) (string, bool) {
-	task_pos, exists := qm.getTaskPosUnsafe(identifier)
-	if exists {
-		return qm.tasks[task_pos].Status, true
-	}
-	return "", false
-}
 
+// Lock the worker only once a task has been assigned
 func (w *Worker) lock()     { w.Lock = true }
 func (w *Worker) islocked() bool { return w.Lock }
+// Free a worker to be able to make it discoverable for new tasks
 func (w *Worker) free() {
 	w.TaskActioning = nil
 	w.Lock = false
-}
-
-func (t *Task) logMiniUnsafe() []byte {
-	logData := map[string]any{
-		"task": map[string]any{
-			"task_id":    t.TaskID,
-			"task_type":  t.TaskType,
-			"status":     t.Status,
-			"start_time": t.StartTime,
-			"note":       t.Note,
-		},
-	}
-	log, _ := json.Marshal(logData)
-	return log
-}
-
-func (w *Worker) logTaskUnsafe() ([]byte, error) {
-	logsData := map[string]interface{}{
-		"worker": w.ID,
-		"task": map[string]interface{}{
-			"task_id":       w.TaskActioning.TaskID,
-			"task_type":     w.TaskActioning.TaskType,
-			"status":        w.TaskActioning.Status,
-			"start_time":    w.TaskActioning.StartTime,
-			"complete_time": w.TaskActioning.CompleteTime,
-			"num_args":      len(w.TaskActioning.Args),
-			"note":          w.TaskActioning.Note,
-			"response":      w.TaskActioning.Response,
-		},
-	}
-	return json.Marshal(logsData)
 }
