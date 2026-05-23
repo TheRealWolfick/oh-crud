@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -169,7 +168,7 @@ func (qm *QueueManager) GetTaskStatus(identifier string) (string, bool) {
 // -----------------------------------------------------------------
 
 // This function is used to report work at the end of a task
-func (qm *QueueManager) reportWork(w *Worker, status string, res map[string]any) {
+func (qm *QueueManager) reportWork(w *Worker, status string, res map[string]any, fail bool) {
 	qm.mu.Lock()
 	w.TaskActioning.Response = res
 	w.TaskActioning.CompleteTime = time.Now()
@@ -179,7 +178,25 @@ func (qm *QueueManager) reportWork(w *Worker, status string, res map[string]any)
 	case "error":
 		w.TaskActioning.Status = "error"
 	case "success":
-		w.TaskActioning.Status = "success"
+		if fail {
+			w.TaskActioning.Status = "fail"
+		} else {
+			inner_err, ieok := res["errors"]
+			inner_suc, isok := res["success_count"]
+			if ieok && isok {
+				if inner_suc.(float64) == 0 {
+					w.TaskActioning.Status = "fail"
+				} else {
+					if len(inner_err.([]any)) > 0 {
+						w.TaskActioning.Status = "warn"
+					} else {
+						w.TaskActioning.Status = "success"
+					}
+				}
+			} else {
+				w.TaskActioning.Status = "success"
+			}
+		}
 	}
 
 	// Publish notification
@@ -188,7 +205,7 @@ func (qm *QueueManager) reportWork(w *Worker, status string, res map[string]any)
 
 func (qm *QueueManager) getReportableTaskInfo(w *Worker) map[string]any {
 	switch w.TaskActioning.Status {
-	case "error":
+	case "error", "fail":
 		return map[string]any{
 			"task_id":       w.TaskActioning.TaskID,
 			"task_type":     w.TaskActioning.TaskType,
@@ -208,7 +225,7 @@ func (qm *QueueManager) getReportableTaskInfo(w *Worker) map[string]any {
 			"task_status":   w.TaskActioning.Status,
 			"task_response": w.TaskActioning.Response,
 		}
-	case "started":
+	case "start":
 		return map[string]any{
 			"task_id":       w.TaskActioning.TaskID,
 			"task_type":     w.TaskActioning.TaskType,
@@ -234,11 +251,11 @@ func (qm *QueueManager) publish(w *Worker) {
 // instead utilizing the task directly
 func (qm *QueueManager) publishTask(t *Task) {
 	qm.eventHub.PublishNoTimestamp(t.Ctx, t.TaskType, t.Status, t.Topic, map[string]any{
-			"task_id":       t.TaskID,
-			"task_type":     t.TaskType,
-			"note":          t.Note,
-			"task_start":    t.StartTime,
-			"task_status":   t.Status,
+		"task_id":       t.TaskID,
+		"task_type":     t.TaskType,
+		"note":          t.Note,
+		"task_start":    t.StartTime,
+		"task_status":   t.Status,
 	})
 }
 
@@ -252,7 +269,7 @@ func (qm *QueueManager) publishTask(t *Task) {
 func (qm *QueueManager) work(w *Worker) {
 	qm.mu.Lock()
 
-	if !w.islocked() || w.TaskActioning.Status != "processing" {
+	if !w.islocked() || w.TaskActioning.Status != "start" {
 		qm.mu.Unlock()
 		return
 	}
@@ -267,23 +284,29 @@ func (qm *QueueManager) work(w *Worker) {
 
 	switch exec_type {
 	case "exec":
+		qm.Logger.Debug("exec called")
 		cmdtag, err := qm.Db.Exec(ctx, sql, args...)
 		if err != nil {
-			qm.reportWork(w, "error", map[string]any{"error": err.Error()})
+			qm.Logger.Debug("exec error", "err", err)
+			qm.reportWork(w, "error", map[string]any{"error": err.Error()}, true)
 		} else {
+			qm.Logger.Debug("exec success", "response", cmdtag)
 			bef, _, _ := strings.Cut(cmdtag.String(), " ")
 			qm.reportWork(w, "success", map[string]any{
 				"action":        bef,
 				"rows_affected": cmdtag.RowsAffected(),
-			})
+			}, cmdtag.RowsAffected() == 0)
 		}
 
 	case "function":
+		qm.Logger.Debug("function called")
 		func_response, err := task_func(ctx, args...)
 		if err != nil {
-			qm.reportWork(w, "error", map[string]any{"error": err.Error()})
+			qm.Logger.Debug("function error", "err", err)
+			qm.reportWork(w, "error", map[string]any{"error": err.Error()}, true)
 		} else {
-			qm.reportWork(w, "success", func_response)
+			qm.Logger.Debug("function success", "response", func_response)
+			qm.reportWork(w, "success", func_response, false)
 		}
 	}
 
@@ -348,7 +371,7 @@ func (qm *QueueManager) assignWorker(w *Worker, t *Task) {
 	qm.mu.Lock()
 	w.TaskActioning = nil
 	w.TaskActioning = t
-	t.Status = "started"
+	t.Status = "start"
 	qm.publish(w)
 	qm.mu.Unlock()
 	go qm.work(w)

@@ -414,6 +414,12 @@ func (h *EventManager) PublishNoTimestampPayload(ctx context.Context, action str
 func (h *EventManager) Publish(ctx context.Context, action string, status string, timestamp time.Time, topic string, payload map[string]any) error {
 	// Extract and prep data
 	pl, err := json.Marshal(payload)
+	GetBasicDebugLogger().Debug("Received message",
+	"action", action,
+	"status", status,
+	"topic", topic,
+	"payload", payload,
+)
 	if err != nil { return err }
 	return h.publish(ctx, action, status, timestamp, topic, pl)
 }
