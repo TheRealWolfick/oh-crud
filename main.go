@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"lotusforge.au/api-server/handlers"
 	"lotusforge.au/api-server/middleware"
@@ -43,7 +44,7 @@ func main() {
 	qm := tools.NewQueue(pool, 5, logger)
 
 	// Create the events handler
-	eh := tools.NewEventHub()
+	evh := tools.NewEventHub(27, 10)
 
 	// Load the server config
 	intial_server_conf, err := tools.LoadYAMLIntoModel[models.ServerConfig]("./config/server/server.yaml")
@@ -82,7 +83,7 @@ func main() {
 			logger.Debug(fmt.Sprintf("Skipping end point for: %s", *dm.Name))
 			continue
 		}
-		handlers.RegisterRoutes(&dm, handlerRegister, authMiddleware, qm, server_conf)
+		handlers.RegisterRoutes(&dm, handlerRegister, authMiddleware, qm, server_conf, evh)
 	}
 
 	// Load and register declarative functions. Must happen after models are
@@ -90,14 +91,14 @@ func main() {
 	functionRegister := tools.NewFunctionRegistry()
 	for _, fn := range tools.LoadFunctionsFromDir(functions_dir, modelRegister, logger) {
 		functionRegister.Register(fn)
-		handlers.RegisterFunctionRoutes(fn, modelRegister, handlerRegister, authMiddleware, qm, server_conf)
+		handlers.RegisterFunctionRoutes(fn, modelRegister, handlerRegister, authMiddleware, qm, server_conf, evh)
 	}
 
 	// OpenAPI spec endpoint
 	mux.Handle("GET /openapi.json", handlers.NewOpenAPIHandler(modelRegister))
 
 	// Load the file watchers
-	go monitors.ModelsMonitor(handlerRegister, modelRegister, authMiddleware, qm, gate, server_conf)
+	go monitors.ModelsMonitor(handlerRegister, modelRegister, authMiddleware, qm, gate, server_conf, evh)
 	go monitors.FunctionsMonitor(handlerRegister, modelRegister, functionRegister, authMiddleware, qm, server_conf)
 	go monitors.ServerConfigMonitor(server_conf, logger)
 

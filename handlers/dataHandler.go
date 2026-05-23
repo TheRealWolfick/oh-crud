@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -20,6 +21,7 @@ func RegisterRoutes(
 	auth func(http.Handler) http.Handler, 
 	qm *tools.QueueManager, 
 	server_conf *models.SwappableServerConfig,
+	evh *tools.EventHub,
 ) {
 	var err error
 	qm.Logger.Debug("Dynamic end point generating", "data-model", *cfg.Name)
@@ -61,6 +63,10 @@ func RegisterRoutes(
 			*cfg.Version,
 		)
 	}
+
+	// Enable the table for websockets and register end point
+	evh.EnableTopic(fmt.Sprintf("table:%s", *cfg.Table_name))
+	handlerRegistry.Register(fmt.Sprintf("POST /ws/%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleWebsocket(cfg, qm, server_conf, fmt.Sprintf("table:%s", *cfg.Table_name), evh))), *cfg.Version)
 }
 
 func handleGet(cfg *models.DataModel, qm *tools.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
@@ -115,6 +121,13 @@ func handleDelete(cfg *models.DataModel, qm *tools.QueueManager, svr_cfg *models
 func handleDelete_Group(cfg *models.DataModel, qm *tools.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
 	if cfg.End_points_allowed != nil && cfg.End_points_allowed.DELETE_GROUP != nil {
 		return deleteResource_Group(qm, cfg, svr_cfg.Get())
+	}
+	return notAllowed(cfg.End_points_allowed)
+}
+
+func handleWebsocket(cfg *models.DataModel, qm *tools.QueueManager, svr_cfg *models.SwappableServerConfig, topic string, evh *tools.EventHub) http.HandlerFunc {
+	if cfg.End_points_allowed != nil && cfg.End_points_allowed.POST != nil {
+		return websocketRegister(topic, cfg, svr_cfg.Get(), qm.Logger, evh)
 	}
 	return notAllowed(cfg.End_points_allowed)
 }
@@ -1043,5 +1056,40 @@ func notAllowed(
 func emptyResponse() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// Read a request and upgrade it to a new websocket
+func websocketRegister(
+	topic string,
+	cfg *models.DataModel,
+	svr_cfg *models.ServerConfig,
+	logger *slog.Logger,
+	evh *tools.EventHub,
+) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		task_type := "Open Websocket"
+		user_key := middleware.Contextkey("user")
+		req_ip := tools.GetIP(r)
+		req_username := r.Context().Value(user_key).(*models.User).Username
+		log := logger.With("user", req_username, "IP", req_ip, "function", task_type, "topic", topic)
+		ctx := middleware.SetLogger(r.Context(), log)
+
+		log.Info("REQUEST_RECEIVED")
+
+		// Check that a user is allowed to inteface with this command
+		if !middleware.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.POST, svr_cfg) {
+			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
+			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
+			return
+		}
+
+		// Read request
+
+		// Upgrade connection
+		err := evh.RegiterTopicOnly(w, r, topic)
+		if err != nil { 
+			http.Error(w, fmt.Sprintf("Error: %s", err.Error()), http.StatusInternalServerError)
+		}
 	}
 }

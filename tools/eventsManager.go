@@ -22,6 +22,7 @@ type EventHub struct {
 	sink         chan []byte
 	ping_sec int
 	timeout_sec int
+	upgrader     websocket.Upgrader
 }
 
 
@@ -47,7 +48,8 @@ type Client struct {
 	conn *websocket.Conn
 	send chan []byte
 	ping_sec int
-	timout_sec int
+	timeout_write_sec int
+	timeout_read_sec int
 	done chan struct{}
 }
 
@@ -55,8 +57,10 @@ type Client struct {
 // Action - What needs to be done i.e "subscribe", "unsubscribe", "request"
 // Direction - A pointer for the actions ""
 type ClientMessage struct {
+	Instruct string `json:"instruct"`
+	Topic string `json:"topic"`
 	Action string `json:"action"`
-	Direction string `json:"direction"`
+	Status string `json:"status"`
 }
 
 func NewEventHub(ping_sec int, timeout_sec int) *EventHub {
@@ -67,7 +71,49 @@ func NewEventHub(ping_sec int, timeout_sec int) *EventHub {
 		timeout_sec: timeout_sec,
 		validTopics: map[string]bool{},
 		sink: make(chan []byte, 256),
+		upgrader: websocket.Upgrader{
+			ReadBufferSize: 1024,
+			WriteBufferSize: 1024,
+			CheckOrigin: func(r *http.Request) bool { return true },
+		},
 	}
+}
+
+// Upgrade and manage a new websocket based on the topic and action. It registers for all statuses
+func (h *EventHub) RegiterTopicAction(w http.ResponseWriter, r *http.Request, topic string, action []string) error {
+	conn, err := h.upgrader.Upgrade(w, r, nil)
+	if err != nil { return err }
+
+	go h.handleClientTopicAction(conn, topic, action)
+	
+	return nil
+}
+// Upgrade and manage a new websocket based on the topic, status and action.
+func (h *EventHub) RegiterTopicStatusAction(w http.ResponseWriter, r *http.Request, topic string, action []string, status []string) error {
+	conn, err := h.upgrader.Upgrade(w, r, nil)
+	if err != nil { return err }
+
+	go h.handleClientTopicStatusAction(conn, topic, action, status)
+	
+	return nil
+}
+// Upgrade and manage a new websocket based on the topic and status, it registers for all actions
+func (h *EventHub) RegiterTopicStatus(w http.ResponseWriter, r *http.Request, topic string, status []string) error {
+	conn, err := h.upgrader.Upgrade(w, r, nil)
+	if err != nil { return err }
+
+	go h.handleClientTopicStatus(conn, topic, status)
+	
+	return nil
+}
+// Upgrade and manage a new websocket based on the topic. It registers for all actions and statuses
+func (h *EventHub) RegiterTopicOnly(w http.ResponseWriter, r *http.Request, topic string) error {
+	conn, err := h.upgrader.Upgrade(w, r, nil)
+	if err != nil { return err }
+
+	go h.HandleClientTopic(conn, topic)
+	
+	return nil
 }
 
 // Add a topic as a valid topic
@@ -91,6 +137,7 @@ func (h *EventHub) handleClientTopicAction(conn *websocket.Conn, topic string, a
 func (h *EventHub) handleClientTopicStatusAction(conn *websocket.Conn, topic string, action []string, status []string) {
 	h.handleClient(conn, topic, action, status)
 }
+
 // Register a new client connection. It is expected to call this via a go function
 func (h *EventHub) handleClient(conn *websocket.Conn, topic string, action []string, status []string) {
 	h.mu.Lock()
@@ -99,7 +146,8 @@ func (h *EventHub) handleClient(conn *websocket.Conn, topic string, action []str
 		conn: conn,
 		send: make(chan []byte, 256),
 		ping_sec: h.ping_sec,
-		timout_sec: h.timeout_sec,
+		timeout_write_sec: h.timeout_sec,
+		timeout_read_sec: int(float64(h.ping_sec) * 2.1),
 	}
 
 	// Register the client into the register first
@@ -178,10 +226,10 @@ func (c *Client) writeLoop() {
 		select {
 		case msg, ok := <- c.send:
 			if !ok { return }
-			c.conn.SetWriteDeadline(time.Now().Add(time.Duration(c.timout_sec)))
+			c.conn.SetWriteDeadline(time.Now().Add(time.Duration(c.timeout_write_sec)))
 			err = c.conn.WriteMessage(websocket.TextMessage, msg)
 		case <- ticker.C:
-			c.conn.SetWriteDeadline(time.Now().Add(time.Duration(c.timout_sec)))
+			c.conn.SetWriteDeadline(time.Now().Add(time.Duration(c.timeout_write_sec)))
 			err = c.conn.WriteMessage(websocket.PingMessage, []byte{})
 		case <- c.done:
 			return
@@ -192,6 +240,7 @@ func (c *Client) writeLoop() {
 
 func (c *Client) readLoop() {
 	for {
+		c.conn.SetReadDeadline(time.Now().Add(time.Duration(c.timeout_read_sec)))
 		_, msg, err := c.conn.ReadMessage()
 		if err != nil { break }
 
@@ -201,7 +250,7 @@ func (c *Client) readLoop() {
 
 		if err != nil { break }
 
-		// msg currently unimplemented
+		// msg actions currently unimplemented
 		fmt.Print("Received message from client: ", cm)
 	}
 	close(c.done)
@@ -217,6 +266,8 @@ func (h *EventHub) Broadcast(i *Instructions, action string, status string, data
 	}
 }
 
+// This is a function that handles webhooks. Currently, it only supports webhooks as per the config file,
+// but maybe user / frontend defined in the future?
 func (h *EventHub) Callback(topic string, action string, status string, data []byte) []error {
 	var res *http.Response
 	var err error
@@ -251,7 +302,7 @@ func (h *EventHub) Publish(ctx context.Context, action string, status string, ti
 
 	// Publish to the database
 	if instructions.persist_to_db {
-		go instructions.db.Exec(ctx, "INSERT INTO events(action, status, topic, log, time, user) VALUES ($, $, $, $, $)", action, status, topic, pl, timestamp, user.Username)
+		instructions.db.Exec(ctx, "INSERT INTO events(action, status, topic, log, time, user) VALUES ($, $, $, $, $)", action, status, topic, pl, timestamp, user.Username)
 	}
 
 	// Publish to webhooks

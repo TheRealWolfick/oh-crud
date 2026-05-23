@@ -11,7 +11,7 @@ import (
 	"lotusforge.au/api-server/tools"
 )
 
-func ModelsMonitor(handlerRegistry *tools.HandlerRegistry, modelRegistry *tools.ModelRegistry, auth func(http.Handler) http.Handler, qm *tools.QueueManager, gate *schematools.PendingApprovalGate, server_conf *models.SwappableServerConfig) {
+func ModelsMonitor(handlerRegistry *tools.HandlerRegistry, modelRegistry *tools.ModelRegistry, auth func(http.Handler) http.Handler, qm *tools.QueueManager, gate *schematools.PendingApprovalGate, server_conf *models.SwappableServerConfig, evh *tools.EventHub) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		qm.Logger.Error("Failed to load watcher, config will not update live", "error", err)

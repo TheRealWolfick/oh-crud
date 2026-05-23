@@ -25,6 +25,7 @@ func RegisterFunctionRoutes(
 	auth func(http.Handler) http.Handler,
 	qm *tools.QueueManager,
 	server_conf *models.SwappableServerConfig,
+	evh *tools.EventHub,
 ) {
 	if fn.Bound_to == nil || fn.Name == nil || fn.Version == nil {
 		qm.Logger.Warn("Skipping function with missing required fields", "function", fn.Name)
@@ -33,6 +34,9 @@ func RegisterFunctionRoutes(
 
 	route := fmt.Sprintf("GET /%s/fn/%s", *fn.Bound_to, *fn.Name)
 	qm.Logger.Debug("Registering declarative function", "route", route, "version", *fn.Version)
+
+	// Enable the function in the eventhandler
+	evh.EnableTopic(fmt.Sprintf("func:%s", *fn.Name))
 
 	// Resolve once for the model lookup at construction time. The handler
 	// will look up live each request to honour hot-reloads.
