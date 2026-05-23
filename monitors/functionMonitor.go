@@ -21,7 +21,7 @@ func FunctionsMonitor(
 	auth func(http.Handler) http.Handler,
 	qm *tools.QueueManager,
 	server_conf *models.SwappableServerConfig,
-	evh *tools.EventHub,
+	evh *tools.EventManager,
 ) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {

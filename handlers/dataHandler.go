@@ -21,7 +21,7 @@ func RegisterRoutes(
 	auth func(http.Handler) http.Handler, 
 	qm *tools.QueueManager, 
 	server_conf *models.SwappableServerConfig,
-	evh *tools.EventHub,
+	evh *tools.EventManager,
 ) {
 	var err error
 	qm.Logger.Debug("Dynamic end point generating", "data-model", *cfg.Name)
@@ -125,7 +125,7 @@ func handleDelete_Group(cfg *models.DataModel, qm *tools.QueueManager, svr_cfg *
 	return notAllowed(cfg.End_points_allowed)
 }
 
-func handleWebsocket(cfg *models.DataModel, qm *tools.QueueManager, svr_cfg *models.SwappableServerConfig, topic string, evh *tools.EventHub) http.HandlerFunc {
+func handleWebsocket(cfg *models.DataModel, qm *tools.QueueManager, svr_cfg *models.SwappableServerConfig, topic string, evh *tools.EventManager) http.HandlerFunc {
 	if cfg.End_points_allowed != nil && cfg.End_points_allowed.GET != nil {
 		return websocketRegister(topic, cfg, svr_cfg.Get(), qm.Logger, evh)
 	}
@@ -1077,7 +1077,7 @@ func websocketRegister(
 	cfg *models.DataModel,
 	svr_cfg *models.ServerConfig,
 	logger *slog.Logger,
-	evh *tools.EventHub,
+	evh *tools.EventManager,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Open Websocket"

@@ -10,6 +10,9 @@ import (
 	"lotusforge.au/api-server/models"
 )
 
+// This function accepts a model and returns all fields with a `tag` matching 
+// `value`. The value can be "all" to return all, or "exists" to also extract
+// all but without tag values with null values "" or "-"
 func getFields[T any](model T, tag string, value string) []string {
 	typ := reflect.TypeOf(model)
 	val := reflect.ValueOf(model)
@@ -62,6 +65,7 @@ func GetAllFieldNames[T any](model T) []string {
 	return getFields(model, "ignore", "all")
 }
 
+// Accepts a struct and returns it as a dict
 func GetStructAsDict[T any](model T) map[string]any {
 	fieldnames := GetAllFieldNames(model)
 	return_dict := make(map[string]any)

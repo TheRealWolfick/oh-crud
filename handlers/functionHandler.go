@@ -25,7 +25,7 @@ func RegisterFunctionRoutes(
 	auth func(http.Handler) http.Handler,
 	qm *tools.QueueManager,
 	server_conf *models.SwappableServerConfig,
-	evh *tools.EventHub,
+	evh *tools.EventManager,
 ) {
 	if fn.Bound_to == nil || fn.Name == nil || fn.Version == nil {
 		qm.Logger.Warn("Skipping function with missing required fields", "function", fn.Name)

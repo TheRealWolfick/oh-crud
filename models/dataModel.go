@@ -18,11 +18,22 @@ type UniqueKey struct {
 	Fields []string `yaml:"unique-key-fields"`
 }
 
-type Webhook struct {
-	On_insert []string `yaml:"on-insert"`
-	On_update []string `yaml:"on-update"`
-	On_delete []string `yaml:"on-delete"`
-	On_any    []string `yaml:"on-any"`
+type EventStatus struct {
+	Queued  []string `yaml:"queued"`
+	Start   []string `yaml:"start"`
+	Success []string `yaml:"success"`
+	Warn    []string `yaml:"warn"`
+	Fail    []string `yaml:"fail"`
+	Error   []string `yaml:"error"`
+	All     []string `yaml:"all"`
+}
+
+type EventAction struct {
+	On_get    *EventStatus `yaml:"on-get"`
+	On_insert *EventStatus `yaml:"on-insert"`
+	On_update *EventStatus `yaml:"on-update"`
+	On_delete *EventStatus `yaml:"on-delete"`
+	On_any    *EventStatus `yaml:"on-any"`
 }
 
 type DataModelFieldRules struct {
@@ -88,7 +99,7 @@ type DataModel struct {
 	Track_history        *bool    `yaml:"track-history"`
 	Track_history_field  *string  `yaml:"track-history-field"`
 	Soft_delete          *bool    `yaml:"soft-delete"`
-	Webhooks             *Webhook `yaml:"web-hooks"`
+	Webhooks             *EventAction `yaml:"web-hooks"`
 	// Database metadata
 	Table_name          *string                   `yaml:"table-name"`
 	End_point           *string                   `yaml:"end-point"`

@@ -40,7 +40,7 @@ type QueueManager struct {
 	Db             *pgxpool.Pool
 	Logger         *slog.Logger
 	mu             sync.Mutex
-	eventHub       *EventHub
+	eventHub       *EventManager
 }
 
 type Worker struct {
@@ -54,7 +54,7 @@ func newWorker(id int) *Worker {
 }
 
 // NewQueue creates a new async task queue with the given number of workers.
-func NewQueue(db *pgxpool.Pool, num_workers int, logger *slog.Logger, evh *EventHub) *QueueManager {
+func NewQueue(db *pgxpool.Pool, num_workers int, logger *slog.Logger, evh *EventManager) *QueueManager {
 	workers := make([]*Worker, num_workers)
 	for i := range num_workers {
 		workers[i] = newWorker(i)

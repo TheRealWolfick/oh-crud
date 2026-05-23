@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,10 +16,10 @@ import (
 	"lotusforge.au/api-server/models"
 )
 
-var ValidActions  = []string{"insert", "update", "delete"}
-var ValidStatuses = []string{"queued", "start", "success", "warn", "fail", "error", "complete"}
+var ValidActions  = []string{"get", "insert", "update", "delete"}
+var ValidStatuses = []string{"queued", "start", "success", "warn", "fail", "error", "all"}
 
-type EventHub struct {
+type EventManager struct {
 	clients      map[*Client]client_topic
 	targets      map[string]*Instructions
 	mu           sync.RWMutex
@@ -67,8 +68,8 @@ type ClientMessage struct {
 	Status string `json:"status"`
 }
 
-func NewEventHub(ping_sec int, timeout_sec int, db *pgxpool.Pool) *EventHub {
-	return &EventHub{
+func NewEventHub(ping_sec int, timeout_sec int, db *pgxpool.Pool) *EventManager {
+	return &EventManager{
 		clients: map[*Client]client_topic{},
 		targets: map[string]*Instructions{},
 		ping_sec: ping_sec,
@@ -85,7 +86,7 @@ func NewEventHub(ping_sec int, timeout_sec int, db *pgxpool.Pool) *EventHub {
 }
 
 // Upgrade and manage a new websocket based on the topic and action. It registers for all statuses
-func (h *EventHub) RegiterTopicAction(w http.ResponseWriter, r *http.Request, topic string, action []string) error {
+func (h *EventManager) RegiterTopicAction(w http.ResponseWriter, r *http.Request, topic string, action []string) error {
 	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil { return err }
 
@@ -94,7 +95,7 @@ func (h *EventHub) RegiterTopicAction(w http.ResponseWriter, r *http.Request, to
 	return nil
 }
 // Upgrade and manage a new websocket based on the topic, status and action.
-func (h *EventHub) RegiterTopicStatusAction(w http.ResponseWriter, r *http.Request, topic string, action []string, status []string) error {
+func (h *EventManager) RegiterTopicStatusAction(w http.ResponseWriter, r *http.Request, topic string, action []string, status []string) error {
 	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil { return err }
 
@@ -103,7 +104,7 @@ func (h *EventHub) RegiterTopicStatusAction(w http.ResponseWriter, r *http.Reque
 	return nil
 }
 // Upgrade and manage a new websocket based on the topic and status, it registers for all actions
-func (h *EventHub) RegiterTopicStatus(w http.ResponseWriter, r *http.Request, topic string, status []string) error {
+func (h *EventManager) RegiterTopicStatus(w http.ResponseWriter, r *http.Request, topic string, status []string) error {
 	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil { return err }
 
@@ -112,7 +113,7 @@ func (h *EventHub) RegiterTopicStatus(w http.ResponseWriter, r *http.Request, to
 	return nil
 }
 // Upgrade and manage a new websocket based on the topic. It registers for all actions and statuses
-func (h *EventHub) RegiterTopicOnly(w http.ResponseWriter, r *http.Request, topic string) error {
+func (h *EventManager) RegiterTopicOnly(w http.ResponseWriter, r *http.Request, topic string) error {
 	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil { return err }
 
@@ -122,7 +123,7 @@ func (h *EventHub) RegiterTopicOnly(w http.ResponseWriter, r *http.Request, topi
 }
 
 // Add a topic as a valid topic
-func (h *EventHub) EnableTopic(topic string, cfg *models.DataModel) {
+func (h *EventManager) EnableTopic(topic string, cfg *models.DataModel) {
 	h.validTopics[topic] = true
 
 	// Register instructions for topics
@@ -134,45 +135,60 @@ func (h *EventHub) EnableTopic(topic string, cfg *models.DataModel) {
 		}
 	}
 
+	i := h.targets[topic]
+
 	// Build structures
 	for _, a := range ValidActions {
 		// Action
-		if h.targets[topic].webhook_url[a] == nil { h.targets[topic].webhook_url[a] = webhook_status{} }
-		if h.targets[topic].clients[a] == nil { h.targets[topic].clients[a] = instruct_status{} }
+		if i.webhook_url[a] == nil { i.webhook_url[a] = webhook_status{} }
+		if i.clients[a] == nil { i.clients[a] = instruct_status{} }
 
 		// Status
 		for _, s := range ValidStatuses {
-			if h.targets[topic].webhook_url[a][s] == nil { h.targets[topic].webhook_url[a][s] = []string{} }
-			if h.targets[topic].clients[a][s] == nil { 
-				h.targets[topic].clients[a][s] = instruct_clients{} 
+			if i.webhook_url[a][s] == nil { i.webhook_url[a][s] = []string{} }
+			if i.clients[a][s] == nil { 
+				i.clients[a][s] = instruct_clients{} 
 			}
 		}
 	}
 
-	// Populate webhook urls
+	// Helper func for mapping status from config to eventhub
+	fn := func(action string, hooks *models.EventStatus) {
+		for k, v := range GetStructAsDict(hooks) {
+			i.webhook_url[action][strings.ToLower(k)] = v.([]string)
+		}
+	}
 
+	// Map any config webhooks into the data structure
+	if cfg.Webhooks != nil {
+		if cfg.Webhooks.On_get != nil { fn("get", cfg.Webhooks.On_get) }
+		if cfg.Webhooks.On_delete != nil { fn("delete", cfg.Webhooks.On_delete) }
+		if cfg.Webhooks.On_insert != nil { fn("insert", cfg.Webhooks.On_insert) }
+		if cfg.Webhooks.On_update != nil { fn("update", cfg.Webhooks.On_update) }
+		if cfg.Webhooks.On_any != nil { fn("any", cfg.Webhooks.On_any) }
+	}
 }
 
 // Register a new client connection to specific topic
-func (h *EventHub) HandleClientTopic(conn *websocket.Conn, topic string) {
+func (h *EventManager) HandleClientTopic(conn *websocket.Conn, topic string) {
 	if !h.validTopics[topic] { return }
 	h.handleClient(conn, topic, ValidActions, ValidStatuses)
 }
 // Register a new client connection to specific topic statuses
-func (h *EventHub) handleClientTopicStatus(conn *websocket.Conn, topic string, status []string) {
+func (h *EventManager) handleClientTopicStatus(conn *websocket.Conn, topic string, status []string) {
 	h.handleClient(conn, topic, ValidActions, status)
 }
 // Register a new client connection to specific topic actions
-func (h *EventHub) handleClientTopicAction(conn *websocket.Conn, topic string, action []string) {
+func (h *EventManager) handleClientTopicAction(conn *websocket.Conn, topic string, action []string) {
 	h.handleClient(conn, topic, action, ValidStatuses)
 }
 // Register a new client connection to specific topic actions and statuses. Statuses apply over all actions
-func (h *EventHub) handleClientTopicStatusAction(conn *websocket.Conn, topic string, action []string, status []string) {
+func (h *EventManager) handleClientTopicStatusAction(conn *websocket.Conn, topic string, action []string, status []string) {
 	h.handleClient(conn, topic, action, status)
 }
 
 // Register a new client connection. It is expected to call this via a go function
-func (h *EventHub) handleClient(conn *websocket.Conn, topic string, action []string, status []string) {
+func (h *EventManager) handleClient(conn *websocket.Conn, topic string, action []string, status []string) {
 	h.mu.Lock()
 	// Create the client
 	client := &Client{
@@ -186,9 +202,9 @@ func (h *EventHub) handleClient(conn *websocket.Conn, topic string, action []str
 
 	// Set the pong handler I guess
 	conn.SetPongHandler(func(appData string) error {
-      conn.SetReadDeadline(time.Now().Add(time.Duration(client.timeout_read_sec) * time.Second))
-      return nil
-  })
+		conn.SetReadDeadline(time.Now().Add(time.Duration(client.timeout_read_sec) * time.Second))
+		return nil
+	})
 
 	// Register the client into the register first
 	for _, a := range action {
@@ -209,13 +225,13 @@ func (h *EventHub) handleClient(conn *websocket.Conn, topic string, action []str
 }
 
 // Register the client in the eventhub safely
-func (h *EventHub) register(c *Client, topic string, action string, status string) {
+func (h *EventManager) register(c *Client, topic string, action string, status string) {
 	h.mu.Lock()
 	h.registerUnsafe(c, topic, action, status)
 	h.mu.Unlock()
 }
 // Register the client in the eventhub UNSAFE
-func (h *EventHub) registerUnsafe(c *Client, topic string, action string, status string) {
+func (h *EventManager) registerUnsafe(c *Client, topic string, action string, status string) {
 	// Init clients[c]
 	if h.clients[c] == nil {
 		h.clients[c] = client_topic{}
@@ -242,18 +258,18 @@ func (h *EventHub) registerUnsafe(c *Client, topic string, action string, status
 }
 
 // Register the client in the eventhub safely
-func (h *EventHub) unregister(c *Client, topic string, action string, status string) {
+func (h *EventManager) unregister(c *Client, topic string, action string, status string) {
 	h.mu.Lock()
 	h.unregisterUnsafe(c, topic, action, status)
 	h.mu.Unlock()
 }
 // Register the client in the eventhub UNSAFE
-func (h *EventHub) unregisterUnsafe(c *Client, topic string, action string, status string) {
+func (h *EventManager) unregisterUnsafe(c *Client, topic string, action string, status string) {
 	delete(h.targets[topic].clients[action][status], c)
 }
 
 // Unregister the client from the eventhub and clean up
-func (h *EventHub) unhandleClient(client *Client) error {
+func (h *EventManager) unhandleClient(client *Client) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -322,7 +338,7 @@ func (c *Client) readLoop() {
 }
 
 // Broadcase a bytes array across all clients
-func (h *EventHub) Broadcast(i *Instructions, action string, status string, data []byte) {
+func (h *EventManager) Broadcast(i *Instructions, action string, status string, data []byte) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -333,7 +349,7 @@ func (h *EventHub) Broadcast(i *Instructions, action string, status string, data
 
 // This is a function that handles webhooks. Currently, it only supports webhooks as per the config file,
 // but maybe user / frontend defined in the future?
-func (h *EventHub) Callback(topic string, action string, status string, data []byte) []error {
+func (h *EventManager) Callback(topic string, action string, status string, data []byte) []error {
 	var res *http.Response
 	var err error
 	var errs []error
@@ -350,28 +366,28 @@ func (h *EventHub) Callback(topic string, action string, status string, data []b
 }
 
 // Pushish a message without supplying a timestamp
-func (h *EventHub) PublishNoTimestamp(ctx context.Context, action string, status string, topic string, payload map[string]any) error {
+func (h *EventManager) PublishNoTimestamp(ctx context.Context, action string, status string, topic string, payload map[string]any) error {
 	return h.Publish(ctx, action, status, time.Now(), topic, payload)
 }
 // Pushish a message without supplying a timestamp
-func (h *EventHub) PublishNoTimestampPayload(ctx context.Context, action string, status string, topic string, payload []byte) error {
+func (h *EventManager) PublishNoTimestampPayload(ctx context.Context, action string, status string, topic string, payload []byte) error {
 	return h.publish(ctx, action, status, time.Now(), topic, payload)
 }
 // Publish a message
-func (h *EventHub) Publish(ctx context.Context, action string, status string, timestamp time.Time, topic string, payload map[string]any) error {
+func (h *EventManager) Publish(ctx context.Context, action string, status string, timestamp time.Time, topic string, payload map[string]any) error {
 	// Extract and prep data
 	pl, err := json.Marshal(payload)
 	if err != nil { return err }
 	return h.publish(ctx, action, status, timestamp, topic, pl)
 }
 // Publish a message
-func (h *EventHub) PublishPayload(ctx context.Context, action string, status string, timestamp time.Time, topic string, payload []byte) error {
+func (h *EventManager) PublishPayload(ctx context.Context, action string, status string, timestamp time.Time, topic string, payload []byte) error {
 	// Extract and prep data
 	return h.publish(ctx, action, status, timestamp, topic, payload)
 }
 
 // Publish a message across all end points as per the instructions.
-func (h *EventHub) publish(ctx context.Context, action string, status string, timestamp time.Time, topic string, payload []byte) error {
+func (h *EventManager) publish(ctx context.Context, action string, status string, timestamp time.Time, topic string, payload []byte) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
