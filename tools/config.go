@@ -659,6 +659,8 @@ func ValidateDataModel(m models.DataModel) error {
 	if len(errs) > 0 {
 		return fmt.Errorf("invalid config for %q:\n  - %s", ptrStr(m.Name, "unknown"), strings.Join(errs, "\n  - "))
 	}
+
+	// model is valid, build the websocket
 	return nil
 }
 

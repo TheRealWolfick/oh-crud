@@ -19,10 +19,10 @@ type UniqueKey struct {
 }
 
 type Webhook struct {
-	On_insert *string `yaml:"on-insert"`
-	On_update *string `yaml:"on-update"`
-	On_delete *string `yaml:"on-delete"`
-	On_any    *string `yaml:"on-any"`
+	On_insert []string `yaml:"on-insert"`
+	On_update []string `yaml:"on-update"`
+	On_delete []string `yaml:"on-delete"`
+	On_any    []string `yaml:"on-any"`
 }
 
 type DataModelFieldRules struct {

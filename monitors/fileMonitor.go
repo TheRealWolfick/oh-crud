@@ -37,7 +37,7 @@ func ModelsMonitor(handlerRegistry *tools.HandlerRegistry, modelRegistry *tools.
 						} else {
 							tools.ProcessModelAdditionalFields(updated_config)
 							modelRegistry.Register(updated_config)
-							handlers.RegisterRoutes(updated_config, handlerRegistry, auth, qm, server_conf)
+							handlers.RegisterRoutes(updated_config, handlerRegistry, auth, qm, server_conf, evh)
 							schematools.SyncModelIfNeeded(context.Background(), qm.Db, updated_config, modelRegistry.All(), qm.Logger, gate)
 						}
 					}

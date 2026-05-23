@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"lotusforge.au/api-server/handlers"
 	"lotusforge.au/api-server/middleware"
@@ -40,11 +39,11 @@ func main() {
 	}
 	logger.Info("Database connection made")
 
-	// Create the queue for handling jobs
-	qm := tools.NewQueue(pool, 5, logger)
-
 	// Create the events handler
-	evh := tools.NewEventHub(27, 10)
+	evh := tools.NewEventHub(27, 10, pool)
+
+	// Create the queue for handling jobs
+	qm := tools.NewQueue(pool, 5, logger, evh)
 
 	// Load the server config
 	intial_server_conf, err := tools.LoadYAMLIntoModel[models.ServerConfig]("./config/server/server.yaml")
@@ -99,7 +98,7 @@ func main() {
 
 	// Load the file watchers
 	go monitors.ModelsMonitor(handlerRegister, modelRegister, authMiddleware, qm, gate, server_conf, evh)
-	go monitors.FunctionsMonitor(handlerRegister, modelRegister, functionRegister, authMiddleware, qm, server_conf)
+	go monitors.FunctionsMonitor(handlerRegister, modelRegister, functionRegister, authMiddleware, qm, server_conf, evh)
 	go monitors.ServerConfigMonitor(server_conf, logger)
 
 	// Launch the server

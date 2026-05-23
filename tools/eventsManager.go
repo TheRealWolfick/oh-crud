@@ -12,6 +12,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"lotusforge.au/api-server/middleware"
+	"lotusforge.au/api-server/models"
 )
 
 type EventHub struct {
@@ -23,13 +24,13 @@ type EventHub struct {
 	ping_sec int
 	timeout_sec int
 	upgrader     websocket.Upgrader
+	db           *pgxpool.Pool
 }
 
 
 type Instructions struct {
 	webhook_url    webhook_action
 	persist_to_db  bool
-	db             *pgxpool.Pool
 	clients        instruct_action
 }
 
@@ -63,7 +64,7 @@ type ClientMessage struct {
 	Status string `json:"status"`
 }
 
-func NewEventHub(ping_sec int, timeout_sec int) *EventHub {
+func NewEventHub(ping_sec int, timeout_sec int, db *pgxpool.Pool) *EventHub {
 	return &EventHub{
 		clients: map[*Client]client_topic{},
 		targets: map[string]*Instructions{},
@@ -76,6 +77,7 @@ func NewEventHub(ping_sec int, timeout_sec int) *EventHub {
 			WriteBufferSize: 1024,
 			CheckOrigin: func(r *http.Request) bool { return true },
 		},
+		db: db,
 	}
 }
 
@@ -108,7 +110,9 @@ func (h *EventHub) RegiterTopicStatus(w http.ResponseWriter, r *http.Request, to
 }
 // Upgrade and manage a new websocket based on the topic. It registers for all actions and statuses
 func (h *EventHub) RegiterTopicOnly(w http.ResponseWriter, r *http.Request, topic string) error {
+	GetBasicDebugLogger().Debug("Upgrading conn")
 	conn, err := h.upgrader.Upgrade(w, r, nil)
+	GetBasicDebugLogger().Debug("upgraded conn", "topic", topic, "valid_topics", h.validTopics)
 	if err != nil { return err }
 
 	go h.HandleClientTopic(conn, topic)
@@ -117,12 +121,43 @@ func (h *EventHub) RegiterTopicOnly(w http.ResponseWriter, r *http.Request, topi
 }
 
 // Add a topic as a valid topic
-func (h *EventHub) EnableTopic(topic string) {
+func (h *EventHub) EnableTopic(topic string, cfg *models.DataModel) {
 	h.validTopics[topic] = true
+
+	// Register instructions for topics
+	if h.targets[topic] == nil {
+		h.targets[topic] = &Instructions{
+			webhook_url: webhook_action{},
+			persist_to_db: true,
+			clients: instruct_action{},
+		}
+	}
+
+	// Build structures
+	for _, a := range []string{"insert", "update", "delete"} {
+		// Action
+		if h.targets[topic].webhook_url[a] == nil { h.targets[topic].webhook_url[a] = webhook_status{} }
+		if h.targets[topic].clients[a] == nil { h.targets[topic].clients[a] = instruct_status{} }
+
+		// Status
+		for _, s := range []string{"queued", "start", "success", "warn", "fail", "error"} {
+			if h.targets[topic].webhook_url[a][s] == nil { h.targets[topic].webhook_url[a][s] = []string{} }
+			if h.targets[topic].clients[a][s] == nil { 
+				h.targets[topic].clients[a][s] = instruct_clients{} 
+			}
+		}
+	}
+
+	// Populate webhook urls
+
+
+
 }
 
 // Register a new client connection to specific topic
 func (h *EventHub) HandleClientTopic(conn *websocket.Conn, topic string) {
+	if !h.validTopics[topic] { return }
+	GetBasicDebugLogger().Debug("Topic is valid!")
 	h.handleClient(conn, topic, []string{"insert", "update", "delete"}, []string{"queued", "start", "success", "warn", "fail", "error"})
 }
 // Register a new client connection to specific topic statuses
@@ -148,7 +183,15 @@ func (h *EventHub) handleClient(conn *websocket.Conn, topic string, action []str
 		ping_sec: h.ping_sec,
 		timeout_write_sec: h.timeout_sec,
 		timeout_read_sec: int(float64(h.ping_sec) * 2.1),
+		done: make(chan struct{}),
 	}
+
+	// Set the pong handler I guess
+	conn.SetPongHandler(func(appData string) error {
+      conn.SetReadDeadline(time.Now().Add(time.Duration(client.timeout_read_sec) * time.Second))
+			GetBasicDebugLogger().Debug("Pong read")
+      return nil
+  })
 
 	// Register the client into the register first
 	for _, a := range action {
@@ -176,7 +219,28 @@ func (h *EventHub) register(c *Client, topic string, action string, status strin
 }
 // Register the client in the eventhub UNSAFE
 func (h *EventHub) registerUnsafe(c *Client, topic string, action string, status string) {
+	// Init clients[c]
+	if h.clients[c] == nil {
+		h.clients[c] = client_topic{}
+	}
+	// Init clients[c][topic]
+	if h.clients[c][topic] == nil {
+		h.clients[c][topic] = client_action{}
+	}
+	// Init clients[c][topic][action]
+	if h.clients[c][topic][action] == nil {
+		h.clients[c][topic][action] = client_status{}
+	}
 	h.clients[c][topic][action][status] = true
+
+	// Init targets[topic].clients[action]
+	if h.targets[topic].clients[action] == nil {
+		h.targets[topic].clients[action] = instruct_status{}
+	}
+	// Init targets[topic].clients[action][status]
+	if h.targets[topic].clients[action][status] == nil {
+		h.targets[topic].clients[action][status] = map[*Client]bool{}
+	}
 	h.targets[topic].clients[action][status][c] = true
 }
 
@@ -225,34 +289,41 @@ func (c *Client) writeLoop() {
 		// Write to the client
 		select {
 		case msg, ok := <- c.send:
-			if !ok { return }
-			c.conn.SetWriteDeadline(time.Now().Add(time.Duration(c.timeout_write_sec)))
+			if !ok { GetBasicDebugLogger().Debug("Error sending message") }
+			GetBasicDebugLogger().Debug("Sending message to websocket", "msg", msg)
+			c.conn.SetWriteDeadline(time.Now().Add(time.Duration(c.timeout_write_sec) * time.Second))
 			err = c.conn.WriteMessage(websocket.TextMessage, msg)
+			if err != nil { GetBasicDebugLogger().Debug("Write error", "err", err) }
 		case <- ticker.C:
-			c.conn.SetWriteDeadline(time.Now().Add(time.Duration(c.timeout_write_sec)))
+			c.conn.SetWriteDeadline(time.Now().Add(time.Duration(c.timeout_write_sec) * time.Second))
+			GetBasicDebugLogger().Debug("Sending ping")
 			err = c.conn.WriteMessage(websocket.PingMessage, []byte{})
+			if err != nil { GetBasicDebugLogger().Debug("Write error", "err", err) }
 		case <- c.done:
 			return
 		}
 		if err != nil { break }
 	}
+	ticker.Stop()
 }
 
 func (c *Client) readLoop() {
+	GetBasicDebugLogger().Debug("started readloop")
 	for {
-		c.conn.SetReadDeadline(time.Now().Add(time.Duration(c.timeout_read_sec)))
+		c.conn.SetReadDeadline(time.Now().Add(time.Duration(c.timeout_read_sec) * time.Second))
 		_, msg, err := c.conn.ReadMessage()
-		if err != nil { break }
+		if err != nil { GetBasicDebugLogger().Debug("Error with read", "err", err); break }
 
 		// Unmarshal the message
 		var cm ClientMessage
 		err = json.Unmarshal(msg, &cm)
 
-		if err != nil { break }
+		if err != nil { GetBasicDebugLogger().Debug("Error with decode", "err", err); continue }
 
 		// msg actions currently unimplemented
-		fmt.Print("Received message from client: ", cm)
+		GetBasicDebugLogger().Debug("Received message from client", "msg", cm)
 	}
+	GetBasicDebugLogger().Debug("closed readloop")
 	close(c.done)
 }
 
@@ -260,8 +331,15 @@ func (c *Client) readLoop() {
 func (h *EventHub) Broadcast(i *Instructions, action string, status string, data []byte) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	GetBasicDebugLogger().Debug("Broadcasting data to clients", 
+	"data", data,
+	"action", action,
+	"status", status,
+	"client_count", len(i.clients[action][status]),
+	"all_clients", i.clients)
 
 	for c, _ := range i.clients[action][status] {
+		GetBasicDebugLogger().Debug("Found client", "c", c)
 		c.send <- data
 	}
 }
@@ -309,6 +387,7 @@ func (h *EventHub) PublishPayload(ctx context.Context, action string, status str
 func (h *EventHub) publish(ctx context.Context, action string, status string, timestamp time.Time, topic string, payload []byte) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	GetBasicDebugLogger().Debug("Called the websocket publish")
 
 	instructions := h.targets[topic]
 	user, found := middleware.GetUser(ctx)
@@ -316,7 +395,7 @@ func (h *EventHub) publish(ctx context.Context, action string, status string, ti
 
 	// Publish to the database
 	if instructions.persist_to_db {
-		instructions.db.Exec(ctx, "INSERT INTO events(action, status, topic, log, time, user) VALUES ($, $, $, $, $)", action, status, topic, payload, timestamp, user.Username)
+		h.db.Exec(ctx, "INSERT INTO events(action, status, topic, log, time, user) VALUES ($, $, $, $, $)", action, status, topic, payload, timestamp, user.Username)
 	}
 
 	// Publish to webhooks

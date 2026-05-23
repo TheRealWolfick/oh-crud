@@ -1,13 +1,11 @@
 package tools
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -177,49 +175,6 @@ func (qm *QueueManager) getReportableTaskInfo(w *Worker) map[string]any {
 	}
 }
 
-func (qm *QueueManager) actionWebhookReport(w *Worker) error {
-	// Send out any webhooks
-	if w.TaskActioning.Cfg.Webhooks != nil {
-		// Variable init
-		var res *http.Response
-		var err error
-
-		// Generate default reportable data
-		reportable_task_info := qm.getReportableTaskInfo(w)
-		json, err := json.Marshal(reportable_task_info)
-		if err != nil { return fmt.Errorf("Could not generate reportable task info") }
-
-
-		// Different reporting routes
-		switch w.TaskActioning.TaskType {
-		case "Add Resource", "Add Bulk Resources":
-			if w.TaskActioning.Cfg.Webhooks.On_insert != nil { 
-				res, err = http.Post(*w.TaskActioning.Cfg.Webhooks.On_insert, "application/json", bytes.NewReader(json))
-			} else if w.TaskActioning.Cfg.Webhooks.On_any != nil { 
-				res, err = http.Post(*w.TaskActioning.Cfg.Webhooks.On_any, "application/json", bytes.NewReader(json))
-			} 
-		case "Update Resource", "Update Multiple Resources":
-			if w.TaskActioning.Cfg.Webhooks.On_update != nil { 
-				res, err = http.Post(*w.TaskActioning.Cfg.Webhooks.On_update, "application/json", bytes.NewReader(json))
-			} else if w.TaskActioning.Cfg.Webhooks.On_any != nil { 
-				res, err = http.Post(*w.TaskActioning.Cfg.Webhooks.On_any, "application/json", bytes.NewReader(json))
-			} 
-		case "Delete Resource", "Delete Multiple Resources":
-			if w.TaskActioning.Cfg.Webhooks.On_delete != nil { 
-				res, err = http.Post(*w.TaskActioning.Cfg.Webhooks.On_delete, "application/json", bytes.NewReader(json))
-			} else if w.TaskActioning.Cfg.Webhooks.On_any != nil { 
-				res, err = http.Post(*w.TaskActioning.Cfg.Webhooks.On_any, "application/json", bytes.NewReader(json))
-			} 
-		default:
-			if w.TaskActioning.Cfg.Webhooks.On_any != nil { 
-				res, err = http.Post(*w.TaskActioning.Cfg.Webhooks.On_any, "application/json", bytes.NewReader(json))
-			} 
-		}
-		if res.StatusCode != 200 { qm.reportWork(w, "error: webhook", map[string]any{"error_code": res.Status}) }
-	}
-
-	return nil
-}
 
 func (qm *QueueManager) lookForTask() *Task {
 	qm.mu.Lock()

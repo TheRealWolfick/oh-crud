@@ -65,8 +65,8 @@ func RegisterRoutes(
 	}
 
 	// Enable the table for websockets and register end point
-	evh.EnableTopic(fmt.Sprintf("table:%s", *cfg.Table_name))
-	handlerRegistry.Register(fmt.Sprintf("POST /ws/%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleWebsocket(cfg, qm, server_conf, fmt.Sprintf("table:%s", *cfg.Table_name), evh))), *cfg.Version)
+	evh.EnableTopic(fmt.Sprintf("table:%s", *cfg.Table_name), cfg)
+	handlerRegistry.Register(fmt.Sprintf("GET /ws/%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleWebsocket(cfg, qm, server_conf, fmt.Sprintf("table:%s", *cfg.Table_name), evh))), *cfg.Version)
 }
 
 func handleGet(cfg *models.DataModel, qm *tools.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
@@ -126,7 +126,7 @@ func handleDelete_Group(cfg *models.DataModel, qm *tools.QueueManager, svr_cfg *
 }
 
 func handleWebsocket(cfg *models.DataModel, qm *tools.QueueManager, svr_cfg *models.SwappableServerConfig, topic string, evh *tools.EventHub) http.HandlerFunc {
-	if cfg.End_points_allowed != nil && cfg.End_points_allowed.POST != nil {
+	if cfg.End_points_allowed != nil && cfg.End_points_allowed.GET != nil {
 		return websocketRegister(topic, cfg, svr_cfg.Get(), qm.Logger, evh)
 	}
 	return notAllowed(cfg.End_points_allowed)
@@ -1034,6 +1034,7 @@ func notAllowed(
 	allowed *models.End_pointsAllowed,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		tools.GetBasicLogger().Debug("debug", "method", r.Method)
 		var allowed_methods []string
 		if allowed != nil {
 			if allowed.GET != nil           { allowed_methods = append(allowed_methods, "GET") }

@@ -171,7 +171,13 @@ func (g *PendingApprovalGate) Remove(tableName string) {
 // file is missing. Non-destructive changes are applied automatically. Destructive
 // changes are passed to the gate (recorded + apply aborted). Pass nil for gate to
 // auto-approve destructive changes (dev mode only).
-func BootstrapModels(ctx context.Context, pool *pgxpool.Pool, loadedModels []models.DataModel, logger *slog.Logger, gate *PendingApprovalGate) {
+func BootstrapModels(
+	ctx context.Context, 
+	pool *pgxpool.Pool, 
+	loadedModels []models.DataModel, 
+	logger *slog.Logger, 
+	gate *PendingApprovalGate,
+) {
 	// Collect valid models and their table names.
 	ptrs := make([]*models.DataModel, 0, len(loadedModels))
 	tableNames := make([]string, 0, len(loadedModels))

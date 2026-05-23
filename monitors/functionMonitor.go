@@ -21,6 +21,7 @@ func FunctionsMonitor(
 	auth func(http.Handler) http.Handler,
 	qm *tools.QueueManager,
 	server_conf *models.SwappableServerConfig,
+	evh *tools.EventHub,
 ) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -49,7 +50,7 @@ func FunctionsMonitor(
 				}
 				qm.Logger.Debug("Function update detected", "name", *fn.Name, "bound-to", *fn.Bound_to)
 				functionRegistry.Register(fn)
-				handlers.RegisterFunctionRoutes(fn, modelRegistry, handlerRegistry, auth, qm, server_conf)
+				handlers.RegisterFunctionRoutes(fn, modelRegistry, handlerRegistry, auth, qm, server_conf, evh)
 
 			case err, ok := <-watcher.Errors:
 				if !ok { return }
