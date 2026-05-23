@@ -18,20 +18,20 @@ import (
 )
 
 type Task struct {
-	TaskID       string                                              `json:"task_id"`
-	TaskType     string                                              `json:"task_type"`
-	ExecType     string                                              `json:"-"`
-	Sql          string                                              `json:"sql"`
-	StartTime    time.Time                                           `json:"start_time"`
-	CompleteTime time.Time                                           `json:"complete_time"`
-	Status       string                                              `json:"status"`
-	Success      bool                                                `json:"success"`
-	Response     map[string]any                                      `json:"response"`
-	Ctx          context.Context                                     `json:"-"`
-	Note         string                                              `json:"note"`
+	TaskID       string                                                `json:"task_id"`
+	TaskType     string                                                `json:"task_type"`
+	ExecType     string                                                `json:"-"`
+	Sql          string                                                `json:"sql"`
+	StartTime    time.Time                                             `json:"start_time"`
+	CompleteTime time.Time                                             `json:"complete_time"`
+	Status       string                                                `json:"status"`
+	Success      bool                                                  `json:"success"`
+	Response     map[string]any                                        `json:"response"`
+	Ctx          context.Context                                       `json:"-"`
+	Note         string                                                `json:"note"`
 	Function     func(context.Context, ...any) (map[string]any, error) `json:"-"`
-	Args         []any                                               `json:"-"`
-	Cfg          models.DataModel                                   `json:"-"`
+	Args         []any                                                 `json:"-"`
+	Cfg          models.DataModel                                      `json:"-"`
 }
 
 type QueueManager struct {
@@ -42,6 +42,7 @@ type QueueManager struct {
 	Db             *pgxpool.Pool
 	Logger         *slog.Logger
 	mu             sync.Mutex
+	eventHub       *EventHub
 }
 
 type Worker struct {
@@ -55,7 +56,7 @@ func newWorker(id int) *Worker {
 }
 
 // NewQueue creates a new async task queue with the given number of workers.
-func NewQueue(db *pgxpool.Pool, num_workers int, logger *slog.Logger) *QueueManager {
+func NewQueue(db *pgxpool.Pool, num_workers int, logger *slog.Logger, evh *EventHub) *QueueManager {
 	workers := make([]*Worker, num_workers)
 	for i := range num_workers {
 		workers[i] = newWorker(i)
@@ -67,6 +68,7 @@ func NewQueue(db *pgxpool.Pool, num_workers int, logger *slog.Logger) *QueueMana
 		active_workers: 0,
 		workers_count:  num_workers,
 		Logger:         logger,
+		eventHub:       evh,
 	}
 }
 
@@ -120,29 +122,23 @@ func (qm *QueueManager) reportWork(w *Worker, status string, res map[string]any)
 	switch status {
 	case "error":
 		w.TaskActioning.Status = "error"
-		log, err := w.logTaskUnsafe()
-		if err != nil {
-			qm.Logger.Error("Failed to report task failure", "worker", w.ID, "task_id", w.TaskActioning.TaskID, "task_type", w.TaskActioning.TaskType, "error", w.TaskActioning.Response, "log_error", err, "user", w.TaskActioning.Ctx.Value(middleware.Contextkey("user")).(*models.User).Username)
-			qm.mu.Unlock()
-		} else {
-			qm.mu.Unlock()
-			qm.logDatabaseEvent(w.TaskActioning.Ctx, "TASK_ERROR", log)
-		}
-
 	case "success":
 		w.TaskActioning.Status = "complete"
-		log, err := w.logTaskUnsafe()
-		if err != nil {
-			qm.Logger.Error("Failed to report task success", "worker", w.ID, "task_id", w.TaskActioning.TaskID, "task_type", w.TaskActioning.TaskType, "error", w.TaskActioning.Response, "log_error", err, "user", w.TaskActioning.Ctx.Value(middleware.Contextkey("user")).(*models.User).Username)
-			qm.mu.Unlock()
-		} else {
-			qm.mu.Unlock()
-			qm.logDatabaseEvent(w.TaskActioning.Ctx, "TASK_COMPLETE", log)
-		}
 	}
-	
-	// Run any webhooks
-	qm.actionWebhookReport(w)
+
+	// Prepare log data
+	log, err := w.logTaskUnsafe()
+	if err != nil {
+		qm.Logger.Error("Failed to build event data", "status", w.TaskActioning.Status, "worker", w.ID, "task_id", w.TaskActioning.TaskID, "task_type", w.TaskActioning.TaskType, "error", w.TaskActioning.Response, "log_error", err, "user", w.TaskActioning.Ctx.Value(middleware.Contextkey("user")).(*models.User).Username)
+		qm.mu.Unlock()
+	} else {
+		qm.mu.Unlock()
+		qm.logDatabaseEvent(w.TaskActioning.Ctx, "TASK_COMPLETE", log)
+	}
+
+	// Publish notification
+	qm.eventHub.PublishNoTimestampPayload(w.TaskActioning.Ctx, w.TaskActioning.TaskType, w.TaskActioning.Status, fmt.Sprintf("table:%s", *w.TaskActioning.Cfg.Table_name), log)
+
 }
 
 func (qm *QueueManager) getReportableTaskInfo(w *Worker) map[string]any {

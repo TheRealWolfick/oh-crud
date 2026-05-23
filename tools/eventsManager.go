@@ -285,31 +285,45 @@ func (h *EventHub) Callback(topic string, action string, status string, data []b
 }
 
 // Pushish a message without supplying a timestamp
-func (h *EventHub) PublishNoTimestamp(ctx context.Context, action string, status string, timestamp time.Time, topic string, payload map[string]any) error {
+func (h *EventHub) PublishNoTimestamp(ctx context.Context, action string, status string, topic string, payload map[string]any) error {
 	return h.Publish(ctx, action, status, time.Now(), topic, payload)
 }
-// Publish a message across all end points as per the instructions.
+// Pushish a message without supplying a timestamp
+func (h *EventHub) PublishNoTimestampPayload(ctx context.Context, action string, status string, topic string, payload []byte) error {
+	return h.publish(ctx, action, status, time.Now(), topic, payload)
+}
+// Publish a message
 func (h *EventHub) Publish(ctx context.Context, action string, status string, timestamp time.Time, topic string, payload map[string]any) error {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
 	// Extract and prep data
 	pl, err := json.Marshal(payload)
 	if err != nil { return err }
+	return h.publish(ctx, action, status, timestamp, topic, pl)
+}
+// Publish a message
+func (h *EventHub) PublishPayload(ctx context.Context, action string, status string, timestamp time.Time, topic string, payload []byte) error {
+	// Extract and prep data
+	return h.publish(ctx, action, status, timestamp, topic, payload)
+}
+
+// Publish a message across all end points as per the instructions.
+func (h *EventHub) publish(ctx context.Context, action string, status string, timestamp time.Time, topic string, payload []byte) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	instructions := h.targets[topic]
 	user, found := middleware.GetUser(ctx)
 	if !found { return fmt.Errorf("Publish called from a non user!") }
-	instructions := h.targets[topic]
 
 	// Publish to the database
 	if instructions.persist_to_db {
-		instructions.db.Exec(ctx, "INSERT INTO events(action, status, topic, log, time, user) VALUES ($, $, $, $, $)", action, status, topic, pl, timestamp, user.Username)
+		instructions.db.Exec(ctx, "INSERT INTO events(action, status, topic, log, time, user) VALUES ($, $, $, $, $)", action, status, topic, payload, timestamp, user.Username)
 	}
 
 	// Publish to webhooks
-	go h.Callback(topic, action, status, pl)
+	go h.Callback(topic, action, status, payload)
 
 	// Publish to clients
-	go h.Broadcast(instructions, action, status, pl)
+	go h.Broadcast(instructions, action, status, payload)
 
 	return nil
 }
