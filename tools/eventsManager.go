@@ -15,6 +15,9 @@ import (
 	"lotusforge.au/api-server/models"
 )
 
+var ValidActions  = []string{"insert", "update", "delete"}
+var ValidStatuses = []string{"queued", "start", "success", "warn", "fail", "error", "complete"}
+
 type EventHub struct {
 	clients      map[*Client]client_topic
 	targets      map[string]*Instructions
@@ -110,9 +113,7 @@ func (h *EventHub) RegiterTopicStatus(w http.ResponseWriter, r *http.Request, to
 }
 // Upgrade and manage a new websocket based on the topic. It registers for all actions and statuses
 func (h *EventHub) RegiterTopicOnly(w http.ResponseWriter, r *http.Request, topic string) error {
-	GetBasicDebugLogger().Debug("Upgrading conn")
 	conn, err := h.upgrader.Upgrade(w, r, nil)
-	GetBasicDebugLogger().Debug("upgraded conn", "topic", topic, "valid_topics", h.validTopics)
 	if err != nil { return err }
 
 	go h.HandleClientTopic(conn, topic)
@@ -134,13 +135,13 @@ func (h *EventHub) EnableTopic(topic string, cfg *models.DataModel) {
 	}
 
 	// Build structures
-	for _, a := range []string{"insert", "update", "delete"} {
+	for _, a := range ValidActions {
 		// Action
 		if h.targets[topic].webhook_url[a] == nil { h.targets[topic].webhook_url[a] = webhook_status{} }
 		if h.targets[topic].clients[a] == nil { h.targets[topic].clients[a] = instruct_status{} }
 
 		// Status
-		for _, s := range []string{"queued", "start", "success", "warn", "fail", "error"} {
+		for _, s := range ValidStatuses {
 			if h.targets[topic].webhook_url[a][s] == nil { h.targets[topic].webhook_url[a][s] = []string{} }
 			if h.targets[topic].clients[a][s] == nil { 
 				h.targets[topic].clients[a][s] = instruct_clients{} 
@@ -150,23 +151,20 @@ func (h *EventHub) EnableTopic(topic string, cfg *models.DataModel) {
 
 	// Populate webhook urls
 
-
-
 }
 
 // Register a new client connection to specific topic
 func (h *EventHub) HandleClientTopic(conn *websocket.Conn, topic string) {
 	if !h.validTopics[topic] { return }
-	GetBasicDebugLogger().Debug("Topic is valid!")
-	h.handleClient(conn, topic, []string{"insert", "update", "delete"}, []string{"queued", "start", "success", "warn", "fail", "error"})
+	h.handleClient(conn, topic, ValidActions, ValidStatuses)
 }
 // Register a new client connection to specific topic statuses
 func (h *EventHub) handleClientTopicStatus(conn *websocket.Conn, topic string, status []string) {
-	h.handleClient(conn, topic, []string{"insert", "update", "delete"}, status)
+	h.handleClient(conn, topic, ValidActions, status)
 }
 // Register a new client connection to specific topic actions
 func (h *EventHub) handleClientTopicAction(conn *websocket.Conn, topic string, action []string) {
-	h.handleClient(conn, topic, action, []string{"queued", "start", "success", "warn", "fail", "error"})
+	h.handleClient(conn, topic, action, ValidStatuses)
 }
 // Register a new client connection to specific topic actions and statuses. Statuses apply over all actions
 func (h *EventHub) handleClientTopicStatusAction(conn *websocket.Conn, topic string, action []string, status []string) {
@@ -189,7 +187,6 @@ func (h *EventHub) handleClient(conn *websocket.Conn, topic string, action []str
 	// Set the pong handler I guess
 	conn.SetPongHandler(func(appData string) error {
       conn.SetReadDeadline(time.Now().Add(time.Duration(client.timeout_read_sec) * time.Second))
-			GetBasicDebugLogger().Debug("Pong read")
       return nil
   })
 
@@ -289,16 +286,15 @@ func (c *Client) writeLoop() {
 		// Write to the client
 		select {
 		case msg, ok := <- c.send:
-			if !ok { GetBasicDebugLogger().Debug("Error sending message") }
+			if !ok { err = fmt.Errorf("Error reading from the send buffer") }
 			GetBasicDebugLogger().Debug("Sending message to websocket", "msg", msg)
 			c.conn.SetWriteDeadline(time.Now().Add(time.Duration(c.timeout_write_sec) * time.Second))
 			err = c.conn.WriteMessage(websocket.TextMessage, msg)
-			if err != nil { GetBasicDebugLogger().Debug("Write error", "err", err) }
+			if err != nil { err = fmt.Errorf("Error writing to the client: %s", err.Error()) }
 		case <- ticker.C:
 			c.conn.SetWriteDeadline(time.Now().Add(time.Duration(c.timeout_write_sec) * time.Second))
-			GetBasicDebugLogger().Debug("Sending ping")
 			err = c.conn.WriteMessage(websocket.PingMessage, []byte{})
-			if err != nil { GetBasicDebugLogger().Debug("Write error", "err", err) }
+			if err != nil { err = fmt.Errorf("Error sending ping to the client: %s", err.Error()) }
 		case <- c.done:
 			return
 		}
@@ -308,22 +304,20 @@ func (c *Client) writeLoop() {
 }
 
 func (c *Client) readLoop() {
-	GetBasicDebugLogger().Debug("started readloop")
 	for {
 		c.conn.SetReadDeadline(time.Now().Add(time.Duration(c.timeout_read_sec) * time.Second))
 		_, msg, err := c.conn.ReadMessage()
-		if err != nil { GetBasicDebugLogger().Debug("Error with read", "err", err); break }
+		if err != nil { break }
 
 		// Unmarshal the message
 		var cm ClientMessage
 		err = json.Unmarshal(msg, &cm)
 
-		if err != nil { GetBasicDebugLogger().Debug("Error with decode", "err", err); continue }
+		if err != nil { continue }
 
 		// msg actions currently unimplemented
 		GetBasicDebugLogger().Debug("Received message from client", "msg", cm)
 	}
-	GetBasicDebugLogger().Debug("closed readloop")
 	close(c.done)
 }
 
@@ -331,15 +325,8 @@ func (c *Client) readLoop() {
 func (h *EventHub) Broadcast(i *Instructions, action string, status string, data []byte) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	GetBasicDebugLogger().Debug("Broadcasting data to clients", 
-	"data", data,
-	"action", action,
-	"status", status,
-	"client_count", len(i.clients[action][status]),
-	"all_clients", i.clients)
 
 	for c, _ := range i.clients[action][status] {
-		GetBasicDebugLogger().Debug("Found client", "c", c)
 		c.send <- data
 	}
 }
@@ -387,7 +374,6 @@ func (h *EventHub) PublishPayload(ctx context.Context, action string, status str
 func (h *EventHub) publish(ctx context.Context, action string, status string, timestamp time.Time, topic string, payload []byte) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	GetBasicDebugLogger().Debug("Called the websocket publish")
 
 	instructions := h.targets[topic]
 	user, found := middleware.GetUser(ctx)

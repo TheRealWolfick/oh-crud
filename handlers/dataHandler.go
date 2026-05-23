@@ -140,12 +140,13 @@ func addNewResource(
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Add Resource"
+		function := "create"
 		user_key := middleware.Contextkey("user")
 		req_ip := tools.GetIP(r)
 		req_id, err := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
 		note := r.Header.Get("X-User-Note")
-		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
+		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", function, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
 		ctx := middleware.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -191,7 +192,7 @@ func addNewResource(
 		}
 
 		// Extract context and queue action
-		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type, cfg))
+		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, function, cfg))
 		task_id, err := qm.QueueFunction(ctx_preserve, tools.SingleInsert(ctx_preserve, qm.Db, cfg, valid_resources[0]), note)
 
 		if err != nil {
@@ -215,12 +216,13 @@ func addNewResources_Group(
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Add Bulk Resources"
+		function := "create"
 		user_key := middleware.Contextkey("user")
 		req_ip := tools.GetIP(r)
 		req_id, err := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
 		note := r.Header.Get("X-User-Note")
-		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
+		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", function, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
 		ctx := middleware.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -261,7 +263,7 @@ func addNewResources_Group(
 			return
 		}
 
-		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type, cfg))
+		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, function, cfg))
 		task_id, err := qm.QueueFunction(ctx_preserve, tools.RecursiveBatchInsert(ctx_preserve, qm.Db, cfg, valid_resources), note)
 		if err != nil {
 			qm.Logger.Error("TASK_ERROR", "error", err)
@@ -289,11 +291,12 @@ func getResource(
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Get Resource"
+		function := "get"
 		user_key := middleware.Contextkey("user")
 		req_ip := tools.GetIP(r)
 		req_id, _ := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
-		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
+		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", function, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
 		ctx := middleware.SetLogger(context.WithoutCancel(r.Context()), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -386,11 +389,12 @@ func getResourceHistory(
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Get Resource History"
+		function := "get"
 		user_key := middleware.Contextkey("user")
 		req_ip := tools.GetIP(r)
 		req_id, _ := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
-		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "end_point", *cfg.End_point, "table", historyTable, "request_id", req_id)
+		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", function, "task_type", task_type, "end_point", *cfg.End_point, "table", historyTable, "request_id", req_id)
 		ctx := middleware.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -514,12 +518,13 @@ func updateResource(
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Update Resource"
+		function := "update"
 		user_key := middleware.Contextkey("user")
 		req_ip := tools.GetIP(r)
 		req_id, err := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
 		note := r.Header.Get("X-User-Note")
-		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
+		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", function, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
 		ctx := middleware.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -560,7 +565,7 @@ func updateResource(
 		}
 
 		// Queue the query
-		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type, cfg))
+		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, function, cfg))
 		task_id, err := qm.QueueFunction(ctx_preserve, tools.MultiUpdate(ctx_preserve, qm.Db, cfg, valid_resources), note)
 		if err != nil {
 			qm.Logger.Error("TASK_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", err)
@@ -588,12 +593,13 @@ func updateResource_Group(
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Update Multiple Resources"
+		function := "update"
 		user_key := middleware.Contextkey("user")
 		req_ip := tools.GetIP(r)
 		req_id, err := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
 		note := r.Header.Get("X-User-Note")
-		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
+		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", function, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
 		ctx := middleware.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -633,7 +639,7 @@ func updateResource_Group(
 		}
 
 		// Queue the query
-		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type, cfg))
+		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, function, cfg))
 		task_id, err := qm.QueueFunction(ctx_preserve, tools.MultiUpdate(ctx_preserve, qm.Db, cfg, valid_resources), note)
 		if err != nil {
 			log.Error("TASK_ERROR", "error", err)
@@ -662,10 +668,11 @@ func dynamicGetDiff(
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user_key := middleware.Contextkey("user")
+		function := "get"
 		req_ip := tools.GetIP(r)
 		req_id, _ := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
-		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", "Get Diff", "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
+		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", function, "task_type", "Get Diff", "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
 		ctx := middleware.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -717,12 +724,13 @@ func dynamicCreateDiff(
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Create Diff"
+		function := "diff"
 		user_key := middleware.Contextkey("user")
 		req_ip := tools.GetIP(r)
 		req_id, err := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
 		note := r.Header.Get("X-User-Note")
-		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "table", *cfg.Table_name, "request_id", req_id)
+		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", function, "task_type", task_type, "table", *cfg.Table_name, "request_id", req_id)
 		ctx := middleware.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -763,7 +771,7 @@ func dynamicCreateDiff(
 			return
 		}
 
-		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type, cfg))
+		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, function, cfg))
 		task_id, err := qm.QueueFunction(ctx_preserve, tools.CreateDiff(ctx_preserve, qm.Db, cfg, valid_resources, note), note)
 		if err != nil {
 			log.Error("TASK_ERROR", "error", err)
@@ -788,11 +796,12 @@ func dynamicActionDiff(
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Action Diff"
+		function := "diff"
 		user_key := middleware.Contextkey("user")
 		req_ip := tools.GetIP(r)
 		req_id, _ := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
-		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
+		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", function, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
 		ctx := middleware.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -895,12 +904,13 @@ func deleteResource(
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Delete Resource"
+		function := "delete"
 		user_key := middleware.Contextkey("user")
 		req_ip := tools.GetIP(r)
 		req_id, err := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
 		note := r.Header.Get("X-User-Note")
-		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
+		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", function, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
 		ctx := middleware.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -940,7 +950,7 @@ func deleteResource(
 			return
 		}
 
-		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type, cfg))
+		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, function, cfg))
 		task_id, err := qm.QueueFunction(ctx_preserve, tools.MultiDelete(ctx_preserve, qm.Db, cfg, valid_resources), note)
 		if err != nil {
 			log.Error("TASK_ERROR", "error", err)
@@ -967,12 +977,13 @@ func deleteResource_Group(
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Delete Multiple Resources"
+		function := "delete"
 		user_key := middleware.Contextkey("user")
 		req_ip := tools.GetIP(r)
 		req_id, err := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
 		note := r.Header.Get("X-User-Note")
-		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
+		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", function, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
 		ctx := middleware.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -1010,7 +1021,7 @@ func deleteResource_Group(
 			return
 		}
 
-		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, task_type, cfg))
+		ctx_preserve := context.WithoutCancel(middleware.StartTask(ctx, function, cfg))
 		task_id, err := qm.QueueFunction(ctx_preserve, tools.MultiDelete(ctx_preserve, qm.Db, cfg, valid_resources), note)
 		if err != nil {
 			log.Error("TASK_ERROR", "error", err)
