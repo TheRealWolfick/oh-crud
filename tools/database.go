@@ -13,6 +13,15 @@ import (
 	"lotusforge.au/api-server/models"
 )
 
+type failed_row struct {
+	item any
+	error any
+}
+
+type database_result struct {
+	failed_rows  []any
+}
+
 // SingleInsert queues a single-row insert using the config-driven schema.
 func SingleInsert(
 	ctx context.Context,
@@ -187,6 +196,7 @@ func RecursiveBatchInsert(
 		logData := map[string]any{
 			"total_count":   result.SuccessCount + failed_count,
 			"success_count": result.SuccessCount,
+			"success_items": [],
 			"failed_count":  failed_count,
 			"failed_items":  result.FailedItems,
 			"table_name":    cfg.Table_name,

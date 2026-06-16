@@ -9,6 +9,7 @@ import (
 
 type BatchInsertResult struct {
 	SuccessCount int
+	SuccessItems []interface{}
 	FailedItems  []interface{}
 	Query 			 string
 }

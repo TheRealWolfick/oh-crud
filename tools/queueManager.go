@@ -245,6 +245,20 @@ func (qm *QueueManager) getReportableTaskInfo(w *Worker) map[string]any {
 
 // This is an internal helper function to publish an event
 func (qm *QueueManager) publish(w *Worker) {
+	switch w.TaskActioning.Status {
+	case "queued": 
+		qm.publishTaskQueued(w.TaskActioning)
+	case "start":
+		qm.publishTaskStart(w.TaskActioning)
+	case "success":
+		qm.publishTaskSuccess(w.TaskActioning)
+	case "warn":
+		qm.publishTaskWarn(w.TaskActioning)
+	case "fail":
+		qm.publishTaskFail(w.TaskActioning)
+	case "error":
+		qm.publishTaskError(w.TaskActioning)
+	}
 	qm.eventHub.PublishNoTimestamp(w.TaskActioning.Ctx, w.TaskActioning.TaskType, w.TaskActioning.Status, w.TaskActioning.Topic, qm.getReportableTaskInfo(w))
 }
 // This is an internal helper function for publishing an event when there is no worker assigned, 
@@ -256,6 +270,53 @@ func (qm *QueueManager) publishTask(t *Task) {
 		"note":          t.Note,
 		"task_start":    t.StartTime,
 		"task_status":   t.Status,
+	})
+}
+func (qm *QueueManager) publishTaskQueued(t *Task) {
+	qm.eventHub.PublishNoTimestamp(t.Ctx, t.TaskType, t.Status, t.Topic, map[string]any{
+		"task_id":       t.TaskID,
+		"task_type":     t.TaskType,
+		"task_status":   t.Status,
+	})
+}
+func (qm *QueueManager) publishTaskStart(t *Task) {
+	qm.eventHub.PublishNoTimestamp(t.Ctx, t.TaskType, t.Status, t.Topic, map[string]any{
+		"task_id":       t.TaskID,
+		"task_type":     t.TaskType,
+		"task_status":   t.Status,
+		"start_time":    t.StartTime.String(),
+	})
+}
+func (qm *QueueManager) publishTaskSuccess(t *Task) {
+	qm.eventHub.PublishNoTimestamp(t.Ctx, t.TaskType, t.Status, t.Topic, map[string]any{
+		"task_id":       t.TaskID,
+		"task_type":     t.TaskType,
+		"start_time":    t.StartTime.String(),
+		"task_status":   t.Status,
+	})
+}
+func (qm *QueueManager) publishTaskWarn(t *Task) {
+	qm.eventHub.PublishNoTimestamp(t.Ctx, t.TaskType, t.Status, t.Topic, map[string]any{
+		"task_id":       t.TaskID,
+		"task_type":     t.TaskType,
+		"task_status":   t.Status,
+		"start_time":    t.StartTime.String(),
+	})
+}
+func (qm *QueueManager) publishTaskFail(t *Task) {
+	qm.eventHub.PublishNoTimestamp(t.Ctx, t.TaskType, t.Status, t.Topic, map[string]any{
+		"task_id":       t.TaskID,
+		"task_type":     t.TaskType,
+		"task_status":   t.Status,
+		"start_time":    t.StartTime.String(),
+	})
+}
+func (qm *QueueManager) publishTaskError(t *Task) {
+	qm.eventHub.PublishNoTimestamp(t.Ctx, t.TaskType, t.Status, t.Topic, map[string]any{
+		"task_id":       t.TaskID,
+		"task_type":     t.TaskType,
+		"task_status":   t.Status,
+		"start_time":    t.StartTime.String(),
 	})
 }
 
@@ -340,7 +401,7 @@ func (qm *QueueManager) queue(t *Task) (string, error) {
 	} else {
 		qm.tasks = append(qm.tasks, t)
 		qm.mu.Unlock()
-		qm.publishTask(t)
+		qm.publishTaskQueued(t)
 	}
 	return t.TaskID, nil
 }
