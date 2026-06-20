@@ -30,7 +30,7 @@ type Task struct {
 	Response     map[string]any                                        `json:"response"`
 	Ctx          context.Context                                       `json:"-"`
 	Note         string                                                `json:"note"`
-	Function     func(context.Context, ...any) (map[string]any, error) `json:"-"`
+	Function     func(context.Context, ...any) (string, map[string]any, error) `json:"-"`
 	Args         []any                                                 `json:"-"`
 	Cfg          models.DataModel                                      `json:"-"`
 	Topic        string                                                `json:"-"`
@@ -102,7 +102,7 @@ func (qm *QueueManager) createTask(ctx context.Context, sql string, note string,
 
 // This creates a task to execute an arbitrary function asyncronously.
 // The scheduled function must return a payload of data in the form of a map as well as an error status
-func (qm *QueueManager) createFunctionTask(ctx context.Context, function func(context.Context, ...any) (map[string]any, error), note string, args ...any) (*Task, error) {
+func (qm *QueueManager) createFunctionTask(ctx context.Context, function func(context.Context, ...any) (string, map[string]any, error), note string, args ...any) (*Task, error) {
 	task, ok := middleware.GetTask(ctx)
 	if !ok {
 		return nil, fmt.Errorf("Task information was not saved into the context")
@@ -179,20 +179,11 @@ func (qm *QueueManager) reportWork(w *Worker, status string, res map[string]any,
 		w.TaskActioning.Status = "error"
 	case "success":
 		if fail {
-			w.TaskActioning.Status = "fail"
+			w.TaskActioning.Status = "failed"
 		} else {
-			inner_err, ieok := res["errors"]
-			inner_suc, isok := res["success_count"]
-			if ieok && isok {
-				if inner_suc.(float64) == 0 {
-					w.TaskActioning.Status = "fail"
-				} else {
-					if len(inner_err.([]any)) > 0 {
-						w.TaskActioning.Status = "warn"
-					} else {
-						w.TaskActioning.Status = "success"
-					}
-				}
+			failed_count, ieok := res["failed_count"]
+			if ieok && failed_count.(int) > 0 {
+				w.TaskActioning.Status = "warn"
 			} else {
 				w.TaskActioning.Status = "success"
 			}
@@ -205,7 +196,7 @@ func (qm *QueueManager) reportWork(w *Worker, status string, res map[string]any,
 
 func (qm *QueueManager) getReportableTaskInfo(w *Worker) map[string]any {
 	switch w.TaskActioning.Status {
-	case "error", "fail":
+	case "error", "failed":
 		return map[string]any{
 			"task_id":       w.TaskActioning.TaskID,
 			"task_type":     w.TaskActioning.TaskType,
@@ -288,27 +279,34 @@ func (qm *QueueManager) publishTaskStart(t *Task) {
 	})
 }
 func (qm *QueueManager) publishTaskSuccess(t *Task) {
-	qm.eventHub.PublishNoTimestamp(t.Ctx, t.TaskType, t.Status, t.Topic, map[string]any{
+	qm.eventHub.Publish(t.Ctx, t.TaskType, t.Status, t.CompleteTime, t.Topic, map[string]any{
 		"task_id":       t.TaskID,
 		"task_type":     t.TaskType,
 		"start_time":    t.StartTime.String(),
 		"task_status":   t.Status,
+		"complete_time": t.CompleteTime.String(),
+		"success_items": t.Response["success_items"],
 	})
 }
 func (qm *QueueManager) publishTaskWarn(t *Task) {
-	qm.eventHub.PublishNoTimestamp(t.Ctx, t.TaskType, t.Status, t.Topic, map[string]any{
+	qm.eventHub.Publish(t.Ctx, t.TaskType, t.Status, t.CompleteTime, t.Topic, map[string]any{
 		"task_id":       t.TaskID,
 		"task_type":     t.TaskType,
 		"task_status":   t.Status,
 		"start_time":    t.StartTime.String(),
+		"complete_time": t.CompleteTime.String(),
+		"success_items": t.Response["success_items"],
+		"failed_items":  t.Response["failed_items"],
 	})
 }
 func (qm *QueueManager) publishTaskFail(t *Task) {
-	qm.eventHub.PublishNoTimestamp(t.Ctx, t.TaskType, t.Status, t.Topic, map[string]any{
+	qm.eventHub.Publish(t.Ctx, t.TaskType, t.Status, t.CompleteTime, t.Topic, map[string]any{
 		"task_id":       t.TaskID,
 		"task_type":     t.TaskType,
 		"task_status":   t.Status,
 		"start_time":    t.StartTime.String(),
+		"complete_time": t.CompleteTime.String(),
+		"failed_items":  t.Response["failed_items"],
 	})
 }
 func (qm *QueueManager) publishTaskError(t *Task) {
@@ -317,6 +315,7 @@ func (qm *QueueManager) publishTaskError(t *Task) {
 		"task_type":     t.TaskType,
 		"task_status":   t.Status,
 		"start_time":    t.StartTime.String(),
+		"complete_time": t.CompleteTime.String(),
 	})
 }
 
@@ -361,10 +360,19 @@ func (qm *QueueManager) work(w *Worker) {
 
 	case "function":
 		qm.Logger.Debug("function called")
-		func_response, err := task_func(ctx, args...)
-		if err != nil {
-			qm.Logger.Debug("function error", "err", err)
-			qm.reportWork(w, "error", map[string]any{"error": err.Error()}, true)
+		func_type, func_response, err := task_func(ctx, args...)
+
+		if err != nil || func_type != w.TaskActioning.TaskType {
+			if func_type != w.TaskActioning.TaskType && err == nil {
+				// Report on bad func call. Should never occur, but you never know
+				err_func_called := fmt.Errorf("Task type and function called did not match!", "task type", w.TaskActioning.TaskType, "function called", func_type)
+				qm.Logger.Debug("function error", "err", err_func_called)
+				qm.reportWork(w, "error", map[string]any{"error": err_func_called.Error()}, true)
+			} else {
+				// Report error in return data parsing
+				qm.Logger.Debug("function error", "err", err)
+				qm.reportWork(w, "error", map[string]any{"error": err.Error()}, true)
+			}
 		} else {
 			qm.Logger.Debug("function success", "response", func_response)
 			qm.reportWork(w, "success", func_response, false)
@@ -440,7 +448,7 @@ func (qm *QueueManager) assignWorker(w *Worker, t *Task) {
 
 
 // QueueFunction queues a function to run asynchronously. Returns a 32-character task ID.
-func (qm *QueueManager) QueueFunction(ctx context.Context, function func(context.Context, ...any) (map[string]any, error), note string, args ...any) (string, error) {
+func (qm *QueueManager) QueueFunction(ctx context.Context, function func(context.Context, ...any) (string, map[string]any, error), note string, args ...any) (string, error) {
 	t, err := qm.createFunctionTask(ctx, function, note, args...)
 	if err != nil {
 		return "", err

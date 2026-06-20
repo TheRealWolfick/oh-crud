@@ -28,7 +28,7 @@ func SingleInsert(
 	db models.DBExecutor,
 	cfg *models.DataModel,
 	item map[string]any,
-) func(context.Context, ...any) (map[string]any, error) {
+) func(context.Context, ...any) (string, map[string]any, error) {
 	return RecursiveBatchInsert(ctx, db, cfg, []map[string]any{item})
 }
 
@@ -39,8 +39,8 @@ func CreateDiff(
 	cfg *models.DataModel,
 	supplied []map[string]any,
 	note string,
-) func(context.Context, ...any) (map[string]any, error) {
-	return func(ctx context.Context, a ...any) (map[string]any, error) {
+) func(context.Context, ...any) (string, map[string]any, error) {
+	return func(ctx context.Context, a ...any) (string, map[string]any, error) {
 		return createDiff(ctx, db, cfg, supplied, note)
 	}
 }
@@ -51,7 +51,7 @@ func createDiff(
 	cfg *models.DataModel,
 	supplied []map[string]any,
 	note string,
-) (map[string]any, error) {
+) (string, map[string]any, error) {
 	log, ok := middleware.GetLogger(ctx)
 	if !ok {
 		log = GetBasicLogger()
@@ -59,7 +59,7 @@ func createDiff(
 
 	comparatorKey := GetDiffComparatorKey(cfg)
 	if comparatorKey == "" {
-		return nil, fmt.Errorf("no diff comparator field found in config for table %s", *cfg.Table_name)
+		return "create_diff", nil, fmt.Errorf("no diff comparator field found in config for table %s", *cfg.Table_name)
 	}
 	excludeKeys := BuildExcludeKeysFromConfig(cfg)
 
@@ -74,11 +74,11 @@ func createDiff(
 
 	rows, err := db.Query(ctx, query)
 	if err != nil {
-		return nil, fmt.Errorf("error reading rows in createDiff_Dynamic: %w", err)
+		return "create_diff", nil, fmt.Errorf("error reading rows in createDiff_Dynamic: %w", err)
 	}
 	stored, err := pgx.CollectRows(rows, pgx.RowToMap)
 	if err != nil {
-		return nil, fmt.Errorf("error collecting rows in createDiff_Dynamic: %w", err)
+		return "create_diff", nil, fmt.Errorf("error collecting rows in createDiff_Dynamic: %w", err)
 	}
 	coerced_stored := []map[string]any{}
 	for _, row := range stored {
@@ -94,7 +94,7 @@ func createDiff(
 		log.Debug("Supplied[0:10]", "data", supplied[0:10])
 		log.Debug("Stored[0:10]", "data", stored[0:10])
 		log.Debug("Coerced[0:10]", "data", coerced_stored[0:10])
-		return map[string]any{
+		return "create_diff", map[string]any{
 			"table":         *cfg.Table_name,
 			"rows_affected": 0,
 			"error":         "no differences found or invalid comparator",
@@ -103,7 +103,7 @@ func createDiff(
 
 	totalDiffs := len(diff_struct.Diffs) + len(diff_struct.MissingFromSupplied) + len(diff_struct.MissingFromStored)
 	if totalDiffs == 0 {
-		return map[string]any{
+		return "create_diff", map[string]any{
 			"action":        "diff",
 			"on_table":      *cfg.Table_name,
 			"rows_affected": 0,
@@ -142,9 +142,9 @@ func createDiff(
 	}
 	if err != nil {
 		ret_map["error"] = err.Error()
-		return ret_map, err
+		return "create_diff", ret_map, err
 	}
-	return ret_map, nil
+	return "create_diff", ret_map, nil
 }
 
 // SingleUpdate is just basically a wrapper for MultiUpdate
@@ -153,8 +153,8 @@ func SingleUpdate(
 	db models.DBExecQuery,
 	cfg *models.DataModel,
 	supplied map[string]any,
-) func(context.Context, ...any) (map[string]any, error) {
-	return func(ctx context.Context, a ...any) (map[string]any, error) {
+) func(context.Context, ...any) (string, map[string]any, error) {
+	return func(ctx context.Context, a ...any) (string, map[string]any, error) {
 		return multiUpdate(ctx, db, cfg, []map[string]any{supplied})
 	}
 }
@@ -164,8 +164,8 @@ func MultiUpdate(
 	db models.DBExecQuery,
 	cfg *models.DataModel,
 	supplied []map[string]any,
-) func(context.Context, ...any) (map[string]any, error) {
-	return func(ctx context.Context, a ...any) (map[string]any, error) {
+) func(context.Context, ...any) (string, map[string]any, error) {
+	return func(ctx context.Context, a ...any) (string, map[string]any, error) {
 		return multiUpdate(ctx, db, cfg, supplied)
 	}
 }
@@ -176,8 +176,8 @@ func MultiDelete(
 	db models.DBExecQuery,
 	cfg *models.DataModel,
 	supplied []map[string]any,
-) func(context.Context, ...any) (map[string]any, error) {
-	return func(ctx context.Context, a ...any) (map[string]any, error) {
+) func(context.Context, ...any) (string, map[string]any, error) {
+	return func(ctx context.Context, a ...any) (string, map[string]any, error) {
 		return multiDelete(ctx, db, cfg, supplied)
 	}
 }
@@ -189,19 +189,19 @@ func RecursiveBatchInsert(
 	db models.DBExecutor,
 	cfg *models.DataModel,
 	items []map[string]any,
-) func(context.Context, ...any) (map[string]any, error) {
-	return func(context.Context, ...any) (map[string]any, error) {
+) func(context.Context, ...any) (string, map[string]any, error) {
+	return func(context.Context, ...any) (string, map[string]any, error) {
 		result := recursiveBatchInsertProcess(ctx, db, cfg, items)
 		failed_count := len(result.FailedItems)
 		logData := map[string]any{
 			"total_count":   result.SuccessCount + failed_count,
 			"success_count": result.SuccessCount,
-			"success_items": [],
+			"success_items": result.SuccessItems,
 			"failed_count":  failed_count,
 			"failed_items":  result.FailedItems,
 			"table_name":    cfg.Table_name,
 		}
-		return logData, nil
+		return "insert", logData, nil
 	}
 }
 
@@ -213,7 +213,8 @@ func recursiveBatchInsertProcess(
 ) models.BatchInsertResult {
 	result := models.BatchInsertResult{
 		SuccessCount: 0,
-		FailedItems:  make([]any, 0),
+		FailedItems:  []models.FailedItem{},
+		SuccessItems: make([]any, 0),
 	}
 
 	if len(items) == 0 {
@@ -233,6 +234,7 @@ func recursiveBatchInsertProcess(
 	if err == nil {
 		log.Debug("Insert successful", "count", cmdTag.RowsAffected())
 		result.SuccessCount = int(cmdTag.RowsAffected())
+		result.SuccessItems = append(result.SuccessItems, items)
 
 		// If this table tracks changes via a history, insert into the history table
 		if cfg.Track_history != nil && *cfg.Track_history {
@@ -253,9 +255,9 @@ func recursiveBatchInsertProcess(
 		if errors.As(err, &pgErr) {
 			errMsg = pgErr.Message
 		}
-		result.FailedItems = append(result.FailedItems, map[string]any{
-			"item":  items[0],
-			"error": errMsg,
+		result.FailedItems = append(result.FailedItems, models.FailedItem{
+			Row:  items[0],
+			Error: errMsg,
 		})
 		return result
 	}
@@ -264,10 +266,12 @@ func recursiveBatchInsertProcess(
 	leftResult := recursiveBatchInsertProcess(ctx, db, cfg, items[:mid])
 	result.SuccessCount += leftResult.SuccessCount
 	result.FailedItems = append(result.FailedItems, leftResult.FailedItems...)
+	result.SuccessItems = append(result.SuccessItems, leftResult.SuccessItems...)
 
 	rightResult := recursiveBatchInsertProcess(ctx, db, cfg, items[mid:])
 	result.SuccessCount += rightResult.SuccessCount
 	result.FailedItems = append(result.FailedItems, rightResult.FailedItems...)
+	result.SuccessItems = append(result.SuccessItems, rightResult.SuccessItems...)
 
 	result.Query = qb.query
 	return result
@@ -278,11 +282,15 @@ func multiUpdate(
 	db models.DBExecQuery,
 	cfg *models.DataModel,
 	supplied []map[string]any,
-) (map[string]any, error) {
-	report := models.MultiUpdateResult{
-		TotalUpdates: len(supplied),
-		SuccessCount: 0,
-		Errors:       []models.MultiUpdateError{},
+) (string, map[string]any, error) {
+
+	log_data := map[string]any{
+		"total_count":   len(supplied),
+		"success_count": 0,
+		"success_items": []models.UpdateSuccessItem{},
+		"failed_count":  0,
+		"failed_items":  []models.FailedItem{},
+		"table_name":    cfg.Table_name,
 	}
 
 	log, ok := middleware.GetLogger(ctx)
@@ -299,7 +307,7 @@ func multiUpdate(
 		where_fields, ok := FindRowKeyFields(row, cfg)
 		if !ok {
 			log.Error("Update: no key fields found in row", "idx", idx)
-			report.Errors = append(report.Errors, models.MultiUpdateError{ID: idx, Error: fmt.Errorf("no identifying key (PK or unique key) found in row")})
+			log_data["failed_items"] = append(log_data["failed_items"].([]models.FailedItem), models.FailedItem{Row: row, Error: fmt.Sprintf("no identifying key (PK or unique key) found in row")})
 			continue
 		}
 
@@ -313,7 +321,6 @@ func multiUpdate(
 		existing_data := map[string]any{}
 		if log_history { 
 			desired_fields_for_values := []string{GetHistoryUniqueField(cfg)}
-			fmt.Println("Desired field: ", desired_fields_for_values)
 
 			// Create a query builder
 			qb_existing_vals := NewQueryBuilder(log.With("special_logger", "getting historical values including reference", "key_fields", where_fields))
@@ -335,15 +342,26 @@ func multiUpdate(
 
 		// Create the query builder for the update and save the values to be updated
 		qb := NewQueryBuilder(log.With("key_fields", where_fields))
+		updated_vals := models.UpdateSuccessItem{
+			WhereFields: map[string]any{},
+			UpdatedValues: map[string]any{},
+		}
 		for k, v := range row {
-			if where_set[k] { qb.SetWhereAbsolute(k, v) } else { qb.SetValue(k, v) }
+			if where_set[k] { 
+				qb.SetWhereAbsolute(k, v) 
+				updated_vals.WhereFields[k] = v
+			} else { 
+				qb.SetValue(k, v) 
+				updated_vals.UpdatedValues[k] = v
+			}
 		}
 
 		query := qb.BuildUpdate(cfg)
 		cmdtag, err := db.Exec(ctx, query, qb.GetArgs()...)
 
 		if err == nil && cmdtag.RowsAffected() > 0 {
-			report.SuccessCount = report.SuccessCount + int(cmdtag.RowsAffected())
+			log_data["success_count"] = log_data["success_count"].(int) + int(cmdtag.RowsAffected())
+			log_data["success_items"] = append(log_data["success_items"].([]models.UpdateSuccessItem), updated_vals)
 			// If this has history tacking, also save the changed values to the history table
 			if log_history {
 				qb_history := NewQueryBuilder(log)                                                                  // Use a new querybuilder
@@ -355,14 +373,14 @@ func multiUpdate(
 				}
 			}
 		} else {
-			report.Errors = append(report.Errors, models.MultiUpdateError{ID: idx, Error: err})
+			log_data["failed_items"] = append(log_data["failed_items"].([]models.FailedItem), models.FailedItem{Row: row, Error: err.Error()})
 		}
 	}
 
-	report_encoded, _ := json.Marshal(report)
+	report_encoded, _ := json.Marshal(log_data)
 	report_to_return := map[string]any{}
 	err := json.Unmarshal(report_encoded, &report_to_return)
-	return report_to_return, err
+	return "update", log_data, err
 }
 
 func multiDelete(
@@ -370,11 +388,15 @@ func multiDelete(
 	db models.DBExecQuery,
 	cfg *models.DataModel,
 	supplied []map[string]any,
-) (map[string]any, error) {
-	report := models.MultiUpdateResult{
-		TotalUpdates: len(supplied),
-		SuccessCount: 0,
-		Errors:       []models.MultiUpdateError{},
+) (string, map[string]any, error) {
+
+	log_data := map[string]any{
+		"total_count":   len(supplied),
+		"success_count": 0,
+		"success_items": []models.DeleteSuccessItem{},
+		"failed_count":  0,
+		"failed_items":  []models.FailedItem{},
+		"table_name":    cfg.Table_name,
 	}
 
 	log, ok := middleware.GetLogger(ctx)
@@ -390,8 +412,8 @@ func multiDelete(
 	for idx, row := range supplied {
 		where_fields, ok := FindRowKeyFields(row, cfg)
 		if !ok {
-			log.Error("Multi Delete: no key fields found in row", "idx", idx)
-			report.Errors = append(report.Errors, models.MultiUpdateError{ID: idx, Error: fmt.Errorf("no identifying key (PK or unique key) found in row")})
+			log.Debug("Multi Delete: no key fields found in row", "idx", idx)
+			log_data["failed_items"] = append(log_data["failed_items"].([]models.FailedItem), models.FailedItem{Row: row, Error: fmt.Sprintf("no identifying key (PK or unique key) found in row")})
 			continue
 		}
 
@@ -402,8 +424,10 @@ func multiDelete(
 		}
 
 		qb := NewQueryBuilder(log.With("key_fields", where_fields))
+		deleted_val := models.DeleteSuccessItem{WhereFields: map[string]any{}}
 		for _, f := range where_fields {
 			qb.SetWhereAbsolute(f, row[f])
+			deleted_val.WhereFields[f] = row[f]
 		}
 
 		// Update data for history logging
@@ -433,14 +457,13 @@ func multiDelete(
 		query := qb.BuildDelete(cfg)
 		cmdtag, err := db.Exec(ctx, query, qb.GetArgs()...)
 		if err == nil && cmdtag.RowsAffected() > 0 {
-			report.SuccessCount = report.SuccessCount + int(cmdtag.RowsAffected())
+			log_data["success_count"] = log_data["success_count"].(int) + int(cmdtag.RowsAffected())
+			log_data["success_items"] = append(log_data["success_items"].([]models.DeleteSuccessItem), deleted_val)
 
 			if log_history { 
-				log.Debug("log history is true")
 				qb_history := NewQueryBuilder(log)                                                                  // Use a new querybuilder
 				user, _ := middleware.GetUser(ctx) 																								                  // Get the user
 				query_history := qb_history.BuildUpdateHistory(cfg, existing_data, map[string]any{"deleted_flag": true}, user.Username)	            // Build the insert
-				log.Debug("query history built", "query", query_history)
 				if query_history != "" {
 					_, err := db.Exec(ctx, query_history, qb_history.GetArgs()...)												              // Execute the insert
 					if err != nil { qb_history.logger.Error("Error creating update history records", "error", err) } 	  // Gracefully handle any errors
@@ -449,8 +472,8 @@ func multiDelete(
 		}
 	}
 
-	report_encoded, _ := json.Marshal(report)
+	report_encoded, _ := json.Marshal(log_data)
 	report_to_return := map[string]any{}
 	err := json.Unmarshal(report_encoded, &report_to_return)
-	return report_to_return, err
+	return "delete", report_to_return, err
 }

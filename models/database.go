@@ -7,22 +7,25 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+type FailedItem struct {
+	Row   map[string]any
+	Error string
+}
+
+type UpdateSuccessItem struct {
+	WhereFields map[string]any
+	UpdatedValues map[string]any
+}
+
+type DeleteSuccessItem struct {
+	WhereFields map[string]any
+}
+
 type BatchInsertResult struct {
 	SuccessCount int
 	SuccessItems []interface{}
-	FailedItems  []interface{}
+	FailedItems  []FailedItem
 	Query 			 string
-}
-
-type MultiUpdateError struct {
-	ID    int   `json:"idx"`
-	Error any   `json:"db_error"`
-}
-
-type MultiUpdateResult struct {
-	TotalUpdates int                `json:"total_updates"`
-	SuccessCount int                `json:"success_count"`
-	Errors       []MultiUpdateError   `json:"errors"`
 }
 
 type DBExecutor interface {

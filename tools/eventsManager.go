@@ -434,7 +434,10 @@ func (h *EventManager) publish(ctx context.Context, action string, status string
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
+	// Read the instructions for this topic
 	instructions, ok := h.targets[topic]
+
+	// Validate the event status
 	if !ok {return fmt.Errorf("Invalid topic {%s} for an event", topic)}
 	if !slices.Contains(ValidStatuses, status) {return fmt.Errorf("Invalid status {%s} called for event", status)}
 	user, found := middleware.GetUser(ctx)
