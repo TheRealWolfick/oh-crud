@@ -177,7 +177,7 @@ func (qm *QueueManager) reportWork(w *Worker, status string, res map[string]any,
 	switch status {
 	case "error":
 		w.TaskActioning.Status = "error"
-	case "success":
+	case "complete":
 		if fail {
 			w.TaskActioning.Status = "failed"
 		} else {
@@ -236,20 +236,6 @@ func (qm *QueueManager) getReportableTaskInfo(w *Worker) map[string]any {
 
 // This is an internal helper function to publish an event
 func (qm *QueueManager) publish(w *Worker) {
-	switch w.TaskActioning.Status {
-	case "queued": 
-		qm.publishTaskQueued(w.TaskActioning)
-	case "start":
-		qm.publishTaskStart(w.TaskActioning)
-	case "success":
-		qm.publishTaskSuccess(w.TaskActioning)
-	case "warn":
-		qm.publishTaskWarn(w.TaskActioning)
-	case "fail":
-		qm.publishTaskFail(w.TaskActioning)
-	case "error":
-		qm.publishTaskError(w.TaskActioning)
-	}
 	qm.eventHub.PublishNoTimestamp(w.TaskActioning.Ctx, w.TaskActioning.TaskType, w.TaskActioning.Status, w.TaskActioning.Topic, qm.getReportableTaskInfo(w))
 }
 // This is an internal helper function for publishing an event when there is no worker assigned, 
@@ -258,7 +244,6 @@ func (qm *QueueManager) publishTask(t *Task) {
 	qm.eventHub.PublishNoTimestamp(t.Ctx, t.TaskType, t.Status, t.Topic, map[string]any{
 		"task_id":       t.TaskID,
 		"task_type":     t.TaskType,
-		"note":          t.Note,
 		"task_start":    t.StartTime,
 		"task_status":   t.Status,
 	})
@@ -352,7 +337,7 @@ func (qm *QueueManager) work(w *Worker) {
 		} else {
 			qm.Logger.Debug("exec success", "response", cmdtag)
 			bef, _, _ := strings.Cut(cmdtag.String(), " ")
-			qm.reportWork(w, "success", map[string]any{
+			qm.reportWork(w, "complete", map[string]any{
 				"action":        bef,
 				"rows_affected": cmdtag.RowsAffected(),
 			}, cmdtag.RowsAffected() == 0)
@@ -365,7 +350,7 @@ func (qm *QueueManager) work(w *Worker) {
 		if err != nil || func_type != w.TaskActioning.TaskType {
 			if func_type != w.TaskActioning.TaskType && err == nil {
 				// Report on bad func call. Should never occur, but you never know
-				err_func_called := fmt.Errorf("Task type and function called did not match!", "task type", w.TaskActioning.TaskType, "function called", func_type)
+				err_func_called := fmt.Errorf("Task type and function called did not match! \nTask type: {%s}\nFunction called: {%s}", w.TaskActioning.TaskType, func_type)
 				qm.Logger.Debug("function error", "err", err_func_called)
 				qm.reportWork(w, "error", map[string]any{"error": err_func_called.Error()}, true)
 			} else {
@@ -375,7 +360,8 @@ func (qm *QueueManager) work(w *Worker) {
 			}
 		} else {
 			qm.Logger.Debug("function success", "response", func_response)
-			qm.reportWork(w, "success", func_response, false)
+			suc_count, ok := func_response["success_count"].(int)
+			qm.reportWork(w, "complete", func_response, !ok || suc_count == 0)
 		}
 	}
 

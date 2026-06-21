@@ -287,9 +287,9 @@ func multiUpdate(
 	log_data := map[string]any{
 		"total_count":   len(supplied),
 		"success_count": 0,
-		"success_items": []models.UpdateSuccessItem{},
+		"success_items": make([]models.UpdateSuccessItem, 0),
 		"failed_count":  0,
-		"failed_items":  []models.FailedItem{},
+		"failed_items":  make([]models.FailedItem, 0),
 		"table_name":    cfg.Table_name,
 	}
 
@@ -307,7 +307,8 @@ func multiUpdate(
 		where_fields, ok := FindRowKeyFields(row, cfg)
 		if !ok {
 			log.Error("Update: no key fields found in row", "idx", idx)
-			log_data["failed_items"] = append(log_data["failed_items"].([]models.FailedItem), models.FailedItem{Row: row, Error: fmt.Sprintf("no identifying key (PK or unique key) found in row")})
+			log_data["failed_items"] = append(log_data["failed_items"].([]models.FailedItem), models.FailedItem{Row: row, Error: "no identifying key (PK or unique key) found in row"})
+			log_data["failed_count"] = log_data["failed_count"].(int) + 1
 			continue
 		}
 
@@ -373,7 +374,13 @@ func multiUpdate(
 				}
 			}
 		} else {
-			log_data["failed_items"] = append(log_data["failed_items"].([]models.FailedItem), models.FailedItem{Row: row, Error: err.Error()})
+			if err != nil {
+				log_data["failed_items"] = append(log_data["failed_items"].([]models.FailedItem), models.FailedItem{Row: row, Error: err.Error()})
+				log_data["failed_count"] = log_data["failed_count"].(int) + 1
+			} else {
+				log_data["failed_items"] = append(log_data["failed_items"].([]models.FailedItem), models.FailedItem{Row: row, Error: "No row was matched. Likely an invalid or wrong identifier"})
+				log_data["failed_count"] = log_data["failed_count"].(int) + 1
+			}
 		}
 	}
 
@@ -413,7 +420,8 @@ func multiDelete(
 		where_fields, ok := FindRowKeyFields(row, cfg)
 		if !ok {
 			log.Debug("Multi Delete: no key fields found in row", "idx", idx)
-			log_data["failed_items"] = append(log_data["failed_items"].([]models.FailedItem), models.FailedItem{Row: row, Error: fmt.Sprintf("no identifying key (PK or unique key) found in row")})
+			log_data["failed_items"] = append(log_data["failed_items"].([]models.FailedItem), models.FailedItem{Row: row, Error: "no identifying key (PK or unique key) found in row"})
+			log_data["failed_count"] = log_data["failed_count"].(int) + 1
 			continue
 		}
 
@@ -468,6 +476,19 @@ func multiDelete(
 					_, err := db.Exec(ctx, query_history, qb_history.GetArgs()...)												              // Execute the insert
 					if err != nil { qb_history.logger.Error("Error creating update history records", "error", err) } 	  // Gracefully handle any errors
 				}
+			}
+		} else {
+			if err != nil {
+				qb.logger.Error("Error executing delete", "error", err)
+				log_data["failed_items"] = append(log_data["failed_items"].([]models.FailedItem), models.FailedItem{
+					Row: row, Error: "Failed to apply delete to row. Most likely an invalid identifier in row",
+				})
+				log_data["failed_count"] = log_data["failed_count"].(int) + 1
+			} else {
+				log_data["failed_items"] = append(log_data["failed_items"].([]models.FailedItem), models.FailedItem{
+					Row: row, Error: "Failed to apply delete to row. Most likely an invalid identifier in row",
+				})
+				log_data["failed_count"] = log_data["failed_count"].(int) + 1
 			}
 		}
 	}

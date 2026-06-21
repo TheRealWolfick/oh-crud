@@ -22,7 +22,7 @@ import (
 // -----------------------------------------------------------------
 
 var ValidActions  = []string{"get", "insert", "update", "delete", "any"}
-var ValidStatuses = []string{"queued", "start", "success", "warn", "fail", "error", "all"}
+var ValidStatuses = []string{"queued", "start", "success", "warn", "failed", "error", "all"}
 
 // -----------------------------------------------------------------
 //            Package types and type creations
