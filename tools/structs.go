@@ -10,7 +10,7 @@ import (
 	"lotusforge.au/api-server/models"
 )
 
-// This function accepts a model and returns all fields with a `tag` matching 
+// This function accepts a model and returns all fields with a `tag` matching
 // `value`. The value can be "all" to return all, or "exists" to also extract
 // all but without tag values with null values "" or "-"
 func getFields[T any](model T, tag string, value string) []string {
@@ -95,13 +95,12 @@ func ValidateValue(A reflect.Kind, B any) bool {
 	}
 
 	if A == reflect.TypeOf(B).Kind() {
-		return  true
+		return true
 	}
 
 	as_string := fmt.Sprintf("%v", B)
 	switch A {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		// test if int
 		_, err := strconv.ParseInt(as_string, 10, 64)
 		return err == nil
 
@@ -335,35 +334,35 @@ func DiffMap(
 }
 
 func normalizeVal(v any, exists bool) string {
-    if !exists || v == nil {
-        return ""
-    }
-    switch val := v.(type) {
-    case time.Time:
-        return val.UTC().Format("2006-01-02")
-    case string:
-        // Attempt to parse common date/datetime formats
-        dateFormats := []string{
-            "1/2/06 15:04:05",
-            "1/2/06 0:00:00",
-            "2006-01-02T15:04:05Z07:00",
-            "2006-01-02",
-        }
-        for _, layout := range dateFormats {
-            if t, err := time.Parse(layout, val); err == nil {
-                return t.UTC().Format("2006-01-02")
-            }
-        }
-        return val
-    case float64:
-        return strconv.FormatFloat(val, 'f', -1, 64)
-    case float32:
-        return strconv.FormatFloat(float64(val), 'f', -1, 32)
-    case int, int32, int64, uint, uint32, uint64:
-        return fmt.Sprintf("%d", val)
-    default:
-        return fmt.Sprintf("%v", val)
-    }
+	if !exists || v == nil {
+		return ""
+	}
+	switch val := v.(type) {
+	case time.Time:
+		return val.UTC().Format("2006-01-02")
+	case string:
+		// Attempt to parse common date/datetime formats
+		dateFormats := []string{
+			"1/2/06 15:04:05",
+			"1/2/06 0:00:00",
+			"2006-01-02T15:04:05Z07:00",
+			"2006-01-02",
+		}
+		for _, layout := range dateFormats {
+			if t, err := time.Parse(layout, val); err == nil {
+				return t.UTC().Format("2006-01-02")
+			}
+		}
+		return val
+	case float64:
+		return strconv.FormatFloat(val, 'f', -1, 64)
+	case float32:
+		return strconv.FormatFloat(float64(val), 'f', -1, 32)
+	case int, int32, int64, uint, uint32, uint64:
+		return fmt.Sprintf("%d", val)
+	default:
+		return fmt.Sprintf("%v", val)
+	}
 }
 
 // SortMapSlice sorts a []map[string]any in-place by the string representation of key.

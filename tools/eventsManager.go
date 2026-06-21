@@ -21,8 +21,8 @@ import (
 //            Package variables
 // -----------------------------------------------------------------
 
-var ValidActions  = []string{"get", "insert", "update", "delete", "any"}
-var ValidStatuses = []string{"queued", "start", "success", "warn", "failed", "error", "all"}
+var ValidActions  = []string{"get", "insert", "update", "delete"}
+var ValidStatuses = []string{"queued", "start", "success", "warn", "failed", "error"}
 
 // -----------------------------------------------------------------
 //            Package types and type creations
@@ -65,16 +65,6 @@ type Client struct {
 	timeout_write_sec int
 	timeout_read_sec int
 	done chan struct{}
-}
-
-// Defines a message from the client to alter its connection or request information
-// Action - What needs to be done i.e "subscribe", "unsubscribe", "request"
-// Direction - A pointer for the actions ""
-type ClientMessage struct {
-	Instruct string `json:"instruct"`
-	Topic string `json:"topic"`
-	Action string `json:"action"`
-	Status string `json:"status"`
 }
 
 // Returns a new event manager. It will build a registry of all websockets upon registering
@@ -251,7 +241,7 @@ func (h *EventManager) handleClient(conn *websocket.Conn, topic string, action [
 	go client.writeLoop()
 
 	// Read loop, handles reads from the client
-	client.readLoop()
+	h.readLoop(client)
 
 	// Unregister the client
 	h.unhandleClient(client)
@@ -265,6 +255,19 @@ func (h *EventManager) register(c *Client, topic string, action string, status s
 }
 // Register the client in the eventhub UNSAFE
 func (h *EventManager) registerUnsafe(c *Client, topic string, action string, status string) {
+	// Ensure topic, action and status are valid
+	_, valid_topic := h.targets[topic]
+	valid_action := action == "" || action == "any" || action == "all" || slices.Contains(ValidActions, action)
+	valid_status := status == "" || status == "any" || status == "all" || slices.Contains(ValidStatuses, status)
+	if valid_topic == false || valid_action == false || valid_status == false {
+		c.NotifyJson(map[string]any{"subscribe": false, "reason": "invalid subscription request", "is_topic_valid": valid_topic, "is_action_valid": valid_action, "is_status_valid": valid_status})
+		return
+	}
+
+	// clean all statuses
+	if action == "" || action == "any" { action = "all" }
+	if status == "" || status == "any" { status = "all" }
+
 	// Init clients[c]
 	if h.clients[c] == nil {
 		h.clients[c] = client_topic{}
@@ -274,20 +277,37 @@ func (h *EventManager) registerUnsafe(c *Client, topic string, action string, st
 		h.clients[c][topic] = client_action{}
 	}
 	// Init clients[c][topic][action]
-	if h.clients[c][topic][action] == nil {
-		h.clients[c][topic][action] = client_status{}
+	if action == "all" {
+		// Process all actions
+		for _, action_reg := range ValidActions {
+			// Process all statuses
+			for _, status_reg := range ValidStatuses {
+				if h.clients[c][topic][action_reg] == nil {
+					h.clients[c][topic][action_reg] = client_status{}
+				}
+				h.clients[c][topic][action_reg][status_reg] = true
+				h.targets[topic].clients[action_reg][status_reg][c] = true
+			}
+		}
+	} else {
+		// Process specific action
+		if h.clients[c][topic][action] == nil {
+			h.clients[c][topic][action] = client_status{}
+		}
+		if status == "all" {
+			// Process all statuses
+			for _, status_reg := range ValidStatuses {
+				h.clients[c][topic][action][status_reg] = true
+				h.targets[topic].clients[action][status_reg][c] = true
+			}
+		} else {
+			// Process specific action
+			h.clients[c][topic][action][status] = true
+			h.targets[topic].clients[action][status][c] = true
+		}
 	}
-	h.clients[c][topic][action][status] = true
 
-	// Init targets[topic].clients[action]
-	if h.targets[topic].clients[action] == nil {
-		h.targets[topic].clients[action] = instruct_status{}
-	}
-	// Init targets[topic].clients[action][status]
-	if h.targets[topic].clients[action][status] == nil {
-		h.targets[topic].clients[action][status] = map[*Client]bool{}
-	}
-	h.targets[topic].clients[action][status][c] = true
+	c.NotifyJson(map[string]any{"subscribe": true, "topic": topic, "action": action, "status": status})
 }
 
 // Register the client in the eventhub safely
@@ -298,7 +318,113 @@ func (h *EventManager) unregister(c *Client, topic string, action string, status
 }
 // Register the client in the eventhub UNSAFE
 func (h *EventManager) unregisterUnsafe(c *Client, topic string, action string, status string) {
-	delete(h.targets[topic].clients[action][status], c)
+	// Process a topic as valid and can be unsubscribed from
+	_, ok := h.targets[topic]; if !ok { 
+		c.NotifyJson(map[string]any{"unsubscribe": false, "topic": topic, "reason": "invalid topic"})
+		return 
+	}
+	_, ok = h.clients[c][topic]; if !ok { 
+		c.NotifyJson(map[string]any{"unsubscribe": false, "topic": topic, "reason": "you are not subscribed to this topic"})
+		return 
+	}
+
+	// --------------------------------
+	// Process topic
+	// --------------------------------
+	if action == "" || action == "any" || action == "all" {
+		// --------------------------------
+		// Process all actions
+		// --------------------------------
+		if status == "" || status == "any" || status == "all" {
+			// ----------------------------------
+			// Process all statuses
+			// ----------------------------------
+			for action_reg := range h.clients[c][topic] {
+				for status_reg := range h.clients[c][topic][action_reg] {
+					// Delete the client from the instructions register
+					delete(h.targets[topic].clients[action_reg][status_reg], c)
+				}
+			}
+			// Delete the topic from the client data (no actions remaining)
+			delete(h.clients[c], topic)
+
+			c.NotifyJson(map[string]any{"unsubscribe": true, "topic": topic})
+			return
+		} else {
+			// ----------------------------------
+			// Process a specific status
+			// ----------------------------------
+			for action_reg := range h.clients[c][topic] {
+				// Ensure the status is valid and can be unsubbed from
+				_, ok = h.clients[c][topic][action_reg][status]; if !ok { continue }
+				delete(h.targets[topic].clients[action_reg][status], c)
+				delete(h.clients[c][topic], action_reg)
+				c.NotifyJson(map[string]any{"unsubscribe": true, "topic": topic, "action": action, "status": status})
+			}
+			return
+		}
+	} else {
+		// --------------------------------
+		// Process a specific action
+		// --------------------------------
+		// Validate the action
+		if !slices.Contains(ValidActions, action) {
+			c.NotifyJson(map[string]any{"unsubscribe": false, "topic": topic, "action": action, "reason": "invalid action"})
+			return 
+		}
+		_, ok := h.clients[c][topic][action]; if !ok {
+			c.NotifyJson(map[string]any{"unsubscribe": false, "topic": topic, "action": action, "reason": "you are not subscribed to this action"})
+			return 
+		}
+		if status == "" || status == "any" || status == "all" {
+			// ----------------------------------
+			// Process all statuses
+			// ----------------------------------
+			for status_reg := range h.clients[c][topic][action] {
+				// Delete the client from the instructions register
+				delete(h.targets[topic].clients[action][status_reg], c)
+			}
+			// Delete the action from the client data (no statuses remaining)
+			delete(h.clients[c][topic], action)
+			// Check if no actions remain in the topic
+			if len(h.clients[c][topic]) == 0 { 
+				delete(h.clients[c], topic) 
+				c.NotifyJson(map[string]any{"unsubscribe": true, "topic": topic, "note": "auto unsub from topic. No subbed actions remained"})
+			} else {
+				c.NotifyJson(map[string]any{"unsubscribe": true, "topic": topic, "action": action})
+			}
+
+			return
+		} else {
+			// ----------------------------------
+			// Process a specific status
+			// ----------------------------------
+			// Ensure the status is valid and can be unsubbed from
+			if !slices.Contains(ValidStatuses, status) {
+				c.NotifyJson(map[string]any{"unsubscribe": false, "topic": topic, "action": action, "status": status, "reason": "invalid status"})
+				return 
+			}
+			_, ok = h.clients[c][topic][action][status]; if !ok { 
+				c.NotifyJson(map[string]any{"unsubscribe": false, "topic": topic, "action": action, "status": status, "reason": "you are not subscribed to this status"})
+				return
+			}
+			delete(h.targets[topic].clients[action][status], c)
+			delete(h.clients[c][topic][action], status)
+			if len(h.clients[c][topic][action]) == 0 {
+				delete(h.clients[c][topic], action)
+				if len(h.clients[c][topic]) == 0 { 
+					delete(h.clients[c], topic) 
+					c.NotifyJson(map[string]any{"unsubscribe": true, "topic": topic, "note": "auto unsub from topic. No subbed statuses and actions remained"})
+					return
+				} else {
+					c.NotifyJson(map[string]any{"unsubscribe": true, "topic": topic, "action": action, "note": "auto unsub from action. No subbes statuses remained"})
+					return
+				}
+			}
+			c.NotifyJson(map[string]any{"unsubscribe": true, "topic": topic, "action": action, "status": status})
+			return
+		}
+	} 
 }
 
 // Unregister the client from the eventhub and clean up
@@ -352,17 +478,28 @@ func (c *Client) writeLoop() {
 	ticker.Stop()
 }
 
-func (c *Client) readLoop() {
+func (h *EventManager) readLoop(c *Client) {
 	for {
 		c.conn.SetReadDeadline(time.Now().Add(time.Duration(c.timeout_read_sec) * time.Second))
 		_, msg, err := c.conn.ReadMessage()
 		if err != nil { break }
 
 		// Unmarshal the message
-		var cm ClientMessage
+		cm := models.ClientMessage{
+			Action: "",
+			Status: "",
+		}
 		err = json.Unmarshal(msg, &cm)
 
 		if err != nil { continue }
+
+		// Process the user request
+		switch cm.Instruction {
+		case "sub":
+			h.register(c, cm.Topic, cm.Action, cm.Status)
+		case "unsub":
+			h.unregister(c, cm.Topic, cm.Action, cm.Status)
+		}
 
 		// msg actions currently unimplemented
 		GetBasicDebugLogger().Debug("Received message from client", "msg", cm)
@@ -373,6 +510,17 @@ func (c *Client) readLoop() {
 // -----------------------------------------------------------------
 //              Event Handling / Publishing
 // -----------------------------------------------------------------
+
+// Send a bytes array to the client
+func (c *Client) Notify(msg string) {
+	c.send <- []byte(msg)
+}
+
+// Send a bytes array to the client
+func (c *Client) NotifyJson(msg map[string]any) {
+	j, err := json.Marshal(msg)
+	if err == nil { c.send <- []byte(j) }
+}
 
 // Broadcase a bytes array across all clients
 func (h *EventManager) Broadcast(i *Instructions, action string, status string, data []byte) {
@@ -420,8 +568,8 @@ func (h *EventManager) Publish(ctx context.Context, action string, status string
 	"topic", topic,
 	"payload", payload,
 )
-	if err != nil { return err }
-	return h.publish(ctx, action, status, timestamp, topic, pl)
+if err != nil { return err }
+return h.publish(ctx, action, status, timestamp, topic, pl)
 }
 // Publish a message
 func (h *EventManager) PublishPayload(ctx context.Context, action string, status string, timestamp time.Time, topic string, payload []byte) error {

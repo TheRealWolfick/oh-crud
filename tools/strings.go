@@ -3,6 +3,7 @@ package tools
 import (
 	"crypto/rand"
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -76,4 +77,34 @@ func ParseAggregateFuncString(field string, qb *QueryBuilder, cfg *models.DataMo
 		qb.logger.Debug("Invalid function passed into aggregate function", "func", fnc)
 	}
 	return "", false
+}
+
+// convertString converts a raw form string into the requested kind.
+func convertString(s string, t reflect.Type) (any, error) {
+	switch t.Kind() {
+	case reflect.String:
+		return s, nil
+	case reflect.Bool:
+		return strconv.ParseBool(s)
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		v, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			return nil, err
+		}
+		return reflect.ValueOf(v).Convert(t).Interface(), nil
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		v, err := strconv.ParseUint(s, 10, 64)
+		if err != nil {
+			return nil, err
+		}
+		return reflect.ValueOf(v).Convert(t).Interface(), nil
+	case reflect.Float32, reflect.Float64:
+		v, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			return nil, err
+		}
+		return reflect.ValueOf(v).Convert(t).Interface(), nil
+	default:
+		return nil, fmt.Errorf("unsupported kind: %s", t.Kind())
+	}
 }

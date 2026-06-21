@@ -1097,9 +1097,22 @@ func websocketRegister(
 		}
 
 		// Read request
+		if err := r.ParseForm(); err != nil {
+			log.Error("Error parsing url form")
+			http.Error(w, "Error in parsing url parameters", http.StatusBadRequest)
+		}
+		
+		var request models.ClientMessage
+		m := tools.UrlValuesToMap(r.Form, &request)
+		tools.BuildStructFromMap(m, &request)
 
 		// Upgrade connection
-		err := evh.RegiterTopicOnly(w, r, topic)
+		var err error
+		if len(request.Status) == 0 {
+			err = evh.RegiterTopicOnly(w, r, topic)
+		} else {
+			err = evh.RegiterTopicStatus(w, r, topic, []string{request.Status})
+		}
 		if err != nil { 
 			http.Error(w, fmt.Sprintf("Error: %s", err.Error()), http.StatusInternalServerError)
 		}
