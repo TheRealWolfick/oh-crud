@@ -94,7 +94,7 @@ func (qm *QueueManager) createTask(ctx context.Context, sql string, note string,
 		Note:      note,
 		Sql:       sql,
 		Cfg:       *task.Cfg,
-		Topic:     fmt.Sprintf("table:%s", *task.Cfg.Table_name),
+		Topic:     fmt.Sprintf("table:%s", *task.Cfg.End_point),
 	}
 	return t, nil
 }
@@ -117,7 +117,7 @@ func (qm *QueueManager) createFunctionTask(ctx context.Context, function func(co
 		Args:      args,
 		Function:  function,
 		Cfg:       *task.Cfg,
-		Topic:     fmt.Sprintf("table:%s", *task.Cfg.Table_name),
+		Topic:     fmt.Sprintf("table:%s", *task.Cfg.End_point),
 	}
 	return t, nil
 }

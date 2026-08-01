@@ -109,7 +109,7 @@ func (h *EventManager) RegisterFunction(table string, topic string, hooks *model
 	_, valid := h.validTopics[table_topic]
 	if !valid {
 		GetBasicDebugLogger().Error(fmt.Sprintf(`Attempted to register the function topic {%s} against
-		table {%s}, but the table is an invalid topic`), topic, table)
+		table {%s}, but the table is an invalid topic`, topic, table))
 		return
 	}
 
@@ -501,7 +501,7 @@ func (h *EventManager) readLoop(c *Client) {
 	for {
 		c.conn.SetReadDeadline(time.Now().Add(time.Duration(c.timeout_read_sec) * time.Second))
 		_, msg, err := c.conn.ReadMessage()
-		if err != nil { break }
+		if err != nil { GetBasicDebugLogger().Debug(err.Error()); break }
 
 		// Unmarshal the message
 		cm := models.ClientMessage{
