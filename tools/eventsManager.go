@@ -621,5 +621,12 @@ func (h *EventManager) publish(ctx context.Context, action string, status string
 	// Publish to clients
 	go h.Broadcast(instructions, action, status, payload)
 
+	// Publish to each function
+	if (len(instructions.functions) > 0) {
+		for _, func_topic := range instructions.functions {
+			go h.publish(ctx, action, status, timestamp, func_topic, payload)
+		}
+	}
+
 	return nil
 }
