@@ -40,6 +40,7 @@ func mapTestModel() *models.DataModel {
 				JSON_alias:         []string{"code_alias"},
 				DB_type:            ptr("text"),
 				Required_on_insert: ptr(true),
+
 			},
 			"label": {
 				Type:     ptr("string"),
@@ -52,6 +53,14 @@ func mapTestModel() *models.DataModel {
 				JSON:     ptr("score"),
 				DB_type:  ptr("numeric"),
 				Nullable: ptr(true),
+			},
+			"secret": {
+				Type: 		ptr("string"),
+				DB_type:  ptr("text"),
+				Nullable: ptr(false),
+				Rules: 		&models.DataModelFieldRules{
+					Max_length: ptr(5),
+				},
 			},
 		},
 	}
@@ -66,7 +75,7 @@ func TestValidate_Map_AgainstConfig(t *testing.T) {
 		row := map[string]any{"code": "ABC", "label": "Test"}
 		valid, invalid := Validate_Map_AgainstConfig(cfg, row, false, true)
 		if len(valid) != 1 || len(invalid) != 0 {
-			t.Errorf("expected 1 valid 0 invalid, got %d valid %d invalid", len(valid), len(invalid))
+			t.Errorf("expected 1 item for valid and 0 items for invalid, got %d (valid) %d (invalid)", len(valid), len(invalid))
 		}
 	})
 

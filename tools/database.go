@@ -154,6 +154,7 @@ func SingleUpdate(
 	cfg *models.DataModel,
 	supplied map[string]any,
 ) func(context.Context, ...any) (string, map[string]any, error) {
+	fmt.Println("inside query")
 	return func(ctx context.Context, a ...any) (string, map[string]any, error) {
 		return multiUpdate(ctx, db, cfg, []map[string]any{supplied})
 	}
@@ -329,7 +330,6 @@ func multiUpdate(
 			// Build the query
 			for k, v := range row { if where_set[k] { qb_existing_vals.SetWhereAbsolute(k, v) } else { desired_fields_for_values = append(desired_fields_for_values, k) }}
 			query := qb_existing_vals.BuildSelect(*cfg.Table_name, desired_fields_for_values)
-			fmt.Println(query)
 
 			// Execute the query
 			rows, err := db.Query(ctx, query, qb_existing_vals.args...)

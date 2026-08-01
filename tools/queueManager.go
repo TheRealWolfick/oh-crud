@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"lotusforge.au/api-server/middleware"
 	"lotusforge.au/api-server/models"
 )
@@ -41,7 +40,7 @@ type QueueManager struct {
 	workers        []*Worker
 	workers_count  int
 	active_workers int
-	Db             *pgxpool.Pool
+	Db             models.DBExecQuery
 	Logger         *slog.Logger
 	mu             sync.Mutex
 	eventHub       *EventManager
@@ -58,7 +57,7 @@ func newWorker(id int) *Worker {
 }
 
 // NewQueue creates a new async task queue with the given number of workers.
-func NewQueue(db *pgxpool.Pool, num_workers int, logger *slog.Logger, evh *EventManager) *QueueManager {
+func NewQueue(db models.DBExecQuery, num_workers int, logger *slog.Logger, evh *EventManager) *QueueManager {
 	workers := make([]*Worker, num_workers)
 	for i := range num_workers {
 		workers[i] = newWorker(i)

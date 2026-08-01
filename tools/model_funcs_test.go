@@ -55,6 +55,14 @@ func basicModel() models.DataModel {
 				DB_type: ptr("boolean"),
 				Default: ptr("true"),
 			},
+			"secret": {
+				Type: 	 ptr("string"),
+				DB_type: ptr("text"),
+				Private: ptr(true),
+				Rules: &models.DataModelFieldRules{
+					Max_length: ptr(5),
+				},
+			},
 		},
 	}
 }

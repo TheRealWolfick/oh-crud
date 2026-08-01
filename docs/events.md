@@ -39,14 +39,27 @@ events table.
 - start_time
 - complete_time
 
+In addition the event will be modified based on the status
+
 ### insert
-- rows
+- success_items []map[string]any
 
 ### update
-- rows (updated values + pk/uk)
+- success_items []updated
+```
+updated = {
+    "where_fields": map[string]any
+    "updated_values": map[string]any
+}
+```
 
 ### delete
-- rows (pk/uk only)
+- success_items []deleted
+```
+deleted = {
+    "where_fields": map[string]any
+}
+```
 
 ## warn
 A warn event occurs when a task is completed but there were failed rows. Similar
@@ -58,16 +71,45 @@ to success events, rows are reported to webhooks and websocks only.
 - complete_time
 
 ### insert
-- rows
-- failed (row and error)
+- success_items []map[string]any
+- failed_items []failed
+```
+failed = {
+    "row": map[string]any
+    "error": string
+}
+```
 
 ### update
-- rows (updated values + pk/uk)
-- failed (row and error)
+- success_items []map[string]updated
+```
+updated = {
+    "where_fields": map[string]any
+    "updated_values": map[string]any
+}
+```
+- failed_items []failed
+```
+failed = {
+    "row": map[string]any
+    "error": string
+}
+```
 
 ### delete
-- rows (pk/uk only)
-- failed (row and error)
+- success_items []map[string]deleted
+```
+deleted = {
+    "where_fields": map[string]any
+}
+```
+- failed_items []failed
+```
+failed = {
+    "row": map[string]any
+    "error": string
+}
+```
 
 ## failed
 A failed event occurs when there were no successful inserts or updates. Similar
@@ -77,7 +119,13 @@ to success events, rows are reported to webhooks and websocks only.
 - task_type
 - start_time
 - complete_time
-- failed (row and error)
+- failed_items []failed
+```
+failed = {
+    "row": map[string]any
+    "error": string
+}
+```
 
 ## error
 An error event occurs when there is an internal processing error and the task

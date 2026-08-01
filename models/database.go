@@ -8,13 +8,13 @@ import (
 )
 
 type FailedItem struct {
-	Row   map[string]any
-	Error string
+	Row   map[string]any  `json:"row"`
+	Error string          `json:"error"`
 }
 
 type UpdateSuccessItem struct {
-	WhereFields map[string]any
-	UpdatedValues map[string]any
+	WhereFields map[string]any `json:"where_fields"`
+	UpdatedValues map[string]any `json:"updated_values"`
 }
 
 type DeleteSuccessItem struct {

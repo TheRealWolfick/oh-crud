@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"lotusforge.au/api-server/handlers"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/schematools"
@@ -38,7 +39,7 @@ func ModelsMonitor(handlerRegistry *tools.HandlerRegistry, modelRegistry *tools.
 							tools.ProcessModelAdditionalFields(updated_config)
 							modelRegistry.Register(updated_config)
 							handlers.RegisterRoutes(updated_config, handlerRegistry, auth, qm, server_conf, evh)
-							schematools.SyncModelIfNeeded(context.Background(), qm.Db, updated_config, modelRegistry.All(), qm.Logger, gate)
+							schematools.SyncModelIfNeeded(context.Background(), qm.Db.(*pgxpool.Pool), updated_config, modelRegistry.All(), qm.Logger, gate)
 						}
 					}
 				}

@@ -28,7 +28,7 @@
             "start":   { "type": "array", "items": { "type": "string" }},
             "success": { "type": "array", "items": { "type": "string" }},
             "warn":    { "type": "array", "items": { "type": "string" }},
-            "fail":    { "type": "array", "items": { "type": "string" }},
+            "failed":    { "type": "array", "items": { "type": "string" }},
             "error":   { "type": "array", "items": { "type": "string" }},
             "all":     { "type": "array", "items": { "type": "string" }}
           }
@@ -41,7 +41,7 @@
             "start":   { "type": "array", "items": { "type": "string" }},
             "success": { "type": "array", "items": { "type": "string" }},
             "warn":    { "type": "array", "items": { "type": "string" }},
-            "fail":    { "type": "array", "items": { "type": "string" }},
+            "failed":    { "type": "array", "items": { "type": "string" }},
             "error":   { "type": "array", "items": { "type": "string" }},
             "all":     { "type": "array", "items": { "type": "string" }}
           }
@@ -54,7 +54,7 @@
             "start":   { "type": "array", "items": { "type": "string" }},
             "success": { "type": "array", "items": { "type": "string" }},
             "warn":    { "type": "array", "items": { "type": "string" }},
-            "fail":    { "type": "array", "items": { "type": "string" }},
+            "failed":    { "type": "array", "items": { "type": "string" }},
             "error":   { "type": "array", "items": { "type": "string" }},
             "all":     { "type": "array", "items": { "type": "string" }}
           }
@@ -67,7 +67,7 @@
             "start":   { "type": "array", "items": { "type": "string" }},
             "success": { "type": "array", "items": { "type": "string" }},
             "warn":    { "type": "array", "items": { "type": "string" }},
-            "fail":    { "type": "array", "items": { "type": "string" }},
+            "failed":    { "type": "array", "items": { "type": "string" }},
             "error":   { "type": "array", "items": { "type": "string" }},
             "all":     { "type": "array", "items": { "type": "string" }}
           }
@@ -80,7 +80,7 @@
             "start":   { "type": "array", "items": { "type": "string" }},
             "success": { "type": "array", "items": { "type": "string" }},
             "warn":    { "type": "array", "items": { "type": "string" }},
-            "fail":    { "type": "array", "items": { "type": "string" }},
+            "failed":    { "type": "array", "items": { "type": "string" }},
             "error":   { "type": "array", "items": { "type": "string" }},
             "all":     { "type": "array", "items": { "type": "string" }}
           }

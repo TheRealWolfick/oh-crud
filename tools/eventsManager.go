@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"lotusforge.au/api-server/middleware"
 	"lotusforge.au/api-server/models"
 )
@@ -37,7 +36,7 @@ type EventManager struct {
 	ping_sec int
 	timeout_sec int
 	upgrader     websocket.Upgrader
-	db           *pgxpool.Pool
+	db           models.DBExecQuery
 }
 
 
@@ -78,7 +77,7 @@ type Client struct {
 //
 // Events are categorized by action (insert, update etc) and status (start, success, fail etc).
 // An event must have a valid action and status to be published
-func NewEventManager(ping_sec int, timeout_sec int, db *pgxpool.Pool) *EventManager {
+func NewEventManager(ping_sec int, timeout_sec int, db models.DBExecQuery) *EventManager {
 	return &EventManager{
 		clients: map[*Client]client_topic{},
 		targets: map[string]*Instructions{},
