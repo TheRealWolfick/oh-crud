@@ -44,6 +44,7 @@ type Instructions struct {
 	webhook_url    webhook_action
 	persist_to_db  bool
 	clients        instruct_action
+	functions      function_references
 }
 
 type client_topic map[string]client_action
@@ -56,6 +57,8 @@ type instruct_clients map[*Client]bool
 
 type webhook_action map[string]webhook_status
 type webhook_status map[string][]string
+
+type function_references []string
 
 type Client struct {
 	conn *websocket.Conn
@@ -98,8 +101,24 @@ func NewEventManager(ping_sec int, timeout_sec int, db models.DBExecQuery) *Even
 //            Topic Registration Management
 // -----------------------------------------------------------------
 
+// This function is used for registering a function. It will enable the function as a topic and
+// also reference it in the table topic. If the table is not a valid topic, which should never 
+// happen, the function will not register and will log an error.
+func (h *EventManager) RegisterFunction(table string, topic string, hooks *models.EventAction) {
+  table_topic := fmt.Sprintf("table:%s", table)
+	_, valid := h.validTopics[table_topic]
+	if !valid {
+		GetBasicDebugLogger().Error(fmt.Sprintf(`Attempted to register the function topic {%s} against
+		table {%s}, but the table is an invalid topic`), topic, table)
+		return
+	}
+
+	h.EnableTopic(topic, hooks)
+	h.targets[table_topic].functions = append(h.targets[table_topic].functions, topic)
+}
+
 // Add a topic as a valid topic
-func (h *EventManager) EnableTopic(topic string, cfg *models.DataModel) {
+func (h *EventManager) EnableTopic(topic string, hooks *models.EventAction) {
 	h.validTopics[topic] = true
 
 	// Register instructions for topics
@@ -108,6 +127,7 @@ func (h *EventManager) EnableTopic(topic string, cfg *models.DataModel) {
 			webhook_url: webhook_action{},
 			persist_to_db: true,
 			clients: instruct_action{},
+			functions: function_references{},
 		}
 	}
 
@@ -136,12 +156,12 @@ func (h *EventManager) EnableTopic(topic string, cfg *models.DataModel) {
 	}
 
 	// Map any config webhooks into the data structure
-	if cfg.Webhooks != nil {
-		if cfg.Webhooks.On_get != nil { fn("get", cfg.Webhooks.On_get) }
-		if cfg.Webhooks.On_delete != nil { fn("delete", cfg.Webhooks.On_delete) }
-		if cfg.Webhooks.On_insert != nil { fn("insert", cfg.Webhooks.On_insert) }
-		if cfg.Webhooks.On_update != nil { fn("update", cfg.Webhooks.On_update) }
-		if cfg.Webhooks.On_any != nil { fn("any", cfg.Webhooks.On_any) }
+	if hooks != nil {
+		if hooks.On_get != nil { fn("get", hooks.On_get) }
+		if hooks.On_delete != nil { fn("delete", hooks.On_delete) }
+		if hooks.On_insert != nil { fn("insert", hooks.On_insert) }
+		if hooks.On_update != nil { fn("update", hooks.On_update) }
+		if hooks.On_any != nil { fn("any", hooks.On_any) }
 	}
 }
 

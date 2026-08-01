@@ -348,7 +348,7 @@ func TestWebhook_FiresOnInsertSuccess(t *testing.T) {
 
     // 3. Wire up the EventManager and register the topic from that config.
     em := tools.NewEventManager(fakeDB(), testLogger())
-    em.EnableTopic("table:test_table", &cfg)
+    em.EnableTopic("table:test_table", &cfg.webhooks)
 
     // 4. Fire the event the queue would normally fire on success.
     em.Publish("table:test_table", "insert", "success", []byte(`{"id":1}`))

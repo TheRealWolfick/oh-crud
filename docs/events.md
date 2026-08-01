@@ -10,6 +10,10 @@ can be used to subscribe to events.
 The event handler manages all events, including processing webhooks and
 notifying clients subscribed via websocks.
 
+Events on tables will also trigger for any functions. A function is its own
+topic, but is registered within the table topic. Any event on the table will
+propogate into all referenced function topics.
+
 ---
 
 ## queued

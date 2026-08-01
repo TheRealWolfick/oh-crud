@@ -65,7 +65,7 @@ func RegisterRoutes(
 	}
 
 	// Enable the table for websockets and register end point
-	evh.EnableTopic(fmt.Sprintf("table:%s", *cfg.Table_name), cfg)
+	evh.EnableTopic(fmt.Sprintf("table:%s", *cfg.Table_name), cfg.Webhooks)
 	handlerRegistry.Register(fmt.Sprintf("GET /ws/%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleWebsocket(cfg, qm, server_conf, fmt.Sprintf("table:%s", *cfg.Table_name), evh))), *cfg.Version)
 }
 

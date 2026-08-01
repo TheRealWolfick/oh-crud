@@ -77,4 +77,5 @@ type FunctionDef struct {
 	Aggregate     []string        `yaml:"aggregate"`
 	Sort_by       []string        `yaml:"sort-by"`
 	Roles_allowed []string        `yaml:"roles-allowed"`
+	Webhooks      *EventAction    `yaml:"web-hooks"`
 }

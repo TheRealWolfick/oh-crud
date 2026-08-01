@@ -36,6 +36,7 @@ func RegisterFunctionRoutes(
 	qm.Logger.Debug("Registering declarative function", "route", route, "version", *fn.Version)
 
 	// Enable the function in the eventhandler
+	evh.RegisterFunction(*fn.Bound_to, fmt.Sprintf("func:%s", *fn.Name), fn.Webhooks)
 
 	// Resolve once for the model lookup at construction time. The handler
 	// will look up live each request to honour hot-reloads.
