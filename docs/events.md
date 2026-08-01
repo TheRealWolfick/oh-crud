@@ -12,7 +12,15 @@ notifying clients subscribed via websocks.
 
 Events on tables will also trigger for any functions. A function is its own
 topic, but is registered within the table topic. Any event on the table will
-propogate into all referenced function topics.
+propogate into all referenced function topics. It does not send the data, but
+that an underlying change has occurred and leaves actioning this up to the
+client. This is because of two reasons:
+
+1. The client may be filtering the function via its parameters, which the
+event handler holds no means of knowing. This could be expanded with a review
+of the event handler, however this then follows into;
+2. Having the system directly fetch updated data bypasses client API Key
+security.
 
 ---
 
@@ -140,3 +148,15 @@ has to be cancelled.
 - start_time
 - complete_time
 - error
+
+# Function Events
+
+These events will only trigger on `success` and `warn` events. The entire message
+will be the event and will follow the below structure:
+
+- event_type
+- event_time
+- function_name
+- items_added
+- items_updated
+- items_removed

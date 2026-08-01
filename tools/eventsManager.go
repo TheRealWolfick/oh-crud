@@ -20,7 +20,7 @@ import (
 //            Package variables
 // -----------------------------------------------------------------
 
-var ValidActions  = []string{"get", "insert", "update", "delete"}
+var ValidActions  = []string{"get", "create", "update", "delete"}
 var ValidStatuses = []string{"queued", "start", "success", "warn", "failed", "error"}
 
 // -----------------------------------------------------------------
@@ -45,6 +45,7 @@ type Instructions struct {
 	persist_to_db  bool
 	clients        instruct_action
 	functions      function_references
+	is_func        bool
 }
 
 type client_topic map[string]client_action
@@ -114,6 +115,7 @@ func (h *EventManager) RegisterFunction(table string, topic string, hooks *model
 	}
 
 	h.EnableTopic(topic, hooks)
+	h.targets[topic].is_func = true
 	h.targets[table_topic].functions = append(h.targets[table_topic].functions, topic)
 }
 
@@ -128,6 +130,7 @@ func (h *EventManager) EnableTopic(topic string, hooks *models.EventAction) {
 			persist_to_db: true,
 			clients: instruct_action{},
 			functions: function_references{},
+			is_func: false,
 		}
 	}
 
@@ -159,7 +162,7 @@ func (h *EventManager) EnableTopic(topic string, hooks *models.EventAction) {
 	if hooks != nil {
 		if hooks.On_get != nil { fn("get", hooks.On_get) }
 		if hooks.On_delete != nil { fn("delete", hooks.On_delete) }
-		if hooks.On_insert != nil { fn("insert", hooks.On_insert) }
+		if hooks.On_insert != nil { fn("create", hooks.On_insert) }
 		if hooks.On_update != nil { fn("update", hooks.On_update) }
 		if hooks.On_any != nil { fn("any", hooks.On_any) }
 	}
@@ -570,15 +573,11 @@ func (h *EventManager) Callback(topic string, action string, status string, data
 }
 
 // Pushish a message without supplying a timestamp
-func (h *EventManager) PublishNoTimestamp(ctx context.Context, action string, status string, topic string, payload map[string]any) error {
-	return h.Publish(ctx, action, status, time.Now(), topic, payload)
-}
-// Pushish a message without supplying a timestamp
-func (h *EventManager) PublishNoTimestampPayload(ctx context.Context, action string, status string, topic string, payload []byte) error {
-	return h.publish(ctx, action, status, time.Now(), topic, payload)
+func (h *EventManager) PublishNoTimestamp(ctx context.Context, action string, status string, topic string, payload map[string]any, success_count int) error {
+	return h.Publish(ctx, action, status, time.Now(), topic, payload, success_count)
 }
 // Publish a message
-func (h *EventManager) Publish(ctx context.Context, action string, status string, timestamp time.Time, topic string, payload map[string]any) error {
+func (h *EventManager) Publish(ctx context.Context, action string, status string, timestamp time.Time, topic string, payload map[string]any, success_count int) error {
 	// Extract and prep data
 	pl, err := json.Marshal(payload)
 	GetBasicDebugLogger().Debug("Received message",
@@ -588,16 +587,11 @@ func (h *EventManager) Publish(ctx context.Context, action string, status string
 	"payload", payload,
 )
 if err != nil { return err }
-return h.publish(ctx, action, status, timestamp, topic, pl)
-}
-// Publish a message
-func (h *EventManager) PublishPayload(ctx context.Context, action string, status string, timestamp time.Time, topic string, payload []byte) error {
-	// Extract and prep data
-	return h.publish(ctx, action, status, timestamp, topic, payload)
+return h.publish(ctx, action, status, timestamp, topic, pl, success_count)
 }
 
 // Publish a message across all end points as per the instructions.
-func (h *EventManager) publish(ctx context.Context, action string, status string, timestamp time.Time, topic string, payload []byte) error {
+func (h *EventManager) publish(ctx context.Context, action string, status string, timestamp time.Time, topic string, payload []byte, success_count int) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -622,9 +616,30 @@ func (h *EventManager) publish(ctx context.Context, action string, status string
 	go h.Broadcast(instructions, action, status, payload)
 
 	// Publish to each function
-	if (len(instructions.functions) > 0) {
+	if (len(instructions.functions) > 0 && success_count > 0) {
 		for _, func_topic := range instructions.functions {
-			go h.publish(ctx, action, status, timestamp, func_topic, payload)
+			// Build the update message for this function
+			update_message := map[string]any{
+				"event_type": "data altered",
+				"event_time": timestamp,
+				"function_name": func_topic,
+				"items_added": 0,
+				"items_updated": 0,
+				"items_removed": 0,
+			}
+			switch action {
+			case "create":
+				update_message["items_added"] = success_count
+			case "update":
+				update_message["items_updated"] = success_count
+			case "delete":
+				update_message["items_removed"] = success_count
+			}
+			pl, err := json.Marshal(update_message)
+
+			if err != nil {GetBasicDebugLogger().Error(fmt.Sprintf("Error parsing update_message for function {%s}\nError: {%s}", func_topic, err.Error()))}
+			// Publish this data
+			go h.publish(ctx, action, status, timestamp, func_topic, pl, success_count)
 		}
 	}
 

@@ -193,7 +193,7 @@ func (qm *QueueManager) reportWork(w *Worker, status string, res map[string]any,
 	qm.publish(w)
 }
 
-func (qm *QueueManager) getReportableTaskInfo(w *Worker) map[string]any {
+func (qm *QueueManager) getReportableTaskInfo(w *Worker) (map[string]any, int) {
 	switch w.TaskActioning.Status {
 	case "error", "failed":
 		return map[string]any{
@@ -204,7 +204,7 @@ func (qm *QueueManager) getReportableTaskInfo(w *Worker) map[string]any {
 			"note":          w.TaskActioning.Note,
 			"task_status":   w.TaskActioning.Status,
 			"task_error":    w.TaskActioning.Response,
-		}
+		}, 0
 	case "success", "warn":
 		return map[string]any{
 			"task_id":       w.TaskActioning.TaskID,
@@ -214,7 +214,7 @@ func (qm *QueueManager) getReportableTaskInfo(w *Worker) map[string]any {
 			"note":          w.TaskActioning.Note,
 			"task_status":   w.TaskActioning.Status,
 			"task_response": w.TaskActioning.Response,
-		}
+		}, w.TaskActioning.Response["success_count"].(int)
 	case "start":
 		return map[string]any{
 			"task_id":       w.TaskActioning.TaskID,
@@ -222,7 +222,7 @@ func (qm *QueueManager) getReportableTaskInfo(w *Worker) map[string]any {
 			"note":          w.TaskActioning.Note,
 			"task_start":    w.TaskActioning.StartTime,
 			"task_status":   w.TaskActioning.Status,
-		}
+		}, 0
 	}
 	return map[string]any{
 		"task_id":         w.TaskActioning.TaskID,
@@ -230,12 +230,13 @@ func (qm *QueueManager) getReportableTaskInfo(w *Worker) map[string]any {
 		"note":            w.TaskActioning.Note,
 		"task_start":      w.TaskActioning.StartTime,
 		"task_status":     w.TaskActioning.Status,
-	}
+	}, 0
 }
 
 // This is an internal helper function to publish an event
 func (qm *QueueManager) publish(w *Worker) {
-	qm.eventHub.PublishNoTimestamp(w.TaskActioning.Ctx, w.TaskActioning.TaskType, w.TaskActioning.Status, w.TaskActioning.Topic, qm.getReportableTaskInfo(w))
+	payload, success_count := qm.getReportableTaskInfo(w)
+	qm.eventHub.PublishNoTimestamp(w.TaskActioning.Ctx, w.TaskActioning.TaskType, w.TaskActioning.Status, w.TaskActioning.Topic, payload, success_count)
 }
 // This is an internal helper function for publishing an event when there is no worker assigned, 
 // instead utilizing the task directly
@@ -245,14 +246,14 @@ func (qm *QueueManager) publishTask(t *Task) {
 		"task_type":     t.TaskType,
 		"task_start":    t.StartTime,
 		"task_status":   t.Status,
-	})
+	}, 0)
 }
 func (qm *QueueManager) publishTaskQueued(t *Task) {
 	qm.eventHub.PublishNoTimestamp(t.Ctx, t.TaskType, t.Status, t.Topic, map[string]any{
 		"task_id":       t.TaskID,
 		"task_type":     t.TaskType,
 		"task_status":   t.Status,
-	})
+	}, 0)
 }
 func (qm *QueueManager) publishTaskStart(t *Task) {
 	qm.eventHub.PublishNoTimestamp(t.Ctx, t.TaskType, t.Status, t.Topic, map[string]any{
@@ -260,7 +261,7 @@ func (qm *QueueManager) publishTaskStart(t *Task) {
 		"task_type":     t.TaskType,
 		"task_status":   t.Status,
 		"start_time":    t.StartTime.String(),
-	})
+	}, 0)
 }
 func (qm *QueueManager) publishTaskSuccess(t *Task) {
 	qm.eventHub.Publish(t.Ctx, t.TaskType, t.Status, t.CompleteTime, t.Topic, map[string]any{
@@ -270,7 +271,7 @@ func (qm *QueueManager) publishTaskSuccess(t *Task) {
 		"task_status":   t.Status,
 		"complete_time": t.CompleteTime.String(),
 		"success_items": t.Response["success_items"],
-	})
+	}, t.Response["success_count"].(int))
 }
 func (qm *QueueManager) publishTaskWarn(t *Task) {
 	qm.eventHub.Publish(t.Ctx, t.TaskType, t.Status, t.CompleteTime, t.Topic, map[string]any{
@@ -281,7 +282,7 @@ func (qm *QueueManager) publishTaskWarn(t *Task) {
 		"complete_time": t.CompleteTime.String(),
 		"success_items": t.Response["success_items"],
 		"failed_items":  t.Response["failed_items"],
-	})
+	}, t.Response["success_count"].(int))
 }
 func (qm *QueueManager) publishTaskFail(t *Task) {
 	qm.eventHub.Publish(t.Ctx, t.TaskType, t.Status, t.CompleteTime, t.Topic, map[string]any{
@@ -291,7 +292,7 @@ func (qm *QueueManager) publishTaskFail(t *Task) {
 		"start_time":    t.StartTime.String(),
 		"complete_time": t.CompleteTime.String(),
 		"failed_items":  t.Response["failed_items"],
-	})
+	}, 0)
 }
 func (qm *QueueManager) publishTaskError(t *Task) {
 	qm.eventHub.PublishNoTimestamp(t.Ctx, t.TaskType, t.Status, t.Topic, map[string]any{
@@ -300,7 +301,7 @@ func (qm *QueueManager) publishTaskError(t *Task) {
 		"task_status":   t.Status,
 		"start_time":    t.StartTime.String(),
 		"complete_time": t.CompleteTime.String(),
-	})
+	}, 0)
 }
 
 // -----------------------------------------------------------------

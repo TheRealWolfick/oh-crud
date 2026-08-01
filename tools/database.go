@@ -106,7 +106,7 @@ func createDiff(
 		return "create_diff", map[string]any{
 			"action":        "diff",
 			"on_table":      *cfg.Table_name,
-			"rows_affected": 0,
+			"success_count": 0,
 			"message":       "no differences found between supplied and stored data",
 		}, nil
 	}
@@ -138,7 +138,7 @@ func createDiff(
 
 	ret_map := map[string]any{
 		"table":         *cfg.Table_name,
-		"rows_affected": cmdtag.RowsAffected(),
+		"success_count": cmdtag.RowsAffected(),
 	}
 	if err != nil {
 		ret_map["error"] = err.Error()
@@ -202,7 +202,7 @@ func RecursiveBatchInsert(
 			"failed_items":  result.FailedItems,
 			"table_name":    cfg.Table_name,
 		}
-		return "insert", logData, nil
+		return "create", logData, nil
 	}
 }
 
