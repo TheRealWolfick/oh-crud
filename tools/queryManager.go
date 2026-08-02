@@ -199,8 +199,20 @@ func setWhere(field string, value any, fieldType reflect.Kind, setFunc func(stri
 				}
 
 			case reflect.Float32, reflect.Float64:
-				if value_as_float, err := strconv.ParseFloat(value_as_string, 64); err == nil {
-					setFunc(field, value_as_float, "=")
+				if mod_guess == "<" || mod_guess == ">" {
+					if mod_guess2 == "<=" || mod_guess2 == ">=" {
+						if value_as_float, err := strconv.ParseFloat(value_as_string, 64); err == nil {
+							setFunc(field, value_as_float, mod_guess2)
+						}
+					} else {
+						if value_as_float, err := strconv.ParseFloat(value_as_string, 64); err == nil {
+							setFunc(field, value_as_float, mod_guess)
+						}
+					}
+				} else {
+					if value_as_float, err := strconv.ParseFloat(value_as_string, 64); err == nil {
+						setFunc(field, value_as_float, "=")
+					}
 				}
 
 			case reflect.Struct:
@@ -391,10 +403,10 @@ func (qb *QueryBuilder) BuildMultiInsert(cfg *models.DataModel, data []map[strin
 }
 
 func (qb *QueryBuilder) BuildUpdateHistory(cfg *models.DataModel, old_values map[string]any, new_values map[string]any, user string) string {
-  return qb.buildInsertHistory(cfg, old_values, []map[string]any{new_values}, user, "update", false)
+	return qb.buildInsertHistory(cfg, old_values, []map[string]any{new_values}, user, "update", false)
 }
 func (qb *QueryBuilder) BuildMultiInsertHistory(cfg *models.DataModel, new_values []map[string]any, user string) string {
-  return qb.buildInsertHistory(cfg, nil, new_values, user, "insert", true)
+	return qb.buildInsertHistory(cfg, nil, new_values, user, "insert", true)
 }
 func (qb *QueryBuilder) buildInsertHistory(cfg *models.DataModel, old_values map[string]any, new_values []map[string]any, user string, t string, use_defaults bool) string {
 	lgr := qb.logger.With("buildInsertHistory_type", t)
@@ -571,7 +583,7 @@ func (qb *QueryBuilder) BuildSchema(cfg *models.DataModel) *models.DataModelPubl
 	// Build the unique key lists
 	unique_keys := [][]string{}
 	for _, v := range cfg.Unique_keys {
-    if v.Fields != nil {
+		if v.Fields != nil {
 			unique_keys = append(unique_keys, v.Fields)
 		}
 	}
@@ -583,7 +595,7 @@ func (qb *QueryBuilder) BuildSchema(cfg *models.DataModel) *models.DataModelPubl
 		Unique_keys: unique_keys,
 		Fields: map[string]models.DataModelFieldPublicSchema{},
 	}
-	
+
 	// Record all the fields
 	for k, v := range cfg.Fields {
 		if v.Private == nil || *v.Private == false {
@@ -599,7 +611,7 @@ func (qb *QueryBuilder) BuildSchema(cfg *models.DataModel) *models.DataModelPubl
 			}
 		}
 	}
-	
+
 	return schema
 }
 
