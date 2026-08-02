@@ -79,3 +79,50 @@ required-on-insert: False by default: Set true to ensure that this field is supp
 absolute-match:     False by default: Set true to ensure all comparisons are done via `=` and not the regex `~*` comparator
 rules:              A collection of rules for field validation. Valid rules, depending on the data type, are: min, max, pattern, enum, max-length
 migration:          How Atlas should handle migration: valid, skip or recreate
+
+
+## Declarative Functions
+
+### Top Level
+**metadata**
+name:               URL slug - final segment after /fn/. Cannot be: aggregate, diff, history, group.
+version:            In the format of `x.x.x`. Hot-reloads only swap the handler when the new version is strictly greater. 
+bound-to:           URL slug - pre segment before /fn/. Must match an existing model's `end-point:` value exactly (e.g. asset/data, not Asset Data).
+description:        A description on what the function is, and its purpose
+roles-allowed:      A list in [] of allowed roles that can request this data. If this is omitted or empty, it will fall back to the permissions on the end point as specified in the bound-to variable
+
+**configuration (top)**
+where:              A collection of always-applied equality filters. Field keys are model field names; values are literals.
+  is_active: true
+  asset_status: ACTIVE
+parameters:         Optional URL params accepted by the function that can be used for filtering
+
+**configuration (bottom)**
+group-by:           A list of which fields to group by. All grouped fields must also be in the fields section
+aggregate:          A list of aggregate functions following the aggregate syntax
+sort-by:            A list of fields to sort the return data by 
+
+**returns**
+fields:             A list of fields that will be in the return data
+
+### Objects
+
+#### Parameters
+These are the parameters that can be used to filter the query.
+
+**Required**
+name:               The query-string key that the user will use (?<name>=...).
+field:              The model field the value filters on.
+
+**Optional**
+op:                 One of =, >, >=, <, <=, ~* (forces operator; otherwise the model field's type-driven inference applies, exactly like the standard GET endpoint).
+required:           Boolean. When true, missing this param from the request resolves to 400.
+
+#### Fields
+While currently only a list of fields from the model that will be returned. This is to be expanded in the future into a structure that supports calculated fields, renaming fields, etc
+
+{ name: full_label, expression: <sql expr> } for calculated fields. v1 rejects entries with `expression` at load time.
+
+roles-allowed: []       # Optional. List of role names allowed to call this
+                        # function. When empty/omitted, inherits the bound
+                        # model's end-points-allowed.GET list.
