@@ -412,9 +412,10 @@ func multiDelete(
 	}
 
 	log_history := false
-	if cfg.Track_history != nil && *cfg.Track_history {
-		log_history = true
-	}
+	soft_delete := false
+
+	if cfg.Track_history != nil && *cfg.Track_history { log_history = true }
+	if cfg.Soft_delete != nil && *cfg.Soft_delete { soft_delete = true }
 
 	for idx, row := range supplied {
 		where_fields, ok := FindRowKeyFields(row, cfg)
@@ -440,7 +441,7 @@ func multiDelete(
 
 		// Update data for history logging
 		existing_data := map[string]any{}
-		if log_history { 
+		if log_history && soft_delete { 
 			desired_fields_for_values := []string{GetHistoryUniqueField(cfg)}
 			fmt.Println("Desired field: ", desired_fields_for_values)
 
@@ -468,7 +469,7 @@ func multiDelete(
 			log_data["success_count"] = log_data["success_count"].(int) + int(cmdtag.RowsAffected())
 			log_data["success_items"] = append(log_data["success_items"].([]models.DeleteSuccessItem), deleted_val)
 
-			if log_history { 
+			if log_history && soft_delete { 
 				qb_history := NewQueryBuilder(log)                                                                  // Use a new querybuilder
 				user, _ := middleware.GetUser(ctx) 																								                  // Get the user
 				query_history := qb_history.BuildUpdateHistory(cfg, existing_data, map[string]any{"deleted_flag": true}, user.Username)	            // Build the insert
@@ -496,5 +497,5 @@ func multiDelete(
 	report_encoded, _ := json.Marshal(log_data)
 	report_to_return := map[string]any{}
 	err := json.Unmarshal(report_encoded, &report_to_return)
-	return "delete", report_to_return, err
+	return "delete", log_data, err
 }
