@@ -12,6 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"lotusforge.au/api-server/models"
+	"lotusforge.au/api-server/tools"
 )
 
 // hclDir is where generated HCL files (and their .version sidecars) are written.
@@ -32,6 +33,13 @@ func hclVersionPath(hclPath string) string {
 	return hclPath + ".version"
 }
 
+// configCurrentPath returns the sidecar file that records the last known
+// good config. If any destructive changes are rejected, this file will overwrite
+// the updated config file, reverting it back to its previous state
+func configCurrentVersionPath(tableName string) string {
+	return filepath.Join(hclDir, tableName+".current.yaml")
+}
+
 // needsSync returns true when:
 //   - the .hcl file does not exist yet, OR
 //   - the stored version doesn't match the model's current version
@@ -42,6 +50,16 @@ func needsSync(model *models.DataModel, hclPath string) bool {
 	versionFile := hclVersionPath(hclPath)
 	stored, err := os.ReadFile(versionFile)
 	if err != nil {
+		// Write current file to best version (new file detected)
+		cur, err := os.ReadFile(*model.Filepath); if err != nil {
+			slog.Error("Error reading config current file in needsSync", "error", err)
+			return true
+		}
+		err = os.WriteFile(configCurrentVersionPath(*model.Table_name), cur, 0o644)
+		if err != nil {
+			slog.Error("Error writing config current file in needsSync", "error", err)
+			return true
+		}
 		return true // no version file → treat as new
 	}
 	if model.Version == nil {
@@ -99,8 +117,9 @@ func NeverApproval(_ context.Context, changes string) error {
 // PendingChange holds a destructive schema change that was blocked and is
 // waiting for manual approval before it can be re-applied.
 type PendingChange struct {
-	TableName string
-	Changes   string
+	Table        string
+	Changes   	 string
+	ApprovalFunc any
 }
 
 // PendingApprovalGate blocks destructive schema changes and records them so a
@@ -111,7 +130,7 @@ type PendingChange struct {
 // re-trigger SyncModelIfNeeded for the relevant table.
 type PendingApprovalGate struct {
 	mu      sync.Mutex
-	pending []PendingChange
+	pending map[string]PendingChange
 }
 
 func NewPendingApprovalGate() *PendingApprovalGate {
@@ -121,27 +140,39 @@ func NewPendingApprovalGate() *PendingApprovalGate {
 // ApprovalFuncFor returns an ApprovalFunc that records the blocked changes
 // under tableName and aborts the apply. If the same table is blocked again
 // before being cleared, the recorded changes are overwritten.
-func (g *PendingApprovalGate) ApprovalFuncFor(tableName string) ApprovalFunc {
-	return func(ctx context.Context, changes string) error {
+func (g *PendingApprovalGate) ApprovalFuncFor() ApprovalFunc {
+	return func(tableName string, changes string) error {
 		g.mu.Lock()
 		defer g.mu.Unlock()
-		for i, p := range g.pending {
-			if p.TableName == tableName {
-				g.pending[i].Changes = changes
-				return fmt.Errorf("destructive changes for table %q queued for manual approval", tableName)
-			}
-		}
-		g.pending = append(g.pending, PendingChange{TableName: tableName, Changes: changes})
+
+		// Write the pending changes. This will overwrite/replace any existing changes.
+		// Use the table name passed by the apply path — in a combined apply this is the
+		// table actually being modified, which is more accurate than the bound name.
+		g.pending[tableName] = PendingChange{ Table: tableName, Changes: changes }
+
 		return fmt.Errorf("destructive changes for table %q queued for manual approval", tableName)
 	}
 }
 
-// Pending returns a snapshot of all changes currently blocked for approval.
-func (g *PendingApprovalGate) Pending() []PendingChange {
+// Pending returns what is pending for this specific end point, it also returns if
+// there is any pending changes or not
+func (g *PendingApprovalGate) Pending(table string) (PendingChange, bool) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	out := make([]PendingChange, len(g.pending))
-	copy(out, g.pending)
+
+	pending, ok := g.pending[table]
+
+	return pending, ok
+}
+// Pending returns a snapshot of all changes currently blocked for approval.
+func (g *PendingApprovalGate) PendingAll() []PendingChange {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	out := make([]PendingChange, 0, len(g.pending))
+
+	for _, v := range g.pending {
+		out = append(out, v)
+	}
 	return out
 }
 
@@ -150,13 +181,8 @@ func (g *PendingApprovalGate) Pending() []PendingChange {
 func (g *PendingApprovalGate) Remove(tableName string) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	filtered := g.pending[:0]
-	for _, p := range g.pending {
-		if p.TableName != tableName {
-			filtered = append(filtered, p)
-		}
-	}
-	g.pending = filtered
+
+	delete(g.pending, tableName)
 }
 
 // ---------------------------------------------------------------------------
@@ -189,7 +215,7 @@ func BootstrapModels(
 		ptrs = append(ptrs, m)
 		tableNames = append(tableNames, *m.Table_name)
 		if m.Track_history != nil && *m.Track_history {
-		  tableNames = append(tableNames, fmt.Sprintf("%s_history", *m.Table_name))
+			tableNames = append(tableNames, fmt.Sprintf("%s_history", *m.Table_name))
 		}
 	}
 	if len(ptrs) == 0 {
@@ -202,7 +228,6 @@ func BootstrapModels(
 		// Read if a sync is needed based on the sidecar version file, and the version in the config
 		if needsSync(m, hclPathFor(*m.Table_name)) {
 			anyNeedsSync = true
-			break
 		}
 	}
 	if !anyNeedsSync {
@@ -210,20 +235,58 @@ func BootstrapModels(
 		return
 	}
 
+	gen := NewSchemaGenerator(pool)
+	if gate != nil { gen.Approval = gate.ApprovalFuncFor() }
+	scheduled_for_write := []models.DataModel{}
+	
 	// Write individual per-table HCL files to disk (for documentation / FK reference).
-	for _, m := range ptrs {
+	for i, m := range ptrs {
+		// Convert the model to HCL
 		hcl, err := ModelToHCL(m)
 		if err != nil {
 			logger.Warn("HCL generation failed", "table", *m.Table_name, "error", err)
 			continue
 		}
+		
+		// Ensure that the HCL folder exists
 		hclPath := hclPathFor(*m.Table_name)
 		if err := os.MkdirAll(dirOf(hclPath), 0o755); err != nil {
 			logger.Warn("Failed to create HCL dir", "table", *m.Table_name, "error", err)
 			continue
 		}
-		if err := os.WriteFile(hclPath, []byte(hcl), 0o644); err != nil {
-			logger.Warn("Failed to write HCL file", "table", *m.Table_name, "error", err)
+
+		// If there is an approval gate, should always be yes, but only run if there is at least
+		// one item that needs syncing
+		if gate != nil && anyNeedsSync {
+			// Create the approval func for this table
+			// Check if there are destructive
+			err, destructive := gen.validateChange(context.Background(), *m.Table_name, hcl)
+			if (err != nil) { logger.Error("Failed to validate changes", "table", *m.Table_name, "error", err) } else {
+				if (destructive) {
+					logger.Warn("Destructive change detected and pending approval", "table", *m.Table_name)
+					// Load current safe file and replace the current model pointer with the
+					// last known good version, so the combined apply reverts this table.
+					good, loadErr := loadDataModel(configCurrentVersionPath(*m.Table_name))
+					if loadErr != nil {
+						logger.Error("Failed to load last-good config for reverted table", "table", *m.Table_name, "error", loadErr)
+						continue // keep ptrs[i] as-is; do not snapshot a rejected change
+					}
+					ptrs[i] = good
+					// Note: do NOT schedule a snapshot here — the last known good file must
+					// remain untouched so a later deny can revert to it.
+				} else {
+					// Write the updated, non destructive hcl file.
+					if err := os.WriteFile(hclPath, []byte(hcl), 0o644); err != nil {
+						logger.Warn("Failed to write HCL file", "table", *m.Table_name, "error", err)
+					}
+					// Schedule the applied model to refresh its last-good snapshot after sync.
+					scheduled_for_write = append(scheduled_for_write, *m)
+				}
+			}
+		} else {
+			if err := os.WriteFile(hclPath, []byte(hcl), 0o644); err != nil {
+				logger.Warn("Failed to write HCL file", "table", *m.Table_name, "error", err)
+			}
 		}
 	}
 
@@ -234,19 +297,10 @@ func BootstrapModels(
 		return
 	}
 
-	gen := NewSchemaGenerator(pool)
-	if gate != nil {
-		gen.Approval = gate.ApprovalFuncFor("_startup_")
-	}
-
+	// Sync all schemas with non destructive changes
 	logger.Info("Syncing all schemas", "tables", tableNames)
 	if err := gen.applyAllSchemas(ctx, tableNames, combinedHCL); err != nil {
 		logger.Warn("Schema sync failed", "error", err)
-		if gate != nil {
-			for _, p := range gate.Pending() {
-				logger.Warn("Blocked destructive changes", "trigger_table", p.TableName, "changes", p.Changes)
-			}
-		}
 		return
 	}
 
@@ -257,6 +311,19 @@ func BootstrapModels(
 		}
 	}
 	logger.Info("Schema sync complete", "tables", len(tableNames))
+
+	for _, m := range scheduled_for_write {
+		cur, err := os.ReadFile(*m.Filepath); if err != nil {
+			slog.Error("Error reading config current file in needsSync", "error", err)
+			return
+		}
+		err = os.WriteFile(configCurrentVersionPath(*m.Table_name), cur, 0o644)
+		if err != nil {
+			slog.Error("Error writing config current file in needsSync", "error", err)
+			return
+		}
+	}
+	logger.Info("All tables last successful file loaded", "tables", len(tableNames))
 }
 
 // SyncModelIfNeeded checks whether a model's schema is out of date and, if so,
@@ -269,6 +336,25 @@ func SyncModelIfNeeded(ctx context.Context, pool *pgxpool.Pool, model *models.Da
 		return
 	}
 	syncModel(ctx, pool, model, allModels, logger, gate)
+}
+
+// Load model to hcl is a standalone function that loads a model and converts it into HCL
+// This is primarily used for loading the last good version of a file while updates are
+// pending review
+func loadDataModel(filepath string) (*models.DataModel, error) {
+	// Load the model
+	data, err := tools.LoadYAMLIntoModel[models.DataModel](filepath)
+	data.Filepath = &filepath
+	if err != nil {
+		return nil, err
+	}
+	if err := tools.ValidateDataModel(*data); err != nil {
+		return nil, err
+	}
+	tools.ProcessModelAdditionalFields(data)
+
+	// Return the updated pointer
+	return data, nil
 }
 
 // syncModel is used by SyncModelIfNeeded (live-reload path).
@@ -301,7 +387,7 @@ func syncModel(ctx context.Context, pool *pgxpool.Pool, model *models.DataModel,
 		}
 		tableNames = append(tableNames, *m.Table_name)
 		if m.Track_history != nil && *m.Track_history {
-		  tableNames = append(tableNames, fmt.Sprintf("%s_history", *m.Table_name))
+			tableNames = append(tableNames, fmt.Sprintf("%s_history", *m.Table_name))
 		}
 	}
 	if !seen {
@@ -340,15 +426,15 @@ func syncModel(ctx context.Context, pool *pgxpool.Pool, model *models.DataModel,
 
 	gen := NewSchemaGenerator(pool)
 	if gate != nil {
-		gen.Approval = gate.ApprovalFuncFor(tableName)
+		gen.Approval = gate.ApprovalFuncFor()
 	}
 
 	logger.Info("Syncing schema", "table", tableName, "version", versionStr(model))
 	if err := gen.applyAllSchemas(ctx, tableNames, combinedHCL); err != nil {
 		logger.Warn("Schema sync failed", "table", tableName, "error", err)
 		if gate != nil {
-			for _, p := range gate.Pending() {
-				logger.Warn("Blocked destructive changes", "trigger_table", p.TableName, "changes", p.Changes)
+			for _, v := range gate.PendingAll() {
+				logger.Warn("Blocked destructive changes", "trigger_table", v.Table, "changes", v.Changes)
 			}
 		}
 		return

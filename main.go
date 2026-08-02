@@ -21,7 +21,7 @@ func main() {
 	// Directories
 	default_models_dir := "./config/default"
 	models_dir := "./config/base-models"
-	special_models_dir := "./config/special-models"
+	// special_models_dir := "./config/special-models"
 	functions_dir := "./config/functions"
 
 	// Load the logger
@@ -58,7 +58,7 @@ func main() {
 	// Load default models from default, base-model, and special-models dir
 	all_models := loadModelsFromDir(default_models_dir, logger)
 	all_models = append(all_models, loadModelsFromDir(models_dir, logger)...)
-	all_models = append(all_models, loadModelsFromDir(special_models_dir, logger)...)
+	// all_models = append(all_models, loadModelsFromDir(special_models_dir, logger)...)
 
 	// Sync database schema for all loaded models.
 	// Destructive changes are recorded in the gate and blocked until manually approved.
@@ -82,7 +82,7 @@ func main() {
 			logger.Debug(fmt.Sprintf("Skipping end point for: %s", *dm.Name))
 			continue
 		}
-		handlers.RegisterRoutes(&dm, handlerRegister, authMiddleware, qm, server_conf, evh)
+		handlers.RegisterRoutes(&dm, handlerRegister, authMiddleware, qm, server_conf, evh, gate)
 	}
 
 	// Load and register declarative functions. Must happen after models are
@@ -133,7 +133,9 @@ func loadModelsFromDir(dir string, logger interface{ Warn(string, ...any); Error
 		if filepath.Ext(info.Name()) != ".yaml" {
 			continue
 		}
-		data, err := tools.LoadYAMLIntoModel[models.DataModel](fmt.Sprintf("%s/%s", dir, info.Name()))
+		fp := fmt.Sprintf("%s/%s", dir, info.Name())
+		data, err := tools.LoadYAMLIntoModel[models.DataModel](fp)
+		data.Filepath = &fp
 		result = append(result, *data)
 		if err != nil {
 			logger.Warn(fmt.Sprintf("Failed to load config file: %s", info.Name()), "error", err)

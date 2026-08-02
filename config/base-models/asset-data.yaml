@@ -7,6 +7,8 @@ track-history: true
 track-history-field: asset_no
 allow-diff: true
 diff-comparator: asset_no
+admin-roles:
+  - admin_assets
 
 primary-key: asset_id
 

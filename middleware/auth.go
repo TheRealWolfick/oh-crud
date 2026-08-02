@@ -36,7 +36,6 @@ func validateAPIKey(ctx context.Context, db *pgxpool.Pool, api_key string) (resu
 	return nil, errors.New("Unauthorized user")
 }
 
-
 func RequireAuth(db *pgxpool.Pool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -15,6 +15,7 @@
     "allow-diff": { "type": "boolean" },
     "diff-comparator": { "type": "string" },
     "primary-key": { "type": "string" },
+    "admin-roles": { "type": "array", "items": { "type": "string" }},
 
     "web-hooks": {
       "type": "object",

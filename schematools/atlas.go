@@ -37,7 +37,7 @@ import (
 
 // ApprovalFunc is called when Atlas detects destructive changes.
 // changes is a human-readable summary. Return nil to proceed, non-nil to abort.
-type ApprovalFunc func(ctx context.Context, changes string) error
+type ApprovalFunc func(tableName string, changes string) error
 
 // SchemaGenerator converts DataModel configs to Atlas HCL and applies them.
 type SchemaGenerator struct {
@@ -339,12 +339,6 @@ func (g *SchemaGenerator) applyAllSchemas(ctx context.Context, tableNames []stri
 		return nil
 	}
 
-	if destructive := describeDestructive(changes); destructive != "" && g.Approval != nil {
-		if err := g.Approval(ctx, destructive); err != nil {
-			return fmt.Errorf("apply aborted: %w", err)
-		}
-	}
-
 	return drv.ApplyChanges(ctx, changes)
 }
 
@@ -379,12 +373,54 @@ func (g *SchemaGenerator) applySchema(ctx context.Context, tableName string, hcl
 
 	// Check for destructive changes and call approval if configured.
 	if destructive := describeDestructive(changes); destructive != "" && g.Approval != nil {
-		if err := g.Approval(ctx, destructive); err != nil {
+		if err := g.Approval(tableName, destructive); err != nil {
 			return fmt.Errorf("apply aborted: %w", err)
 		}
 	}
 
 	return drv.ApplyChanges(ctx, changes)
+}
+
+// Processes the change of a config file. If there are changes, and said changes are destructive, it will
+// run the approval func assigned the schemaGenerator. This should be to record the change of approval if
+// it is detected to be destructive
+func(g *SchemaGenerator) validateChange(ctx context.Context, tableName string, hcl string) (error, bool) {
+	drv, err := postgres.Open(g.db)
+	if err != nil {
+		return fmt.Errorf("atlas postgres driver: %w", err), false
+	}
+
+	// Inspect the current state of just this table.
+	current, err := drv.InspectSchema(ctx, "public", &schema.InspectOptions{
+		Tables: []string{tableName},
+	})
+	if err != nil {
+		return fmt.Errorf("inspect current schema: %w", err), false
+	}
+
+	// Parse the desired state from the generated HCL.
+	desired, err := parseHCLSchema(hcl)
+	if err != nil {
+		return fmt.Errorf("parse desired schema: %w", err), false
+	}
+
+	// Diff current → desired.
+	changes, err := drv.SchemaDiff(current, desired)
+	if err != nil {
+		return fmt.Errorf("schema diff: %w", err), false
+	}
+	if len(changes) == 0 {
+		return nil, false // nothing to do
+	}
+
+	// Check for destructive changes and call approval if configured.
+	if destructive := describeDestructive(changes); destructive != "" {
+		if g.Approval != nil {
+			_ = g.Approval(tableName, destructive)
+		}
+		return nil, true
+	}
+	return nil, false
 }
 
 // describeDestructive returns a human-readable description of any DROP or
@@ -403,8 +439,8 @@ func describeDestructive(changes []schema.Change) string {
 				case *schema.ModifyColumn:
 					if col.Change.Is(schema.ChangeType) && !isVarcharWidening(col.From, col.To) {
 						lines = append(lines,
-							fmt.Sprintf("ALTER COLUMN %q.%q TYPE (was %s, now %s)",
-								v.T.Name, col.From.Name, col.From.Type.Raw, col.To.Type.Raw))
+						fmt.Sprintf("ALTER COLUMN %q.%q TYPE (was %s, now %s)",
+						v.T.Name, col.From.Name, col.From.Type.Raw, col.To.Type.Raw))
 					}
 				case *schema.DropIndex:
 					lines = append(lines, fmt.Sprintf("DROP INDEX %q on %q", col.I.Name, v.T.Name))
@@ -564,9 +600,9 @@ func serialBaseType(dbType string) string {
 
 func isNumericDBType(lower string) bool {
 	return lower == "int" || lower == "integer" || lower == "bigint" ||
-		lower == "smallint" || lower == "float4" || lower == "float8" ||
-		lower == "real" || lower == "double precision" ||
-		strings.HasPrefix(lower, "numeric") || strings.HasPrefix(lower, "decimal")
+	lower == "smallint" || lower == "float4" || lower == "float8" ||
+	lower == "real" || lower == "double precision" ||
+	strings.HasPrefix(lower, "numeric") || strings.HasPrefix(lower, "decimal")
 }
 
 func isNumericLiteral(s string) bool {
@@ -585,10 +621,10 @@ func isNumericLiteral(s string) bool {
 func looksLikeSQLExpr(s string) bool {
 	up := strings.ToUpper(strings.TrimSpace(s))
 	return strings.Contains(up, "(") ||
-		up == "NOW()" ||
-		up == "CURRENT_TIMESTAMP" ||
-		up == "CURRENT_DATE" ||
-		strings.HasPrefix(up, "GEN_RANDOM")
+	up == "NOW()" ||
+	up == "CURRENT_TIMESTAMP" ||
+	up == "CURRENT_DATE" ||
+	strings.HasPrefix(up, "GEN_RANDOM")
 }
 
 func hclFKAction(action string) string {

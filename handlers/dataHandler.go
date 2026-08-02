@@ -12,6 +12,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"lotusforge.au/api-server/middleware"
 	"lotusforge.au/api-server/models"
+	"lotusforge.au/api-server/schematools"
 	"lotusforge.au/api-server/tools"
 )
 
@@ -22,6 +23,7 @@ func RegisterRoutes(
 	qm *tools.QueueManager, 
 	server_conf *models.SwappableServerConfig,
 	evh *tools.EventManager,
+	gate *schematools.PendingApprovalGate,
 ) {
 	var err error
 	qm.Logger.Debug("Dynamic end point generating", "data-model", *cfg.Name)
@@ -52,6 +54,9 @@ func RegisterRoutes(
 	// Built-in functions live under /fn/{function}. Today this dispatches to
 	// the aggregate handler; user-defined functions are registered separately.
 	handlerRegistry.Register(fmt.Sprintf("GET /%s/fn/{function}", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleGet(cfg, qm, server_conf))), *cfg.Version)
+
+	// Built in admin panels for this end point
+	handlerRegistry.Register(fmt.Sprintf("GET /%s/admin/pending", *cfg.End_point), middleware.CorsAdmin(cfg, server_conf)(auth(handleTableApprovals(qm,server_conf))), *cfg.Version)
 
 	// History route — only when the model opts in via track-history.
 	// Path shape mirrors /fn/{function} so a literal segment sits at the same

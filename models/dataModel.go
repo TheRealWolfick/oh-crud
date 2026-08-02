@@ -110,6 +110,8 @@ type DataModel struct {
 	Foreign_keys        map[string]ForeignKey     `yaml:"foreign-keys"`
 	Unique_keys         map[string]UniqueKey      `yaml:"unique-keys"`
 	Fields              map[string]DataModelField `yaml:"fields"`
+	Admin_roles         []string                  `yaml:"admin-roles"`
+	Filepath            *string                   `yaml:"-"`
 }
 
 // DataModelPublicSchema is available item that can be sent back to the end user / exposed.
