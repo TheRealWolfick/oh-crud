@@ -1,5 +1,7 @@
-# Webhooks
+# Websockets
 Webhooks are effectively a component in themselves. They provide a persistent connection to the backend which, in its most simple form, allows events on tables to be listened to.
+
+Connecting to a websocket can be done by making a request to ws://<url>/ws/<end_point>. This will upgrade the connection and register it as an active client for management
 
 ## Talking
 Websockets are communicated with in a very specific json structure. These are:

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"lotusforge.au/api-server/models"
 )
 
@@ -379,6 +380,8 @@ func (qb *QueryBuilder) BuildMultiInsert(cfg *models.DataModel, data []map[strin
 					qb.args = append(qb.args, "")
 				} else if *field_cfg.Default == "now()" {
 					qb.args = append(qb.args, insert_time.Format(time.RFC3339))
+				} else if *field_cfg.Default == "gen_random_uuid()" {
+					qb.args = append(qb.args, uuid.New().String())
 				} else {
 					parsed, err := CoerceType(*field_cfg.Default, *field_cfg.Type)
 					if err != nil {
