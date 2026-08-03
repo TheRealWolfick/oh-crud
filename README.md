@@ -2,6 +2,8 @@
 A general purpose backend designed to abstract away database management and provide
 a common interface for any frontend to be able to interface with it.
 
+It is designed to work with Postgres. No other databases have been tested.
+
 You describe your data in YAML. The server reads those files at startup, syncs the
 PostgreSQL schema to match, generates a full REST endpoint for each model, and
 watches the files so changes take effect without a restart. No Go code is written
