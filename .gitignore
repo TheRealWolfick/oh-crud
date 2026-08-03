@@ -5,4 +5,4 @@ IDEAS.md
 config/database/*
 .claude
 docs/testing-guide.md
-config/base-models/*
+config/base-models/*.yaml
