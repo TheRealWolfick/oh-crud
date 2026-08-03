@@ -32,14 +32,25 @@ func ModelsMonitor(handlerRegistry *tools.HandlerRegistry, modelRegistry *tools.
 					if err != nil {
 						qm.Logger.Error("Updated YAML failed to load. Skipping updating routes", "error", err)
 					} else {
+						// Record the source path so the gate/snapshot logic can find and revert it.
+						filepath := event.Name
+						updated_config.Filepath = &filepath
+						// Check updated model is valid
 						qm.Logger.Debug("Update detected to config file", "config", *updated_config.Name)
 						if err := tools.ValidateDataModel(*updated_config); err != nil {
 							qm.Logger.Error("Updated YAML failed validation, routes not updated", "error", err)
 						} else {
+							// Process model
 							tools.ProcessModelAdditionalFields(updated_config)
-							modelRegistry.Register(updated_config)
-							handlers.RegisterRoutes(updated_config, handlerRegistry, auth, qm, server_conf, evh)
+							// Sync model first, stopping if there is an error or destructive change
 							schematools.SyncModelIfNeeded(context.Background(), qm.Db.(*pgxpool.Pool), updated_config, modelRegistry.All(), qm.Logger, gate)
+							// If the sync stopped because of destructive changes, the change will be waiting in the gate
+							if _, pending := gate.Pending(*updated_config.Table_name); !pending {
+								modelRegistry.Register(updated_config)
+								handlers.RegisterRoutes(updated_config, handlerRegistry, auth, qm, server_conf, evh, gate, modelRegistry)
+							} else {
+								qm.Logger.Info("Pending change waiting", "table", *updated_config.Table_name)
+							}
 						}
 					}
 				}

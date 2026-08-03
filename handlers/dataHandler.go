@@ -17,13 +17,14 @@ import (
 )
 
 func RegisterRoutes(
-	cfg *models.DataModel, 
-	handlerRegistry *tools.HandlerRegistry, 
-	auth func(http.Handler) http.Handler, 
-	qm *tools.QueueManager, 
+	cfg *models.DataModel,
+	handlerRegistry *tools.HandlerRegistry,
+	auth func(http.Handler) http.Handler,
+	qm *tools.QueueManager,
 	server_conf *models.SwappableServerConfig,
 	evh *tools.EventManager,
 	gate *schematools.PendingApprovalGate,
+	modelRegistry *tools.ModelRegistry,
 ) {
 	var err error
 	qm.Logger.Debug("Dynamic end point generating", "data-model", *cfg.Name)
@@ -55,8 +56,15 @@ func RegisterRoutes(
 	// the aggregate handler; user-defined functions are registered separately.
 	handlerRegistry.Register(fmt.Sprintf("GET /%s/fn/{function}", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleGet(cfg, qm, server_conf))), *cfg.Version)
 
-	// Built in admin panels for this end point
-	handlerRegistry.Register(fmt.Sprintf("GET /%s/admin/pending", *cfg.End_point), middleware.CorsAdmin(cfg, server_conf)(auth(handleTableApprovals(qm,server_conf))), *cfg.Version)
+	// Built-in admin endpoints for this end point. onApplied re-registers a model's
+	// routes after an approved schema change is committed.
+	onApplied := func(applied *models.DataModel) {
+		modelRegistry.Register(applied)
+		RegisterRoutes(applied, handlerRegistry, auth, qm, server_conf, evh, gate, modelRegistry)
+	}
+	// Register admin end points
+	handlerRegistry.Register(fmt.Sprintf("GET /%s/admin/pending", *cfg.End_point), middleware.CorsAdmin(cfg, server_conf)(auth(handlePendingChanges(gate, qm, cfg, server_conf))), *cfg.Version)
+	handlerRegistry.Register(fmt.Sprintf("POST /%s/admin/approve", *cfg.End_point), middleware.CorsAdmin(cfg, server_conf)(auth(handleApproveChange(gate, qm, cfg, server_conf, modelRegistry, onApplied))), *cfg.Version)
 
 	// History route — only when the model opts in via track-history.
 	// Path shape mirrors /fn/{function} so a literal segment sits at the same

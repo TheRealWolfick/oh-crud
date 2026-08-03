@@ -32,7 +32,7 @@ func cors(cfg *models.DataModel, server_conf *models.SwappableServerConfig, is_a
 			// Set the allowed methods and headers
 			var allowed_methods []string
 			if is_admin {
-				allowed_methods = append(allowed_methods, "GET")
+				allowed_methods = append(allowed_methods, "GET", "POST")
 			} else {
 				if cfg.End_points_allowed != nil {
 					if cfg.End_points_allowed.GET != nil            { allowed_methods = append(allowed_methods, "GET") }

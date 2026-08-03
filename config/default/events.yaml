@@ -1,5 +1,5 @@
 name: events
-version: 1.2.3
+version: 1.2.4
 table-name: events
 end-point: events
 primary-key: event_id
@@ -26,10 +26,12 @@ fields:
     type: string
     json: action
     db-type: character varying(10)
+    default: "missing"
     required-on-insert: true
   status:
     type: string
     json: status
+    default: "missing"
     db-type: character varying(10)
   topic:
     type: string
@@ -45,6 +47,7 @@ fields:
     type: time
     json: event_time
     db-type: timestamp without time zone
+    nullable: true
     default: now()
   user:
     type: string

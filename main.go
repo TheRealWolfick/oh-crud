@@ -82,7 +82,7 @@ func main() {
 			logger.Debug(fmt.Sprintf("Skipping end point for: %s", *dm.Name))
 			continue
 		}
-		handlers.RegisterRoutes(&dm, handlerRegister, authMiddleware, qm, server_conf, evh, gate)
+		handlers.RegisterRoutes(&dm, handlerRegister, authMiddleware, qm, server_conf, evh, gate, modelRegister)
 	}
 
 	// Load and register declarative functions. Must happen after models are

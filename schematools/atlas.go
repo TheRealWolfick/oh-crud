@@ -19,7 +19,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 
@@ -35,14 +34,9 @@ import (
 // Public API
 // ---------------------------------------------------------------------------
 
-// ApprovalFunc is called when Atlas detects destructive changes.
-// changes is a human-readable summary. Return nil to proceed, non-nil to abort.
-type ApprovalFunc func(tableName string, changes string) error
-
 // SchemaGenerator converts DataModel configs to Atlas HCL and applies them.
 type SchemaGenerator struct {
-	db       *sql.DB      // live database connection (derived from pgxpool)
-	Approval ApprovalFunc // nil = auto-approve everything (dev mode)
+	db *sql.DB // live database connection (derived from pgxpool)
 }
 
 // NewSchemaGenerator creates a SchemaGenerator from the app's pgxpool.
@@ -51,27 +45,6 @@ func NewSchemaGenerator(pool *pgxpool.Pool) *SchemaGenerator {
 	return &SchemaGenerator{
 		db: stdlib.OpenDBFromPool(pool),
 	}
-}
-
-// SyncModel writes (or overwrites) the HCL file at hclPath, then applies any
-// schema changes to the live database.
-func (g *SchemaGenerator) SyncModel(ctx context.Context, model *models.DataModel, hclPath string) error {
-	if model.Table_name == nil {
-		return fmt.Errorf("model is missing table-name")
-	}
-
-	hcl, err := ModelToHCL(model)
-	if err != nil {
-		return fmt.Errorf("hcl generation: %w", err)
-	}
-	if err := os.MkdirAll(dirOf(hclPath), 0o755); err != nil {
-		return fmt.Errorf("create hcl dir: %w", err)
-	}
-	if err := os.WriteFile(hclPath, []byte(hcl), 0o644); err != nil {
-		return fmt.Errorf("write hcl: %w", err)
-	}
-
-	return g.applySchema(ctx, *model.Table_name, hcl)
 }
 
 // ---------------------------------------------------------------------------
@@ -342,85 +315,74 @@ func (g *SchemaGenerator) applyAllSchemas(ctx context.Context, tableNames []stri
 	return drv.ApplyChanges(ctx, changes)
 }
 
-func (g *SchemaGenerator) applySchema(ctx context.Context, tableName string, hcl string) error {
+// applyChangesTx applies a precomputed change set atomically. It plans the changes into
+// SQL statements and, when the plan is transactional (the common case for DDL like adds,
+// drops, and type changes), executes them inside a single transaction that rolls back on
+// any error. If the plan is not transactional (e.g. it contains CREATE INDEX CONCURRENTLY),
+// it falls back to a direct apply and reports transactional=false so the caller can warn.
+func (g *SchemaGenerator) applyChangesTx(ctx context.Context, changes []schema.Change) (transactional bool, err error) {
 	drv, err := postgres.Open(g.db)
 	if err != nil {
-		return fmt.Errorf("atlas postgres driver: %w", err)
+		return false, fmt.Errorf("atlas postgres driver: %w", err)
 	}
 
-	// Inspect the current state of just this table.
-	current, err := drv.InspectSchema(ctx, "public", &schema.InspectOptions{
-		Tables: []string{tableName},
-	})
+	plan, err := drv.PlanChanges(ctx, "apply_approved", changes)
 	if err != nil {
-		return fmt.Errorf("inspect current schema: %w", err)
+		return false, fmt.Errorf("plan changes: %w", err)
+	}
+	if len(plan.Changes) == 0 {
+		return true, nil
 	}
 
-	// Parse the desired state from the generated HCL.
-	desired, err := parseHCLSchema(hcl)
+	if !plan.Transactional {
+		// Cannot wrap atomically — apply directly.
+		return false, drv.ApplyChanges(ctx, changes)
+	}
+
+	tx, err := g.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("parse desired schema: %w", err)
+		return true, fmt.Errorf("begin tx: %w", err)
 	}
-
-	// Diff current → desired.
-	changes, err := drv.SchemaDiff(current, desired)
-	if err != nil {
-		return fmt.Errorf("schema diff: %w", err)
-	}
-	if len(changes) == 0 {
-		return nil // nothing to do
-	}
-
-	// Check for destructive changes and call approval if configured.
-	if destructive := describeDestructive(changes); destructive != "" && g.Approval != nil {
-		if err := g.Approval(tableName, destructive); err != nil {
-			return fmt.Errorf("apply aborted: %w", err)
+	for _, c := range plan.Changes {
+		if _, err := tx.ExecContext(ctx, c.Cmd, c.Args...); err != nil {
+			_ = tx.Rollback()
+			return true, fmt.Errorf("apply %q: %w", c.Cmd, err)
 		}
 	}
-
-	return drv.ApplyChanges(ctx, changes)
+	if err := tx.Commit(); err != nil {
+		return true, fmt.Errorf("commit: %w", err)
+	}
+	return true, nil
 }
 
-// Processes the change of a config file. If there are changes, and said changes are destructive, it will
-// run the approval func assigned the schemaGenerator. This should be to record the change of approval if
-// it is detected to be destructive
-func(g *SchemaGenerator) validateChange(ctx context.Context, tableName string, hcl string) (error, bool) {
+// planChanges inspects tableNames as the current DB state, diffs against the desired
+// HCL, and returns the change set plus a human-readable description of any destructive
+// changes ("" when none). It never applies anything — callers decide what to do based
+// on the destructive description (apply directly, or record for approval).
+func (g *SchemaGenerator) planChanges(ctx context.Context, tableNames []string, hcl string) ([]schema.Change, string, error) {
 	drv, err := postgres.Open(g.db)
 	if err != nil {
-		return fmt.Errorf("atlas postgres driver: %w", err), false
+		return nil, "", fmt.Errorf("atlas postgres driver: %w", err)
 	}
 
-	// Inspect the current state of just this table.
 	current, err := drv.InspectSchema(ctx, "public", &schema.InspectOptions{
-		Tables: []string{tableName},
+		Tables: tableNames,
 	})
 	if err != nil {
-		return fmt.Errorf("inspect current schema: %w", err), false
+		return nil, "", fmt.Errorf("inspect current schema: %w", err)
 	}
 
-	// Parse the desired state from the generated HCL.
 	desired, err := parseHCLSchema(hcl)
 	if err != nil {
-		return fmt.Errorf("parse desired schema: %w", err), false
+		return nil, "", fmt.Errorf("parse desired schema: %w", err)
 	}
 
-	// Diff current → desired.
 	changes, err := drv.SchemaDiff(current, desired)
 	if err != nil {
-		return fmt.Errorf("schema diff: %w", err), false
-	}
-	if len(changes) == 0 {
-		return nil, false // nothing to do
+		return nil, "", fmt.Errorf("schema diff: %w", err)
 	}
 
-	// Check for destructive changes and call approval if configured.
-	if destructive := describeDestructive(changes); destructive != "" {
-		if g.Approval != nil {
-			_ = g.Approval(tableName, destructive)
-		}
-		return nil, true
-	}
-	return nil, false
+	return changes, describeDestructive(changes), nil
 }
 
 // describeDestructive returns a human-readable description of any DROP or

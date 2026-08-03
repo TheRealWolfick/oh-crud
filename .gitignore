@@ -2,6 +2,5 @@ notes.md
 CLAUDE.md
 TASKS.md
 IDEAS.md
-config/database/*.hcl
-config/database/*.version
+config/database/*
 .claude

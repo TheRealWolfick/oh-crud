@@ -1,0 +1,298 @@
+LotusForge License, Version 1.0
+SPDX-License-Identifier: LicenseRef-LotusForge-1.0
+
+Copyright (c) 2026 LotusForge. All rights reserved.
+
+Licensed Work: asset-data-api
+Licensor:      LotusForge
+
+
+SUMMARY (not part of the license)
+=================================
+
+This software is free to use for any purpose that is not commercial, whether
+your own project is closed source, open source, or source available. You may
+read it, run it, modify it, and build on it.
+
+One things require a paid license: using it within a commercial product. A 
+paid license is granted automatically to anyone who sponsors the project, at 
+any amount.
+
+This software may not be redistributed in a manner intended to serve as a
+replacment for it.
+
+The section headings and this summary are for convenience. Sections 1 through
+14 are the binding terms.
+
+
+1. DEFINITIONS
+==============
+
+1.1 "Software" means the Licensed Work identified above, in source or object
+form, together with any modification of it.
+
+1.2 "Licensor" means LotusForge and its successors in interest to the
+copyright in the Software.
+
+1.3 "You" means the individual or legal entity exercising rights under this
+License. For a legal entity, "You" includes any entity that controls, is
+controlled by, or is under common control with that entity.
+
+1.4 "Your Work" means any product, application, service, or other work that
+You create which incorporates, links to, embeds, or otherwise depends on the
+Software. Your Work may be licensed on any terms You choose, including closed
+source, open source, or source-available terms.
+
+1.5 "Commercial Use" means any use of the Software that is directed toward
+commercial advantage or monetary compensation. This includes, without
+limitation:
+
+    (a) use in or in support of a product or service that You sell, license,
+        or otherwise provide for a fee;
+
+    (b) use in the internal business operations of a for-profit entity;
+
+    (c) use in or in support of a work that is monetized in any way,
+        including by subscription, advertising, or paid support; and
+
+    (d) use by a contractor, consultant, or agency in performing paid work
+        for a third party.
+
+Use is not Commercial Use merely because it occurs at a for-profit entity, if
+that use is personal, evaluative, or experimental and is not applied to the
+entity's business operations, products, or services.
+
+1.6 "Replacement Distribution" means providing the Software, or a work whose
+principal function is to provide the functionality of the Software, to a third
+party in a manner that operates as a substitute for obtaining the Software
+from the Licensor. This includes, without limitation, selling, hosting,
+sublicensing, rebranding, or wrapping the Software, or offering it as a
+managed or hosted service, where what is delivered to the third party is in
+substance the Software itself.
+
+Distributing the Software as a component of Your Work is not Replacement
+Distribution, provided that Your Work has substantial functionality of its own
+beyond that of the Software and is not marketed as, or as an alternative to,
+the Software.
+
+1.7 "Sponsorship" means a financial contribution to the Licensor made through
+a sponsorship channel that the Licensor has publicly designated for that
+purpose.
+
+1.8 "Sponsorship License" means the license granted under Section 4.
+
+
+2. STANDARD LICENSE — GRANT
+===========================
+
+Subject to Section 3 and to Your compliance with this License, the Licensor
+grants You a worldwide, royalty-free, non-exclusive, perpetual license to:
+
+    (a) use and run the Software for any purpose;
+
+    (b) reproduce and modify the Software;
+
+    (c) incorporate the Software into Your Work; and
+
+    (d) distribute the Software as incorporated into Your Work.
+
+This grant is free of charge and requires no registration, notification, or
+agreement with the Licensor.
+
+
+3. STANDARD LICENSE — LIMITS
+============================
+
+The license in Section 2 does not extend to, and no permission is granted
+for:
+
+    3.1 Commercial Use of the Software; or
+
+    3.2 Replacement Distribution of the Software.
+
+To do 3.1 You need a Sponsorship License under Section 4. 3.2 is not permitted
+without a private licence explicitly allowing it.
+
+For the avoidance of doubt, the license terms You apply to Your Work are
+irrelevant to Sections 3.1 and 3.2. Releasing Your Work as open source does
+not permit Commercial Use, and keeping Your Work closed source does not
+prohibit non-commercial use.
+
+
+4. SPONSORSHIP LICENSE — GRANT
+==============================
+
+4.1 Automatic grant. Upon the Licensor's receipt of a Sponsorship, the
+Licensor grants the applicable sponsor a license to exercise all rights in
+Section 2 free of the limits in Section 3. No separate agreement, quotation,
+or countersignature is required. The grant takes effect on receipt of the
+Sponsorship.
+
+4.2 Amount. Any Sponsorship amount is sufficient to trigger the grant in
+Section 4.1. The Licensor does not set a minimum. Any additional Sponsorship
+amount supplied later is added to the existing licence.
+
+4.3 Scope. A Sponsorship License is either a Business License or an
+Individual License, determined under Section 5. The two differ only in who
+may exercise the rights.
+
+4.4 Duration. A Sponsorship License is perpetual and irrevocable with respect
+to the versions of the Software published as of the date the Sponsorship is
+received, and remains subject to Section 12. Ceasing to sponsor does not
+terminate a Sponsorship License already granted, but does not extend it to
+versions of the Software published afterward.
+
+
+5. BUSINESS AND INDIVIDUAL LICENSES
+===================================
+
+5.1 Business License. A Sponsorship qualifies for a Business License only if
+both of the following are true:
+
+    (a) the Sponsorship is made from an email address at a domain controlled
+        by the business, by a person authorized by that business to make
+        purchases on its behalf; and
+
+    (b) the sponsor identifies, at the time of the Sponsorship, the legal
+        name of the business the license is for.
+
+A Business License extends to the named business and its employees and
+contractors, acting within the scope of that business.
+
+5.2 Individual License. A Sponsorship made from a personal email address, or
+that does not satisfy both conditions in Section 5.1, is an Individual
+License.
+
+An Individual License extends only to the natural person who made the
+Sponsorship. It does not extend to that person's employer, client, or any
+other entity, and it does not authorize Commercial Use on behalf of any such
+entity. It authorizes Commercial Use only by that person, for that person's
+own account.
+
+5.3 No implied upgrade. A Sponsorship from a personal email address does not
+become a Business License because the sponsor is employed by a business, is
+reimbursed by a business, or uses the Software at a business. A business
+seeking a Business License must sponsor in accordance with Section 5.1.
+
+5.4 Correction. If a Sponsorship intended as a Business License was made in a
+way that does not satisfy Section 5.1, the sponsor may contact the Licensor to
+have it reclassified. The Licensor may, but is not obliged to, reclassify it.
+
+
+6. PUBLIC REGISTER OF LICENSES
+==============================
+
+6.1 Business Licenses are public. By obtaining a Business License, the
+business consents to the Licensor publishing, for as long as the Licensor
+chooses:
+
+    (a) the legal name of the business; and
+
+    (b) the total amount that business has sponsored.
+
+6.2 Individual Licenses are private. The Licensor will not publish the name,
+email address, or individual sponsorship amount of any holder of an Individual
+License. The Licensor may publish the aggregate total of all Individual
+Sponsorships and the number of Individual Licenses, in a form that does not
+identify any individual.
+
+6.3 The Licensor may publish the register at any location it chooses, and may
+change or discontinue it. Publication is not a condition of any license
+granted under Section 4.
+
+
+7. NOTICES
+==========
+
+If You distribute the Software, or Your Work incorporating the Software, You
+must include:
+
+    (a) a copy of this License; and
+
+    (b) the copyright notice in this License,
+
+in the source form of what You distribute, and in the documentation or other
+materials accompanying any object form.
+
+You are not required to display this License to end users who merely interact
+with Your Work over a network.
+
+
+8. THIRD-PARTY COMPONENTS
+=========================
+
+The Software incorporates third-party open source components that are not
+owned by the Licensor and are not licensed to You under this License. Those
+components are licensed to You under their own terms, which are reproduced in
+the THIRD-PARTY-LICENSES file distributed with the Software.
+
+Nothing in this License limits, conditions, or supersedes any right You have
+in those components under their own licenses. Sections 3.1 and 3.2 apply only
+to the Licensor's own work.
+
+
+9. PATENTS
+==========
+
+The Licensor grants You a worldwide, royalty-free, non-exclusive patent
+license, under patent claims the Licensor can license, to make, use, sell,
+offer for sale, import, and otherwise exploit the Software, limited to the
+scope of the license You hold under Section 2 or Section 4.
+
+If You initiate patent litigation against any party alleging that the Software
+infringes a patent, every license granted to You under this License terminates
+immediately.
+
+
+10. TRADEMARKS
+==============
+
+This License does not grant You any right to use the Licensor's names, logos,
+or trademarks, except as reasonably necessary to describe the origin of the
+Software and to comply with Section 7.
+
+
+11. NO OTHER RIGHTS
+===================
+
+The Licensor reserves all rights not expressly granted. This License does not
+grant You any right to a Sponsorship License except as set out in Section 4,
+and does not oblige the Licensor to provide support, updates, or maintenance.
+
+
+12. TERMINATION
+===============
+
+12.1 Your license terminates automatically if You breach this License.
+
+12.2 If Your breach is curable and You cure it within 30 days of first
+becoming aware of it, Your license is reinstated retroactively, provided this
+is the first time You have received notice of a breach of this License from
+the Licensor.
+
+12.3 Sections 8, 10, 13, and 14 survive termination.
+
+
+13. NO WARRANTY
+===============
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT.
+
+This applies to Sponsorship Licenses as well. Sponsorship purchases a license,
+not a warranty, a service level, or a support obligation.
+
+
+14. LIMITATION OF LIABILITY
+===========================
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, IN NO EVENT SHALL THE LICENSOR BE
+LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN CONTRACT, TORT,
+OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE
+USE OF OR OTHER DEALINGS IN THE SOFTWARE.
+
+If a court holds that applicable law does not allow the exclusions in Sections
+13 and 14, those sections apply to the maximum extent permitted by law, and
+the Licensor's total liability is limited to the amount You paid the Licensor
+in Sponsorship, if any.
