@@ -11,7 +11,8 @@ per model, and no migrations are hand-authored.
 
 A current restriction is users interface can be used to create a new user or manage
 an existing one, it is required to go into the database to get the api key. You could
-make this field not private in the config and assign a json key, but this is not recommended.
+make this field not private in the config and assign a json key, but this is not 
+recommended.
 
 ## How it works
 
