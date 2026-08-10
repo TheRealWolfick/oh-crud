@@ -85,6 +85,8 @@ func main() {
 		handlers.RegisterRoutes(&dm, handlerRegister, authMiddleware, qm, server_conf, evh, gate, modelRegister)
 	}
 
+	
+
 	// Load and register declarative functions. Must happen after models are
 	// registered because each function validates against its bound model.
 	functionRegister := tools.NewFunctionRegistry()

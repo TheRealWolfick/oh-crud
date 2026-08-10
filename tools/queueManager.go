@@ -73,6 +73,10 @@ func NewQueue(db models.DBExecQuery, num_workers int, logger *slog.Logger, evh *
 	}
 }
 
+func (qm *QueueManager) ReturnTargets() map[string]*Instructions {
+	return qm.eventHub.targets
+}
+
 // -----------------------------------------------------------------
 //              Task Creation and Management
 // -----------------------------------------------------------------
@@ -235,6 +239,7 @@ func (qm *QueueManager) getReportableTaskInfo(w *Worker) (map[string]any, int) {
 
 // This is an internal helper function to publish an event
 func (qm *QueueManager) publish(w *Worker) {
+
 	payload, success_count := qm.getReportableTaskInfo(w)
 	qm.eventHub.PublishNoTimestamp(w.TaskActioning.Ctx, w.TaskActioning.TaskType, w.TaskActioning.Status, w.TaskActioning.Topic, payload, success_count)
 }
@@ -435,6 +440,7 @@ func (qm *QueueManager) assignWorker(w *Worker, t *Task) {
 
 // QueueFunction queues a function to run asynchronously. Returns a 32-character task ID.
 func (qm *QueueManager) QueueFunction(ctx context.Context, function func(context.Context, ...any) (string, map[string]any, error), note string, args ...any) (string, error) {
+	
 	t, err := qm.createFunctionTask(ctx, function, note, args...)
 	if err != nil {
 		return "", err
