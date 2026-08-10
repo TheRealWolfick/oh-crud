@@ -202,11 +202,11 @@ func setWhere(field string, value any, fieldType reflect.Kind, setFunc func(stri
 			case reflect.Float32, reflect.Float64:
 				if mod_guess == "<" || mod_guess == ">" {
 					if mod_guess2 == "<=" || mod_guess2 == ">=" {
-						if value_as_float, err := strconv.ParseFloat(value_as_string, 64); err == nil {
+						if value_as_float, err := strconv.ParseFloat(value_as_string[2:], 64); err == nil {
 							setFunc(field, value_as_float, mod_guess2)
 						}
 					} else {
-						if value_as_float, err := strconv.ParseFloat(value_as_string, 64); err == nil {
+						if value_as_float, err := strconv.ParseFloat(value_as_string[1:], 64); err == nil {
 							setFunc(field, value_as_float, mod_guess)
 						}
 					}
@@ -866,7 +866,6 @@ func (qb *QueryBuilder) processAggregate(r *http.Request, cfg *models.DataModel)
 // to the query builder based on the DataModel field config. Dispatches on the
 // {function} path value.
 func (qb *QueryBuilder) ProcessURLParams(r *http.Request, cfg *models.DataModel) error {
-	qb.logger.Debug("Setting where values from URL")
 	if err := r.ParseForm(); err != nil {
 		return err
 	}
