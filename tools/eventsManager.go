@@ -117,19 +117,19 @@ func (h *EventManager) RegisterFunction(table string, topic string, hooks *model
 		return
 	}
 
-	h.EnableTopic(topic, hooks)
+	h.EnableTopic(topic, hooks, false)
 	h.targets[topic].is_func = true
 	h.targets[table_topic].functions = append(h.targets[table_topic].functions, topic)
 }
 
 // Add a topic as a valid topic
-func (h *EventManager) EnableTopic(topic string, hooks *models.EventAction) {
+func (h *EventManager) EnableTopic(topic string, hooks *models.EventAction, persist_to_db bool) {
 	h.validTopics[topic] = true
 
 	// Register instructions for topics
 	h.targets[topic] = &Instructions{
 		webhook_url: webhook_action{},
-		persist_to_db: true,
+		persist_to_db: persist_to_db,
 		clients: instruct_action{},
 		functions: function_references{},
 		is_func: false,
