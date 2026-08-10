@@ -1,0 +1,80 @@
+---
+name: Building
+version: 1.3.9
+table-name: buildings
+end-point: building
+allow-diff: false
+soft-delete: true
+track-history: true
+track-history-field: building
+
+primary-key: building_id
+
+foreign-keys:
+  fk_buildings_domain:
+    foreign-key-fields:
+      - db_domain
+    foreign-key-target-table: domains
+    foreign-key-target-fields:
+      - domain_code
+    foreign-key-on-update: CASCADE
+
+unique-keys:
+  uk_buildings_building:
+    unique-key-fields:
+      - building
+  uk_buildings_building_domain:
+    unique-key-fields:
+      - building
+      - db_domain
+
+end-points-allowed:
+  GET: []
+  PUT: []
+  POST: []
+  DELETE: []
+  PUT-GROUP: []
+  POST-GROUP: []
+  DELETE-GROUP: []
+
+fields:
+  building_id:
+    type: int
+    json: building_id
+    db-type: smallserial
+    skip-insert: true
+  building:
+    type: string
+    json: building
+    db-type: character varying(15)
+    required-on-insert: true
+  db_domain:
+    type: string
+    json: db_domain
+    db-type: character varying(3)
+    required-on-insert: true
+  building_description:
+    type: string
+    json: building_description
+    db-type: character varying(200)
+    nullable: true
+  building_address:
+    type: string
+    json: building_address
+    db-type: character varying(200)
+    nullable: true
+  building_suburb:
+    type: string
+    json: building_suburb
+    db-type: character varying(40)
+    nullable: true
+  building_state:
+    type: string
+    json: building_state
+    db-type: character varying(4)
+    nullable: true
+  is_active:
+    type: bool
+    json: is_active
+    db-type: boolean
+    default: true

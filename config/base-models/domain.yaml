@@ -1,0 +1,31 @@
+---
+name: Domain
+version: 1.2.0
+table-name: domains
+end-point: domain
+allow-diff: false
+
+primary-key: domain_code
+
+end-points-allowed:
+  GET: []
+  PUT: []
+  POST: []
+  DELETE: []
+  PUT-GROUP: []
+  POST-GROUP: []
+  DELETE-GROUP: []
+
+fields:
+  domain_code:
+    type: string
+    json: domain_code
+    db-type: character varying(3)
+    required-on-insert: true
+    rules:
+      pattern: "[A-Z]*"
+  domain_description:
+    type: string
+    json: domain_description
+    db-type: text
+    default: ""
