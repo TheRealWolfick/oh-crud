@@ -1,5 +1,5 @@
 name: events
-version: 1.2.4
+version: 1.2.5
 table-name: events
 end-point: events
 primary-key: event_id
@@ -40,7 +40,9 @@ fields:
     nullable: true
   log:
     type: json
-    json: event_log
+    json: log
+    json-alias:
+      - event_log
     db-type: jsonb
     nullable: true
   time:

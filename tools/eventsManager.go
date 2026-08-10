@@ -98,6 +98,9 @@ func NewEventManager(ping_sec int, timeout_sec int, db models.DBExecQuery) *Even
 	}
 }
 
+func (h *EventManager) ValidTopics() map[string]bool { return h.validTopics }
+func (h *EventManager) CurrentTargets() map[string]*Instructions { return h.targets }
+
 // -----------------------------------------------------------------
 //            Topic Registration Management
 // -----------------------------------------------------------------
@@ -124,14 +127,12 @@ func (h *EventManager) EnableTopic(topic string, hooks *models.EventAction) {
 	h.validTopics[topic] = true
 
 	// Register instructions for topics
-	if h.targets[topic] == nil {
-		h.targets[topic] = &Instructions{
-			webhook_url: webhook_action{},
-			persist_to_db: true,
-			clients: instruct_action{},
-			functions: function_references{},
-			is_func: false,
-		}
+	h.targets[topic] = &Instructions{
+		webhook_url: webhook_action{},
+		persist_to_db: true,
+		clients: instruct_action{},
+		functions: function_references{},
+		is_func: false,
 	}
 
 	i := h.targets[topic]
@@ -179,7 +180,7 @@ func (h *EventManager) RegiterTopicAction(w http.ResponseWriter, r *http.Request
 	if err != nil { return err }
 
 	go h.handleClientTopicAction(conn, topic, action)
-	
+
 	return nil
 }
 // Upgrade and manage a new websocket based on the topic.
@@ -189,7 +190,7 @@ func (h *EventManager) RegiterTopicStatusAction(w http.ResponseWriter, r *http.R
 	if err != nil { return err }
 
 	go h.handleClientTopicStatusAction(conn, topic, action, status)
-	
+
 	return nil
 }
 // Upgrade and manage a new websocket based on the topic and status, it registers for all actions
@@ -198,7 +199,7 @@ func (h *EventManager) RegiterTopicStatus(w http.ResponseWriter, r *http.Request
 	if err != nil { return err }
 
 	go h.handleClientTopicStatus(conn, topic, status)
-	
+
 	return nil
 }
 // Upgrade and manage a new websocket based on the topic. It registers for all actions and statuses
@@ -207,7 +208,7 @@ func (h *EventManager) RegiterTopicOnly(w http.ResponseWriter, r *http.Request, 
 	if err != nil { return err }
 
 	go h.HandleClientTopic(conn, topic)
-	
+
 	return nil
 }
 
@@ -606,7 +607,8 @@ func (h *EventManager) publish(ctx context.Context, action string, status string
 
 	// Publish to the database
 	if instructions.persist_to_db && action != "get" {
-		h.db.Exec(ctx, "INSERT INTO events(action, status, topic, log, time, user) VALUES ($, $, $, $, $)", action, status, topic, payload, timestamp, user.Username)
+		_, err := h.db.Exec(ctx, `INSERT INTO events(action, status, topic, log, time, "user") VALUES ($1, $2, $3, $4, $5, $6)`, action, status, topic, payload, timestamp, user.Username)
+		if err != nil { GetBasicLogger().Error("Failed to log event to db", "error", err) }
 	}
 
 	// Publish to webhooks

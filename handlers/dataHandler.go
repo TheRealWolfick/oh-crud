@@ -79,6 +79,7 @@ func RegisterRoutes(
 
 	// Enable the table for websockets and register end point
 	evh.EnableTopic(fmt.Sprintf("table:%s", *cfg.End_point), cfg.Webhooks)
+	//qm.Logger.Debug("event handler status", "enabled_topics", evh.ValidTopics(), "instructions", evh.CurrentTargets())
 	handlerRegistry.Register(fmt.Sprintf("GET /ws/%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleWebsocket(cfg, qm, server_conf, fmt.Sprintf("table:%s", *cfg.End_point), evh))), *cfg.Version)
 }
 
@@ -152,6 +153,7 @@ func addNewResource(
 	svr_cfg *models.ServerConfig,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		
 		task_type := "Add Resource"
 		function := "create"
 		user_key := middleware.Contextkey("user")
@@ -359,6 +361,7 @@ func getResource(
 		g, queryCtx := errgroup.WithContext(ctx)
 
 		g.Go(func() error {
+			qm.Logger.Debug("Query", "q", query)
 			r, err := qm.Db.Query(queryCtx, query, qb.GetArgs()...)
 			if err != nil {
 				return err
