@@ -78,7 +78,7 @@ func RegisterRoutes(
 	}
 
 	// Enable the table for websockets and register end point
-	evh.EnableTopic(fmt.Sprintf("table:%s", *cfg.End_point), cfg.Webhooks)
+	evh.EnableTopic(fmt.Sprintf("table:%s", *cfg.End_point), cfg.Webhooks, true)
 	//qm.Logger.Debug("event handler status", "enabled_topics", evh.ValidTopics(), "instructions", evh.CurrentTargets())
 	handlerRegistry.Register(fmt.Sprintf("GET /ws/%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleWebsocket(cfg, qm, server_conf, fmt.Sprintf("table:%s", *cfg.End_point), evh))), *cfg.Version)
 }
