@@ -6,3 +6,4 @@ config/database/*
 .claude
 docs/testing-guide.md
 config/base-models/*.yaml
+.config
