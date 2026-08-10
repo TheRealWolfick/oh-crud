@@ -485,7 +485,7 @@ func hclType(dbType string) string {
 	case lower == "int" || lower == "integer" || lower == "int4":
 		return "int"
 	case lower == "bigint" || lower == "int8":
-		return "int64"
+		return `sql("bigint")`
 	case lower == "smallint" || lower == "int2":
 		return `sql("smallint")`
 	case lower == "text":
@@ -503,9 +503,9 @@ func hclType(dbType string) string {
 	case lower == "date":
 		return "date"
 	case lower == "float4" || lower == "real":
-		return "float32"
+		return `sql("real")`
 	case lower == "float8" || lower == "double precision":
-		return "float64"
+		return `sql("double precision")`
 	default:
 		// character varying(n), numeric(p,s), etc. — pass raw
 		return fmt.Sprintf("sql(%q)", dbType)
