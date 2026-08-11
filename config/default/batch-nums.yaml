@@ -1,0 +1,43 @@
+name: batch_numbers
+version: 1.0.0
+table-name: batch_numbers
+end-point: ""
+
+primary-key: batch_id
+
+unique-keys:
+  uk_batch_numbers:
+    unique-key-fields:
+      - table_name
+      - batch_number
+
+fields:
+  batch_id:
+    type: int
+    db-type: bigserial
+    skip-insert: true
+    json: batch_id
+  table_name:
+    type: string
+    db-type: character varying(30)
+    required-on-insert: true
+    json: table_name
+  service:
+    type: string
+    db-type: character varying(30)
+    default: Asset Data
+    json: service
+  batch_number:
+    type: int
+    db-type: int
+    required-on-insert: true
+    json: batch_number
+  generated_date:
+    type: string
+    db-type: timestamp without time zone
+    default: now()
+    json: batched_date
+  generated_by:
+    type: string
+    db-type: character varying(30)
+    json: generated_by

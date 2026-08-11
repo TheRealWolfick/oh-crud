@@ -106,7 +106,7 @@ type DataModel struct {
 	End_points_allowed  *End_pointsAllowed        `yaml:"end-points-allowed"`
 	Allow_diff          *bool                     `yaml:"allow-diff"`
 	Diff_comparator     *string                   `yaml:"diff-comparator"`
-	Primary_key         *string                   `yaml:"primary-key"`
+	Primary_key         []string                  `yaml:"primary-key"`
 	Foreign_keys        map[string]ForeignKey     `yaml:"foreign-keys"`
 	Unique_keys         map[string]UniqueKey      `yaml:"unique-keys"`
 	Fields              map[string]DataModelField `yaml:"fields"`

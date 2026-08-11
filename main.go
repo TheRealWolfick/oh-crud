@@ -85,8 +85,6 @@ func main() {
 		handlers.RegisterRoutes(&dm, handlerRegister, authMiddleware, qm, server_conf, evh, gate, modelRegister)
 	}
 
-	
-
 	// Load and register declarative functions. Must happen after models are
 	// registered because each function validates against its bound model.
 	functionRegister := tools.NewFunctionRegistry()
@@ -102,6 +100,16 @@ func main() {
 	go monitors.ModelsMonitor(handlerRegister, modelRegister, authMiddleware, qm, gate, server_conf, evh)
 	go monitors.FunctionsMonitor(handlerRegister, modelRegister, functionRegister, authMiddleware, qm, server_conf, evh)
 	go monitors.ServerConfigMonitor(server_conf, logger)
+
+	// Load fixed sql functions -- !! Future Improvement: Make them Declaritive and with a watcher !! --
+	batch_num_func, err := os.ReadFile("./config/server/generate-batch-numbers.sql")
+	if err != nil {
+		logger.Error("Failed to load function file to generate batch numbers")
+	} else {
+		if _, err := qm.Db.Exec(context.Background(), string(batch_num_func)); err != nil {
+			logger.Error("Failed to execute function file to generate batch numbers")
+		}
+	}
 
 	// Launch the server
 	srv := &http.Server{
