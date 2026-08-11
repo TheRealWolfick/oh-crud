@@ -877,20 +877,7 @@ func dynamicActionDiff(
 
 		// Generate batch code
 		var batchCode string
-		query := `
-		BEGIN;
-		SELECT COALESCE(batch_number, 0) + 1 INTO latest_batch_number FROM batch_numbers 
-		WHERE table_name = $1 AND service = $2 ORDER BY batch_number DESC LIMIT 1;
-		INSERT INTO batch_number(table_name, service, batch_number, generated_by) VALUES ($1, $2, latest_batch_number, $3);
-		IF latest_batch_number > 1 THEN
-		COMMIT;
-		ELSE
-		ROLLBACK;
-		RAISE EXCEPTION 'Invalid latest_batch_number --> %', latest_batch_number
-		USING HINT = 'Investigate why latest batch number did no generate.';
-		END IF;
-		SELECT latest_batch_number;` 
-		batchRow := qm.Db.QueryRow(r.Context(), query, *cfg.Table_name, "Asset Data", req_username)
+		batchRow := qm.Db.QueryRow(r.Context(), `SELECT generate_batch_number($1, $2, $3)`, *cfg.Table_name, "Asset Data", req_username)
 		if err := batchRow.Scan(&batchCode); err != nil {
 			log.Error("BATCH_CODE_ERROR", "error", err)
 			http.Error(w, "Error generating batch code", http.StatusInternalServerError)
