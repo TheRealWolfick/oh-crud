@@ -14,7 +14,7 @@
     "soft-delete": { "type": "boolean" },
     "allow-diff": { "type": "boolean" },
     "diff-comparator": { "type": "string" },
-    "primary-key": { "type": "array", "items": { "type": "string" }},
+    "primary-key": { "type": "string" },
     "admin-roles": { "type": "array", "items": { "type": "string" }},
 
     "web-hooks": {

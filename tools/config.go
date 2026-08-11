@@ -535,19 +535,12 @@ func ValidateDataModel(m models.DataModel) error {
 		errs = append(errs, "at least one field is required")
 	}
 
-	if m.Primary_key == nil || len(m.Primary_key) == 0 || m.Primary_key[0] == "" {
+	if m.Primary_key == nil || strings.TrimSpace(*m.Primary_key) == "" {
 		errs = append(errs, "primary-key is required")
-	} else {
-		for _, k := range m.Primary_key {
-			field, ok := m.Fields[k]; 
-			if !ok {
-				errs = append(errs, fmt.Sprintf("primary-key component %q does not match any field name", k))
-			}
-			if field.Nullable != nil || *field.Nullable {
-				errs = append(errs, fmt.Sprintf("primary-key field %q cannot be nullable", k))
-			}
-		}
+	} else if _, ok := m.Fields[*m.Primary_key]; !ok {
+		errs = append(errs, fmt.Sprintf("primary-key %q does not match any field name", *m.Primary_key))
 	}
+
 	validTypes := map[string]bool{
 		"int": true, "float": true, "string": true,
 		"bool": true, "json": true, "time": true, "uuid": true,
@@ -590,6 +583,12 @@ func ValidateDataModel(m models.DataModel) error {
 
 		if field.Migration != nil && !validMigrations[*field.Migration] {
 			errs = append(errs, fmt.Sprintf("%s: unknown migration strategy %q", prefix, *field.Migration))
+		}
+
+		if m.Primary_key != nil && fieldName == *m.Primary_key {
+			if field.Nullable != nil && *field.Nullable {
+				errs = append(errs, fmt.Sprintf("%s: primary key field cannot be nullable", prefix))
+			}
 		}
 	}
 
