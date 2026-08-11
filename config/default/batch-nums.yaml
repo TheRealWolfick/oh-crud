@@ -14,7 +14,7 @@ unique-keys:
 fields:
   batch_id:
     type: int
-    db-type: bigserial
+    db-type: serial
     skip-insert: true
     json: batch_id
   table_name:
