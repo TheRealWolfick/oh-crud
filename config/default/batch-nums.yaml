@@ -32,7 +32,7 @@ fields:
     db-type: int
     required-on-insert: true
     json: batch_number
-  batched_date:
+  generated_date:
     type: string
     db-type: timestamp without time zone
     default: now()

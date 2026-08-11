@@ -871,17 +871,25 @@ func dynamicActionDiff(
 		var missingFromSupplied []map[string]any
 		var missingFromStored []map[string]any
 		var diffs []models.Item_Diff[map[string]any]
+		var batched bool
 		decodeJSONB("missing_from_supplied", &missingFromSupplied)
 		decodeJSONB("missing_from_stored", &missingFromStored)
 		decodeJSONB("diffs", &diffs)
+		decodeJSONB("batched", &batched)
 
-		// Generate batch code
+		// Batch code
 		var batchCode string
-		batchRow := qm.Db.QueryRow(r.Context(), `SELECT generate_batch_number($1, $2, $3)`, *cfg.Table_name, "Asset Data", req_username)
-		if err := batchRow.Scan(&batchCode); err != nil {
-			log.Error("BATCH_CODE_ERROR", "error", err)
-			http.Error(w, "Error generating batch code", http.StatusInternalServerError)
-			return
+		if !batched {
+			// Generate a new code
+			batchRow := qm.Db.QueryRow(r.Context(), `SELECT generate_batch_number($1, $2, $3)`, *cfg.Table_name, "Asset Data", req_username)
+			if err := batchRow.Scan(&batchCode); err != nil {
+				log.Error("BATCH_CODE_ERROR", "error", err)
+				http.Error(w, "Error generating batch code", http.StatusInternalServerError)
+				return
+			}
+		} else {
+			// Read the existing batch code
+			decodeJSONB("batch_number", &batchCode)
 		}
 
 		// Build sync arrays from diffs

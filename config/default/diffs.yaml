@@ -1,5 +1,5 @@
 name: diffs
-version: 1.0.0
+version: 1.1.0
 table-name: diffs
 end-point: ""
 primary-key: diff_id
@@ -71,6 +71,11 @@ fields:
     db-type: character varying(200)
     nullable: true
     json: note
+  batch_number:
+    type: int
+    db-type: bigint
+    json: batch_number
+    nullable: true
   batched:
     type: bool
     db-type: boolean

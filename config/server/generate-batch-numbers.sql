@@ -17,8 +17,8 @@ BEGIN
             USING HINT = 'Investigate why latest batch number did not generate.';
     END IF;
 
-    INSERT INTO batch_numbers(table_name, service, batch_number, generated_by)
-    VALUES (p_table_name, p_service, v_latest_batch_number, p_generated_by);
+    INSERT INTO batch_numbers(table_name, service, batch_number, generated_by, generated_date)
+    VALUES (p_table_name, p_service, v_latest_batch_number, p_generated_by, now());
 
     RETURN v_latest_batch_number;
 END;
