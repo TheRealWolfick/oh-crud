@@ -1,5 +1,5 @@
 name: events
-version: 1.2.5
+version: 1.2.6
 table-name: events
 end-point: events
 primary-key: event_id
@@ -25,7 +25,7 @@ fields:
   action:
     type: string
     json: action
-    db-type: character varying(10)
+    db-type: character varying(15)
     default: "missing"
     required-on-insert: true
   status:
