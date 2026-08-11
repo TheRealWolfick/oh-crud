@@ -739,7 +739,7 @@ func dynamicCreateDiff(
 	svr_cfg *models.ServerConfig,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		task_type := "Create Diff"
+		task_type := "create_diff"
 		function := "create_diff"
 		user_key := middleware.Contextkey("user")
 		req_ip := tools.GetIP(r)

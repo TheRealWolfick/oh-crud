@@ -123,6 +123,7 @@ func (qm *QueueManager) createFunctionTask(ctx context.Context, function func(co
 		Cfg:       *task.Cfg,
 		Topic:     fmt.Sprintf("table:%s", *task.Cfg.End_point),
 	}
+  qm.Logger.Debug("Function task created", "details", DereferencedString(t))
 	return t, nil
 }
 
