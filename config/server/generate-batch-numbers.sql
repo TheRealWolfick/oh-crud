@@ -5,16 +5,20 @@ AS $$
 DECLARE
     v_latest_batch_number int;
 BEGIN
-    SELECT COALESCE(batch_number, 0) + 1
+    SELECT COALESCE(MAX(batch_number), 0) + 1
       INTO v_latest_batch_number
       FROM batch_numbers
      WHERE table_name = p_table_name AND service = p_service
      ORDER BY batch_number DESC
      LIMIT 1;
 
-    IF v_latest_batch_number IS NULL OR v_latest_batch_number <= 1 THEN
+    IF v_latest_batch_number IS NULL
         RAISE EXCEPTION 'Invalid latest_batch_number --> %', v_latest_batch_number
             USING HINT = 'Investigate why latest batch number did not generate.';
+    END IF;
+    IF v_latest_batch_number < 1 THEN
+        RAISE EXCEPTION 'Invalid latest_batch_number --> %', v_latest_batch_number
+            USING HINT = 'Investigate why latest batch number generated as < 1.';
     END IF;
 
     INSERT INTO batch_numbers(table_name, service, batch_number, generated_by, generated_date)
