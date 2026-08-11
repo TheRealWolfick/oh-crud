@@ -8,9 +8,7 @@ BEGIN
     SELECT COALESCE(MAX(batch_number), 0) + 1
       INTO v_latest_batch_number
       FROM batch_numbers
-     WHERE table_name = p_table_name AND service = p_service
-     ORDER BY batch_number DESC
-     LIMIT 1;
+     WHERE table_name = p_table_name AND service = p_service;
 
     IF v_latest_batch_number IS NULL THEN
         RAISE EXCEPTION 'Invalid latest_batch_number --> %', v_latest_batch_number
