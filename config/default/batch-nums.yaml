@@ -1,0 +1,27 @@
+name: batch_numbers
+version: 1.0.0
+table-name: batch_numbers
+end-point: ""
+
+primary-key:
+  - table-name
+  - service
+  - batch-number
+
+fields:
+  table-name:
+    type: string
+    db-type: character varying(30)
+    required-on-insert: true
+  service:
+    type: string
+    db-type: character varying(30)
+    required-on-insert: true
+  batch-number:
+    type: int
+    db-type: int
+    required-on-insert: true
+  batched-date:
+    type: string
+    db-type: timestamp without time zone
+    default: "now()"

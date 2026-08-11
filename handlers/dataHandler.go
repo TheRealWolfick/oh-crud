@@ -684,7 +684,7 @@ func dynamicGetDiff(
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user_key := middleware.Contextkey("user")
-		function := "get"
+		function := "get_diff"
 		req_ip := tools.GetIP(r)
 		req_id, _ := tools.Generate32CharString()
 		req_username := r.Context().Value(user_key).(*models.User).Username
@@ -740,7 +740,7 @@ func dynamicCreateDiff(
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Create Diff"
-		function := "diff"
+		function := "create_diff"
 		user_key := middleware.Contextkey("user")
 		req_ip := tools.GetIP(r)
 		req_id, err := tools.Generate32CharString()
@@ -812,7 +812,7 @@ func dynamicActionDiff(
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Action Diff"
-		function := "diff"
+		function := "batch_diff"
 		user_key := middleware.Contextkey("user")
 		req_ip := tools.GetIP(r)
 		req_id, _ := tools.Generate32CharString()
