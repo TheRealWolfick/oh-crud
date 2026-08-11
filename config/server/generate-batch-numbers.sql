@@ -12,7 +12,7 @@ BEGIN
      ORDER BY batch_number DESC
      LIMIT 1;
 
-    IF v_latest_batch_number IS NULL
+    IF v_latest_batch_number IS NULL THEN
         RAISE EXCEPTION 'Invalid latest_batch_number --> %', v_latest_batch_number
             USING HINT = 'Investigate why latest batch number did not generate.';
     END IF;
