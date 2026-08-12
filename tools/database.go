@@ -67,7 +67,7 @@ func createDiff(
 	for field_name := range cfg.Fields {
 		cols = append(cols, field_name)
 	}
-	
+
 	// Create the query builder and set any default clauses
 	qb := NewQueryBuilder(log)
 	query := qb.BuildSelect(*cfg.Table_name, cols)
@@ -95,19 +95,22 @@ func createDiff(
 		log.Debug("Stored[0:10]", "data", stored[0:10])
 		log.Debug("Coerced[0:10]", "data", coerced_stored[0:10])
 		return "create_diff", map[string]any{
-			"table":         *cfg.Table_name,
-			"rows_affected": 0,
-			"error":         "no differences found or invalid comparator",
+			"table_name": 		*cfg.Table_name,
+			"total_count": 		1,
+			"success_count": 	0,
+			"failed_count": 	1,
+			"failed_items": 	[]models.FailedItem{models.FailedItem{Row: nil, Error: "no differences found or invalid comparator"}},
 		}, fmt.Errorf("no valid diff created")
 	}
 
 	totalDiffs := len(diff_struct.Diffs) + len(diff_struct.MissingFromSupplied) + len(diff_struct.MissingFromStored)
 	if totalDiffs == 0 {
 		return "create_diff", map[string]any{
-			"action":        "diff",
-			"on_table":      *cfg.Table_name,
-			"success_count": 0,
-			"message":       "no differences found between supplied and stored data",
+			"table_name": 		*cfg.Table_name,
+			"total_count": 		1,
+			"success_count": 	0,
+			"failed_count": 	1,
+			"failed_items": 	[]models.FailedItem{models.FailedItem{Row: nil, Error: "no differences found or invalid comparator"}},
 		}, nil
 	}
 
@@ -137,9 +140,15 @@ func createDiff(
 	cmdtag, err := db.Exec(ctx, insertQuery, insertQb.GetArgs()...)
 
 	ret_map := map[string]any{
+		"table_name": 		*cfg.Table_name,
+		"total_count": 		1,
+		"success_count": 	cmdtag.RowsAffected(),
+		"success_items": 	nil,
+		"failed_count": 	0,
+		"failed_items": 	nil,
 		"table":         *cfg.Table_name,
-		"success_count": cmdtag.RowsAffected(),
 	}
+
 	if err != nil {
 		ret_map["error"] = err.Error()
 		return "create_diff", ret_map, err

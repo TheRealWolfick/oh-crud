@@ -98,7 +98,8 @@
         "PUT":          { "type": "array", "items": { "type": "string" } },
         "PUT-GROUP":    { "type": "array", "items": { "type": "string" } },
         "DELETE":       { "type": "array", "items": { "type": "string" } },
-        "DELETE-GROUP": { "type": "array", "items": { "type": "string" } }
+        "DELETE-GROUP": { "type": "array", "items": { "type": "string" } },
+        "DIFF":         { "type": "array", "items": { "type": "string" } }
       }
     },
 
