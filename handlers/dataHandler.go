@@ -47,7 +47,7 @@ func RegisterRoutes(
 
 	// Handle diff routes
 	if cfg.Allow_diff != nil && *cfg.Allow_diff {
-		handlerRegistry.Register(fmt.Sprintf("GET /%s/diff", *cfg.End_point), auth(dynamicGetDiff(cfg, qm, server_conf.Get())), *cfg.Version)
+		handlerRegistry.Register(fmt.Sprintf("GET /%s/diff", *cfg.End_point), auth(handleGetDiff(cfg, qm, server_conf)), *cfg.Version)
 		handlerRegistry.Register(fmt.Sprintf("POST /%s/diff", *cfg.End_point), auth(dynamicCreateDiff(cfg, qm, server_conf.Get())), *cfg.Version)
 		handlerRegistry.Register(fmt.Sprintf("PUT /%s/diff", *cfg.End_point), auth(dynamicActionDiff(cfg, qm, server_conf.Get())), *cfg.Version)
 	}
@@ -85,7 +85,14 @@ func RegisterRoutes(
 
 func handleGet(cfg *models.DataModel, qm *tools.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
 	if cfg.End_points_allowed != nil && cfg.End_points_allowed.GET != nil {
-		return getResource(qm, cfg, svr_cfg.Get())
+		return getResource(qm, cfg, svr_cfg.Get(), 0)
+	}
+	return notAllowed(cfg.End_points_allowed)
+}
+
+func handleGetDiff(cfg *models.DataModel, qm *tools.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
+	if cfg.End_points_allowed != nil && cfg.End_points_allowed.DIFF != nil {
+		return getResource(qm, cfg, svr_cfg.Get(), 1)
 	}
 	return notAllowed(cfg.End_points_allowed)
 }
@@ -303,6 +310,7 @@ func getResource(
 	qm *tools.QueueManager,
 	cfg *models.DataModel,
 	svr_cfg *models.ServerConfig,
+	limit int,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Get Resource"
@@ -336,6 +344,9 @@ func getResource(
 			http.Error(w, fmt.Sprintf("Error in parsing where clauses: %v", err.Error()), http.StatusBadRequest)
 			return
 		}
+		
+		// Overwrite limit with new amount
+		if limit > 0 { qb.SetLimit(limit) }
 
 		// Return the schema if this was requested
 		if qb.IsSchemaBuilder() {
@@ -675,62 +686,6 @@ func updateResource_Group(
 	}
 }
 
-
-// GET /{endpoint}/diff — list stored diffs for this table
-func dynamicGetDiff(
-	cfg *models.DataModel,
-	qm *tools.QueueManager,
-	svr_cfg *models.ServerConfig,
-) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		user_key := middleware.Contextkey("user")
-		function := "get_diff"
-		req_ip := tools.GetIP(r)
-		req_id, _ := tools.Generate32CharString()
-		req_username := r.Context().Value(user_key).(*models.User).Username
-		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", function, "task_type", "Get Diff", "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
-		ctx := middleware.SetLogger(r.Context(), log)
-
-		log.Info("REQUEST_RECEIVED")
-		w.Header().Set("Content-Type", "application/json")
-
-		// Check that a user is allowed to inteface with this command
-		if !middleware.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.GET, svr_cfg) {
-			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
-			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
-			return
-		}
-
-		diffCols := []string{"diff_id", "diff_type", "task_id", "missing_from_supplied", "missing_from_stored", "diffs", "generated_by_user", "checksum", "created", "note", "batched", "batched_date"}
-		qb := tools.NewQueryBuilder(log)
-		qb.SetWhereAbsolute("diff_type", *cfg.Table_name)
-
-		taskID := r.URL.Query().Get("task_id")
-		if taskID != "" {
-			qb.SetWhereAbsolute("task_id", taskID)
-		}
-		checksum := tools.GetChecksum(r)
-		if checksum != "" {
-			qb.SetWhereAbsolute("checksum", checksum)
-		}
-
-		query := qb.BuildSelect("diffs", diffCols)
-		rows, err := qm.Db.Query(r.Context(), fmt.Sprintf("%s LIMIT 1;", strings.TrimRight(query, "; ")), qb.GetArgs()...)
-		if err != nil {
-			log.Error("GET_ERROR", "error", err)
-			http.Error(w, fmt.Sprintf("Error querying diffs: %v", err), http.StatusInternalServerError)
-			return
-		}
-		defer rows.Close()
-		result, err := pgx.CollectRows(rows, pgx.RowToMap)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		json.NewEncoder(w).Encode(result)
-	}
-}
 
 // POST /{endpoint}/diff — create a diff between supplied data and stored data
 func dynamicCreateDiff(

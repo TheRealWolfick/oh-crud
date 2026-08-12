@@ -88,6 +88,7 @@ type End_pointsAllowed struct {
 	PUT_GROUP    []string `yaml:"PUT-GROUP"`
 	POST_GROUP   []string `yaml:"POST-GROUP"`
 	DELETE_GROUP []string `yaml:"DELETE-GROUP"`
+	DIFF         []string `yaml:"DIFF"`
 }
 
 // DataModel is the top-level representation of a YAML config file.
