@@ -1,7 +1,7 @@
 ---
 
 name: mh-locations
-version: 1.2.0
+version: 1.2.1
 table-name: mh_locations
 end-point: locations
 primary-key: location
@@ -13,6 +13,8 @@ end-points-allowed:
   PUT-GROUP: []
   POST-GROUP: []
   DELETE-GROUP: []
+  DIFF: []
+
 fields:
   location:
     type: string

@@ -1,6 +1,6 @@
 ---
 name: Building
-version: 1.3.9
+version: 1.3.10
 table-name: buildings
 end-point: building
 allow-diff: false
@@ -36,6 +36,7 @@ end-points-allowed:
   PUT-GROUP: []
   POST-GROUP: []
   DELETE-GROUP: []
+  DIFF: []
 
 fields:
   building_id:
