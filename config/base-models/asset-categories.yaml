@@ -1,6 +1,6 @@
 ---
 name: Asset Categories
-version: 1.2.2
+version: 1.2.3
 table-name: asset_categories
 end-point: asset/category
 allow-diff: false
@@ -15,6 +15,7 @@ end-points-allowed:
   PUT-GROUP: []
   POST-GROUP: []
   DELETE-GROUP: []
+  DIFF: []
 
 fields:
   cat_code:

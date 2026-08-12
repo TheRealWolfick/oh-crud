@@ -1,6 +1,6 @@
 ---
 name: Condition Ratings
-version: 1.2.0
+version: 1.2.1
 table-name: condition_ratings
 end-point: condition/rating
 allow-diff: false
@@ -15,6 +15,7 @@ end-points-allowed:
   PUT-GROUP: []
   POST-GROUP: []
   DELETE-GROUP: []
+  DIFF: []
 
 fields:
   condition_rating:

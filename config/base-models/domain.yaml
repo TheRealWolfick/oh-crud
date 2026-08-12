@@ -1,6 +1,6 @@
 ---
 name: Domain
-version: 1.2.0
+version: 1.2.1
 table-name: domains
 end-point: domain
 allow-diff: false
@@ -15,6 +15,7 @@ end-points-allowed:
   PUT-GROUP: []
   POST-GROUP: []
   DELETE-GROUP: []
+  DIFF: []
 
 fields:
   domain_code:

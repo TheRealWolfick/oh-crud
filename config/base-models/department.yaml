@@ -1,6 +1,6 @@
 ---
 name: Department
-version: 1.2.0
+version: 1.2.1
 table-name: departments
 end-point: department
 allow-diff: false
@@ -33,6 +33,7 @@ end-points-allowed:
   PUT-GROUP: []
   POST-GROUP: []
   DELETE-GROUP: []
+  DIFF: []
 
 fields:
   dept_id:
