@@ -92,6 +92,22 @@ prefix and the field's type.
 If the field has `absolute-match: true` set in its model YAML, the operator
 is forced to `=` regardless.
 
+### Null / not-null filters
+
+`#NULL` and `#NOTNULL` are reserved sigil values, honored for every field
+type and regardless of `absolute-match`:
+
+| Value      | Becomes         |
+|------------|------------------|
+| `#NULL`    | `field IS NULL`     |
+| `#NOTNULL` | `field IS NOT NULL` |
+
+For a non-string field, any other value starting with `#` is dropped (not a
+valid int/float/bool/time/uuid literal anyway). For a string field, a value
+starting with `#` that isn't exactly `#NULL`/`#NOTNULL` is still searched as
+free text via `~*` (e.g. `?tag=#urgent` matches literal `#urgent`) — only the
+two exact sigil values are reserved.
+
 ### Examples
 
 ```text
@@ -99,6 +115,8 @@ GET /asset/data?asset_no=CL001
 GET /asset/data?condition_rating=>=3
 GET /asset/data?install_date=>=2024-01-01&install_date=<=2024-12-31
 GET /asset/data?description=pump
+GET /asset/data?install_date=#NULL
+GET /asset/data?description=#NOTNULL
 ```
 
 ---

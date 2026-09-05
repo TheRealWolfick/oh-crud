@@ -76,7 +76,7 @@ nullable:           False by default. Set to allow this column to be null
 skip-insert:        False by default. Set true to never insert this field into the database (i.e an index column)
 private:            False by default. Set true to prevent this field from ever being returned to the end user or being processed in an event
 required-on-insert: False by default: Set true to ensure that this field is supplied. Any insert without it will be deemed invalid
-absolute-match:     False by default: Set true to ensure all comparisons are done via `=` and not the regex `~*` comparator
+absolute-match:     False by default: Set true to ensure all comparisons are done via `=` and not the regex `~*` comparator. `?field=#NULL` / `?field=#NOTNULL` are reserved sigil values honored on every field regardless of this setting, producing `IS NULL` / `IS NOT NULL` instead
 rules:              A collection of rules for field validation. Valid rules, depending on the data type, are: min, max, pattern, enum, max-length
 migration:          How Atlas should handle migration: valid, skip or recreate
 

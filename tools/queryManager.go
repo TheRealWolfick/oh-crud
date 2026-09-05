@@ -142,6 +142,10 @@ func (qb *QueryBuilder) AppendWhere(field, mod string, value any) {
 	qb.pos++
 }
 
+// SetWhereAbsolute sets an exact "=" match, always — it never infers an operator from the
+// value's content. A field whose real data is literally "NULL" must still equality-match, so
+// the #NULL / #NOTNULL sigil (see nullSigilValue) is resolved by the caller into an explicit
+// "IS" via innerSetWhere before reaching here, not detected from the value itself.
 func (qb *QueryBuilder) SetWhereAbsolute(field string, value any) {
 	if value == nil {
 		return
@@ -163,6 +167,21 @@ func (qb *QueryBuilder) SetWhereAbsolute(field string, value any) {
 	}
 }
 
+// nullSigilValue translates the "#NULL" / "#NOTNULL" URL sigil into the SQL-facing
+// comparison value ("NULL" / "NOT NULL") paired with the "IS" operator. ok is false for
+// any other input. Shared by setWhere and processWhereFromConfig's absolute-match branch
+// so `#NULL`/`#NOTNULL` behaves the same regardless of a field's absolute-match setting.
+func nullSigilValue(raw string) (string, bool) {
+	switch raw {
+	case "#NULL":
+		return "NULL", true
+	case "#NOTNULL":
+		return "NOT NULL", true
+	default:
+		return "", false
+	}
+}
+
 // setWhere is an internal helper that extracts comparison operators from string values
 // and dispatches to the provided setter function with the correct type.
 func setWhere(field string, value any, fieldType FieldKind, setFunc func(string, any, string)) {
@@ -178,6 +197,21 @@ func setWhere(field string, value any, fieldType FieldKind, setFunc func(string,
 
 		if len(value_as_string) > 0 {
 			mod_guess = fmt.Sprint(value_as_string[0:1])
+
+			// Process the #NULL / #NOTNULL sigil, reserved across every field type. A
+			// non-sigil "#..." value is dropped for typed fields (never a valid int, uuid,
+			// etc. anyway), but falls through to the default case below for string fields
+			// so existing free-text/regex searches starting with "#" (e.g. "#tag") keep working.
+			if mod_guess == "#" {
+				if v, ok := nullSigilValue(value_as_string); ok {
+					setFunc(field, v, "IS")
+					return
+				}
+				if fieldType != FieldString {
+					return
+				}
+			}
+
 			if len(value_as_string) > 1 {
 				mod_guess2 = fmt.Sprint(value_as_string[0:2])
 			}
@@ -245,7 +279,7 @@ func setWhere(field string, value any, fieldType FieldKind, setFunc func(string,
 				setFunc(field, parsedDate, operator)
 
 			case FieldJSON:
-			  // Check if this has an override
+				// Check if this has an override
 				if json.Valid([]byte(value_as_string)) {
 					setFunc(field, value_as_string, "=")
 				}
@@ -566,11 +600,25 @@ func (qb *QueryBuilder) buildWhereClause() string {
 		return ""
 	}
 	w := make([]string, 0, len(qb.where)+len(qb.whereExtras))
+
+	// For each key-value pair in the where data
 	for key, val := range qb.where {
+		// If it is a list
 		if reflect.TypeOf(qb.args[val-1]).Kind() == reflect.Slice {
 			w = append(w, fmt.Sprintf("%s IN $%d", key, val))
 		} else {
-			w = append(w, fmt.Sprintf("%s %s $%d", key, qb.wheremod[key], val))
+			// Check if it is an IS clause
+			if qb.wheremod[key] == "IS" {
+				switch qb.args[val-1] {
+				case "NULL":
+					w = append(w, fmt.Sprintf("%s IS NULL", key))
+				case "NOT NULL":
+					w = append(w, fmt.Sprintf("%s IS NOT NULL", key))
+				}
+			} else {
+				// Build with default value target
+				w = append(w, fmt.Sprintf("%s %s $%d", key, qb.wheremod[key], val))
+			}
 		}
 	}
 	w = append(w, qb.whereExtras...)
@@ -797,6 +845,16 @@ func (qb *QueryBuilder) processWhereFromConfig(r *http.Request, cfg *models.Data
 		// Determine if it is an absolute field, and set the where accordingly
 		is_abs := field_cfg.Absolute_match != nil && *field_cfg.Absolute_match
 		if is_abs {
+			// #NULL / #NOTNULL bypasses the field's own type validation — IS NULL / IS NOT
+			// NULL applies regardless of column type, and "NULL" would never itself pass
+			// ValidateFieldValue for a non-string field. Routed through innerSetWhere (the
+			// same setter the non-absolute path uses) rather than SetWhereAbsolute, so a
+			// real data value that happens to equal the literal string "NULL" still gets an
+			// exact "=" match instead of being reinterpreted as IS NULL.
+			if v, ok := nullSigilValue(url_value); ok {
+				qb.innerSetWhere(column, v, "IS")
+				continue
+			}
 			if !ValidateFieldValue(field_type, url_value) { continue }
 			qb.SetWhereAbsolute(column, url_value)
 		} else {
