@@ -1,6 +1,6 @@
 ---
 name: Building Floor Room
-version: 1.2.1
+version: 1.3.1
 table-name: building_floor_room_combo
 end-point: room
 allow-diff: false
@@ -17,6 +17,14 @@ foreign-keys:
       - building
       - floor
     foreign-key-on-update: CASCADE
+  fk_building_floor_room_dept:
+    foreign-key-fields:
+      - dept_code
+    foreign-key-target-table: departments
+    foreign-key-target-fields:
+      - dept_code
+    foreign-key-on-update: CASCADE
+    foreign-key-on-delete: SET NULL
 
 unique-keys:
   uk_building_floor_room_bfroom:
@@ -62,4 +70,9 @@ fields:
     json: room_description
     db-type: character varying(100)
     default: ""
+    nullable: true
+  dept_code:
+    type: string
+    json: dept_code
+    db-type: character varying(15)
     nullable: true
