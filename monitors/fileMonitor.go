@@ -47,7 +47,8 @@ func ModelsMonitor(handlerRegistry *tools.HandlerRegistry, modelRegistry *tools.
 							// If the sync stopped because of destructive changes, the change will be waiting in the gate
 							if _, pending := gate.Pending(*updated_config.Table_name); !pending {
 								modelRegistry.Register(updated_config)
-								handlers.RegisterRoutes(updated_config, handlerRegistry, auth, qm, server_conf, evh, gate, modelRegistry)
+								diff_model, _ := modelRegistry.ByTableName("diffs")
+								handlers.RegisterRoutes(updated_config, diff_model, handlerRegistry, auth, qm, server_conf, evh, gate, modelRegistry)
 							} else {
 								qm.Logger.Info("Pending change waiting", "table", *updated_config.Table_name)
 							}

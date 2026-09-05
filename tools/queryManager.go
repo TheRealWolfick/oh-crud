@@ -124,7 +124,9 @@ func (qb *QueryBuilder) innerSetWhere(field string, value any, mod string) {
 		qb.args = append(qb.args, value)
 		qb.pos++
 	} else {
-		qb.args[qb.values[field]] = value
+		// See the matching comment in SetWhereAbsolute: qb.where[field]-1 is this
+		// field's args-slice index, not qb.values[field].
+		qb.args[qb.where[field]-1] = value
 		qb.wheremod[field] = mod
 	}
 }
@@ -152,14 +154,18 @@ func (qb *QueryBuilder) SetWhereAbsolute(field string, value any) {
 		qb.pos++
 	} else {
 		qb.logger.Debug("Field already exists in where map")
-		qb.args[qb.values[field]] = value
+		// qb.where[field] holds this field's 1-indexed placeholder number ($N), so the
+		// args slice index is qb.where[field]-1 — not qb.values[field] (an unrelated map
+		// used for INSERT/UPDATE SET values, which is almost always unset here and
+		// silently corrupts args[0] instead of updating this field's own bound value).
+		qb.args[qb.where[field]-1] = value
 		qb.wheremod[field] = "="
 	}
 }
 
 // setWhere is an internal helper that extracts comparison operators from string values
 // and dispatches to the provided setter function with the correct type.
-func setWhere(field string, value any, fieldType reflect.Kind, setFunc func(string, any, string)) {
+func setWhere(field string, value any, fieldType FieldKind, setFunc func(string, any, string)) {
 	if value == nil {
 		return
 	}
@@ -177,7 +183,7 @@ func setWhere(field string, value any, fieldType reflect.Kind, setFunc func(stri
 			}
 
 			switch fieldType {
-			case reflect.Int, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			case FieldInt:
 				if mod_guess == "<" || mod_guess == ">" {
 					if mod_guess2 == "<=" || mod_guess2 == ">=" {
 						if value_as_int, err := strconv.ParseInt(value_as_string[2:], 10, 64); err == nil {
@@ -194,12 +200,12 @@ func setWhere(field string, value any, fieldType reflect.Kind, setFunc func(stri
 					}
 				}
 
-			case reflect.Bool:
+			case FieldBool:
 				if value_as_bool, err := strconv.ParseBool(value_as_string); err == nil {
 					setFunc(field, value_as_bool, "=")
 				}
 
-			case reflect.Float32, reflect.Float64:
+			case FieldFloat:
 				if mod_guess == "<" || mod_guess == ">" {
 					if mod_guess2 == "<=" || mod_guess2 == ">=" {
 						if value_as_float, err := strconv.ParseFloat(value_as_string[2:], 64); err == nil {
@@ -216,7 +222,7 @@ func setWhere(field string, value any, fieldType reflect.Kind, setFunc func(stri
 					}
 				}
 
-			case reflect.Struct:
+			case FieldTime:
 				var dateString string
 				var operator string
 
@@ -237,6 +243,19 @@ func setWhere(field string, value any, fieldType reflect.Kind, setFunc func(stri
 					return
 				}
 				setFunc(field, parsedDate, operator)
+
+			case FieldJSON:
+			  // Check if this has an override
+				if json.Valid([]byte(value_as_string)) {
+					setFunc(field, value_as_string, "=")
+				}
+
+			case FieldUUID:
+				// UUIDs are matched exactly — a malformed value is dropped rather than
+				// passed through to a regex/range comparison that doesn't apply to them.
+				if _, err := uuid.Parse(value_as_string); err == nil {
+					setFunc(field, value_as_string, "=")
+				}
 
 			default:
 				setFunc(field, value_as_string, "~*")
@@ -271,7 +290,9 @@ func parseDate(dateStr string) (time.Time, error) {
 	return time.Time{}, lastErr
 }
 
-func (qb *QueryBuilder) SetWhere(field string, value any, fieldType reflect.Kind) {
+// Wrapper function for the internal setWhere while specifying the field type 
+// and using the internal "innerSetWhere" as the setvalue function.
+func (qb *QueryBuilder) SetWhere(field string, value any, fieldType FieldKind) {
 	setWhere(field, value, fieldType, qb.innerSetWhere)
 }
 
@@ -556,10 +577,10 @@ func (qb *QueryBuilder) buildWhereClause() string {
 	return fmt.Sprintf(" WHERE %s", strings.Join(w, " AND "))
 }
 
-func (qb *QueryBuilder) BuildSelect(table string, select_fields []string) string {
+func (qb *QueryBuilder) BuildSelect(table_name string, select_fields []string) string {
 	sb := strings.Builder{}
 
-	sb.WriteString(fmt.Sprintf("SELECT %s FROM %s", strings.Join(select_fields, ", "), table))
+	sb.WriteString(fmt.Sprintf("SELECT %s FROM %s", strings.Join(select_fields, ", "), table_name))
 	sb.WriteString(qb.buildWhereClause())
 
 	if len(qb.groups) > 0 {
@@ -602,7 +623,7 @@ func (qb *QueryBuilder) BuildSchema(cfg *models.DataModel) *models.DataModelPubl
 	// Record all the fields
 	for k, v := range cfg.Fields {
 		if v.Private == nil || *v.Private == false {
-			schema.Fields[k] = models.DataModelFieldPublicSchema{
+			field_schema := models.DataModelFieldPublicSchema{
 				Type: StringDeref(v.Type),
 				JSON: StringDeref(v.JSON),
 				Required: BoolDeref(v.Required_on_insert),
@@ -612,6 +633,15 @@ func (qb *QueryBuilder) BuildSchema(cfg *models.DataModel) *models.DataModelPubl
 				Default: StringDeref(v.Default),
 				Rules: v.Rules,
 			}
+			// Describe any json-select abstraction: GET responses for this field select
+			// Select_expression (e.g. jsonb_array_length(col)) instead of the raw jsonb
+			// column, so its effective response type is JSON_select.TreatAs, not Type.
+			// Writes are unaffected — they still expect the raw jsonb value.
+			if expr, ok := jsonSelectExpr(&v); ok {
+				field_schema.Select_override = v.JSON_select
+				field_schema.Select_expression = expr
+			}
+			schema.Fields[k] = field_schema
 		}
 	}
 
@@ -730,12 +760,18 @@ func (qb *QueryBuilder) processSort(r *http.Request, resolve FieldResolver) {
 
 // processWhereFromConfig walks every field in the model and adds a WHERE clause for any
 // URL param matching the field's JSON name. Honors absolute-match and field type for
-// operator inference.
+// operator inference. The readAbstraction is for select statement where the return value is
+// an abstraction of the field and not its default type. i.e. jsonb_array_length(field) > int 
 func (qb *QueryBuilder) processWhereFromConfig(r *http.Request, cfg *models.DataModel) error {
 	for field_name, field_cfg := range cfg.Fields {
+		// If there is no valid json to match, skip this item
 		if field_cfg.JSON == nil || *field_cfg.JSON == "" { continue }
+
+		// Check if this item is in the selection
 		url_value := r.FormValue(*field_cfg.JSON)
 		if url_value == "" { continue }
+
+		// Also skip if there is no valid field type
 		if field_cfg.Type == nil { continue }
 		dereferenced := ValueDeref(field_cfg.Type)
 		if !dereferenced.IsValid() {
@@ -744,15 +780,69 @@ func (qb *QueryBuilder) processWhereFromConfig(r *http.Request, cfg *models.Data
 		field_type, err := DecodeFieldType(dereferenced.Interface().(string))
 		if err != nil { return err }
 
+		// Override field type and column reference if this is json and there is an
+		// abstraction in place — the WHERE clause must filter on the same expression
+		// the SELECT list exposes (e.g. jsonb_array_length(col)), not the raw jsonb column.
+		column := field_name
+		if field_type == FieldJSON{
+			updated_type, valid := validateJsonSelectOverride(&field_cfg)
+			if valid {
+				field_type = updated_type
+				if expr, ok := jsonSelectExpr(&field_cfg); ok {
+					column = expr
+				}
+			}
+		}
+
+		// Determine if it is an absolute field, and set the where accordingly
 		is_abs := field_cfg.Absolute_match != nil && *field_cfg.Absolute_match
 		if is_abs {
-			if !ValidateValue(field_type, url_value) { continue }
-			qb.SetWhereAbsolute(field_name, url_value)
+			if !ValidateFieldValue(field_type, url_value) { continue }
+			qb.SetWhereAbsolute(column, url_value)
 		} else {
-			qb.SetWhere(field_name, url_value, field_type)
+			qb.SetWhere(column, url_value, field_type)
 		}
 	}
 	return nil
+}
+
+// Internal helper function for extracting a field override type. Primarily for
+// jsonb > int abstraction.
+func validateJsonSelectOverride(cfg *models.DataModelField) (FieldKind, bool) {
+	if cfg.JSON_select == nil { return "", false }
+	if cfg.JSON_select.Action == nil || *cfg.JSON_select.Action == "" { return "", false }
+	if cfg.JSON_select.ApplyOn == nil || *cfg.JSON_select.ApplyOn == "" { return "", false }
+	if cfg.JSON_select.TreatAs == nil || *cfg.JSON_select.TreatAs == "" { return "", false }
+	updated_type, err := DecodeFieldType(*cfg.JSON_select.TreatAs)
+	if err != nil {
+		return "", false
+	}
+	return updated_type, true
+}
+
+// DescribeJsonSelect exposes jsonSelectExpr to callers outside this package (e.g. the
+// OpenAPI spec generator) that need to describe a field's json-select abstraction
+// without duplicating the action→SQL mapping.
+func DescribeJsonSelect(cfg *models.DataModelField) (string, bool) {
+	return jsonSelectExpr(cfg)
+}
+
+// jsonSelectExpr returns the bare SQL expression a json-select abstraction maps a jsonb
+// column to (e.g. "jsonb_array_length(col)" for a "count" action) — used by both the
+// SELECT list (aliased back to the field's JSON key, see ConvertFieldJsonSelect in
+// config.go) and the WHERE clause (used as-is, since aliases aren't valid there).
+// Returns ("", false) if no valid abstraction applies to this field.
+func jsonSelectExpr(cfg *models.DataModelField) (string, bool) {
+	if cfg.DB_type != nil && *cfg.DB_type != "jsonb" { return "", false }
+	_, valid := validateJsonSelectOverride(cfg)
+	if !valid { return "", false }
+
+	switch *cfg.JSON_select.Action {
+	case "count":
+		return fmt.Sprintf("jsonb_array_length(%s)", *cfg.JSON), true
+	default:
+		return "", false
+	}
 }
 
 // AggregateSpec captures the inputs that shape a query's SELECT/GROUP BY/ORDER BY,
@@ -866,14 +956,29 @@ func (qb *QueryBuilder) processAggregate(r *http.Request, cfg *models.DataModel)
 // to the query builder based on the DataModel field config. Dispatches on the
 // {function} path value.
 func (qb *QueryBuilder) ProcessURLParams(r *http.Request, cfg *models.DataModel) error {
+	return qb.processURLParams(r, cfg, true)
+}
+
+// ProcessURLParamsNoFunc reads URL query parameters and applies matching WHERE clauses
+// to the query builder based on the DataModel field config. Functions disabled.
+func (qb *QueryBuilder) ProcessURLParamsNoFunc(r *http.Request, cfg *models.DataModel) error {
+	return qb.processURLParams(r, cfg, false)
+}
+
+// ProcessURLParams reads URL query parameters and applies matching WHERE clauses
+// to the query builder based on the DataModel field config. Dispatches on the
+// {function} path value.
+func (qb *QueryBuilder) processURLParams(r *http.Request, cfg *models.DataModel, check_for_functions bool) error {
 	if err := r.ParseForm(); err != nil {
 		return err
 	}
 
 	switch r.PathValue("function") {
 	case "aggregate":
+		if !check_for_functions { return fmt.Errorf("This end point doesn't support functions") }
 		return qb.processAggregate(r, cfg)
 	case "schema":
+		if !check_for_functions { return fmt.Errorf("This end point doesn't support functions") }
 		qb.schemaBuilder = true
 		return nil
 	case "":

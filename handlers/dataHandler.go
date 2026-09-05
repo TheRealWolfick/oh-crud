@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -18,6 +19,7 @@ import (
 
 func RegisterRoutes(
 	cfg *models.DataModel,
+	diff_cfg *models.DataModel,
 	handlerRegistry *tools.HandlerRegistry,
 	auth func(http.Handler) http.Handler,
 	qm *tools.QueueManager,
@@ -47,9 +49,13 @@ func RegisterRoutes(
 
 	// Handle diff routes
 	if cfg.Allow_diff != nil && *cfg.Allow_diff {
-		handlerRegistry.Register(fmt.Sprintf("GET /%s/diff", *cfg.End_point), auth(handleGetDiff(cfg, qm, server_conf)), *cfg.Version)
-		handlerRegistry.Register(fmt.Sprintf("POST /%s/diff", *cfg.End_point), auth(dynamicCreateDiff(cfg, qm, server_conf.Get())), *cfg.Version)
-		handlerRegistry.Register(fmt.Sprintf("PUT /%s/diff", *cfg.End_point), auth(dynamicActionDiff(cfg, qm, server_conf.Get())), *cfg.Version)
+		if diff_cfg == nil {
+			qm.Logger.Error("Cannot register diff routes: diffs model was not loaded", "data-model", *cfg.Name)
+		} else {
+			handlerRegistry.Register(fmt.Sprintf("GET /%s/diff", *cfg.End_point), auth(handleGetDiff(cfg, diff_cfg, qm, server_conf)), *cfg.Version)
+			handlerRegistry.Register(fmt.Sprintf("POST /%s/diff", *cfg.End_point), auth(dynamicCreateDiff(cfg, qm, server_conf.Get())), *cfg.Version)
+			handlerRegistry.Register(fmt.Sprintf("PUT /%s/diff", *cfg.End_point), auth(dynamicActionDiff(cfg, qm, server_conf.Get())), *cfg.Version)
+		}
 	}
 
 	// Built-in functions live under /fn/{function}. Today this dispatches to
@@ -60,7 +66,7 @@ func RegisterRoutes(
 	// routes after an approved schema change is committed.
 	onApplied := func(applied *models.DataModel) {
 		modelRegistry.Register(applied)
-		RegisterRoutes(applied, handlerRegistry, auth, qm, server_conf, evh, gate, modelRegistry)
+		RegisterRoutes(applied, diff_cfg, handlerRegistry, auth, qm, server_conf, evh, gate, modelRegistry)
 	}
 	// Register admin end points
 	handlerRegistry.Register(fmt.Sprintf("GET /%s/admin/pending", *cfg.End_point), middleware.CorsAdmin(cfg, server_conf)(auth(handlePendingChanges(gate, qm, cfg, server_conf))), *cfg.Version)
@@ -85,14 +91,14 @@ func RegisterRoutes(
 
 func handleGet(cfg *models.DataModel, qm *tools.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
 	if cfg.End_points_allowed != nil && cfg.End_points_allowed.GET != nil {
-		return getResource(qm, cfg, svr_cfg.Get(), 0)
+		return getResource(qm, cfg, svr_cfg.Get())
 	}
 	return notAllowed(cfg.End_points_allowed)
 }
 
-func handleGetDiff(cfg *models.DataModel, qm *tools.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
+func handleGetDiff(cfg *models.DataModel, diff_cfg *models.DataModel, qm *tools.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
 	if cfg.End_points_allowed != nil && cfg.End_points_allowed.DIFF != nil {
-		return getResource(qm, cfg, svr_cfg.Get(), 1)
+		return getDiff(qm, cfg, diff_cfg, svr_cfg.Get())
 	}
 	return notAllowed(cfg.End_points_allowed)
 }
@@ -310,7 +316,6 @@ func getResource(
 	qm *tools.QueueManager,
 	cfg *models.DataModel,
 	svr_cfg *models.ServerConfig,
-	limit int,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Get Resource"
@@ -344,9 +349,6 @@ func getResource(
 			http.Error(w, fmt.Sprintf("Error in parsing where clauses: %v", err.Error()), http.StatusBadRequest)
 			return
 		}
-		
-		// Overwrite limit with new amount
-		if limit > 0 { qb.SetLimit(limit) }
 
 		// Return the schema if this was requested
 		if qb.IsSchemaBuilder() {
@@ -384,6 +386,104 @@ func getResource(
 
 		g.Go(func() error {
 			r, err := qm.Db.Query(queryCtx, qb.BuildCountWithWhere(*cfg.Table_name), qb.GetArgs()...)
+			if err != nil {
+				return err
+			}
+			defer r.Close()
+			total_count, err = pgx.CollectOneRow(r, pgx.RowTo[int])
+			return err
+		})
+
+		if err := g.Wait(); err != nil {
+			log.Error("GET_ERROR", "error", err)
+			http.Error(w, fmt.Sprintf("Error with the query:\n%v", err), http.StatusInternalServerError)
+			return
+		}	
+
+		response["data"] = data
+		response["total_count"] = total_count
+
+		// Return
+		json.NewEncoder(w).Encode(response)
+	}
+}
+
+
+// Get resources via the standard api
+func getDiff(
+	qm *tools.QueueManager,
+	cfg *models.DataModel,
+	diff_cfg *models.DataModel,
+	svr_cfg *models.ServerConfig,
+) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		task_type := "Get Diff"
+		function := "get"
+		user_key := middleware.Contextkey("user")
+		req_ip := tools.GetIP(r)
+		req_id, _ := tools.Generate32CharString()
+		req_username := r.Context().Value(user_key).(*models.User).Username
+		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", function, "task_type", task_type, "end_point", fmt.Sprintf("%s/diff",*cfg.End_point), "table", *diff_cfg.Table_name, "request_id", req_id)
+		ctx := middleware.SetLogger(context.WithoutCancel(r.Context()), log)
+
+		log.Info("REQUEST_RECEIVED")
+
+		// Response intialization
+		w.Header().Set("Content-Type", "application/json")
+		response := map[string]any{"task_type": task_type}
+
+		// Check that a user is allowed to inteface with this command
+		if !middleware.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.DIFF, svr_cfg) {
+			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
+			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
+			return
+		}
+
+		// Create new query builder and save it into the context of the request. Defaults
+		// (e.g. soft-delete) and URL param matching must use the diffs model, since that's
+		// the table this handler actually queries — not the resource model.
+		qb := tools.NewQueryBuilder(log)
+	  qb.SetDefaults(diff_cfg, r)
+
+		if err := qb.ProcessURLParamsNoFunc(r, diff_cfg); err != nil {
+			log.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", err)
+			http.Error(w, fmt.Sprintf("Error in parsing where clauses: %v", err.Error()), http.StatusBadRequest)
+			return
+		}
+
+		// Set the static where clause after url params (preventing a user from getting diffs from a separate table)
+		qb.SetWhereAbsolute("diff_type", *cfg.Table_name)
+
+		var query string
+		if qb.HasFields() {
+			query = qb.BuildSelect(*diff_cfg.Table_name, qb.GetFields())
+		} else {
+			query = qb.BuildSelect(*diff_cfg.Table_name, tools.DynamicGetDatabaseColumns(diff_cfg, false, false))
+		}
+		// Save the page data into the response
+		response["page"] = qb.GetPage()
+		response["page_size"] = qb.GetPageSize()
+
+		// Run the queries and extract the data asyncronously
+		var (
+			data        []map[string]any
+			total_count int
+		)
+		g, queryCtx := errgroup.WithContext(ctx)
+
+		g.Go(func() error {
+			qm.Logger.Debug("Query", "q", query)
+			r, err := qm.Db.Query(queryCtx, query, qb.GetArgs()...)
+			if err != nil {
+				return err
+			}
+			defer r.Close()
+			data, err = pgx.CollectRows(r, pgx.RowToMap)
+			return err
+		})
+
+		g.Go(func() error {
+			r, err := qm.Db.Query(queryCtx, qb.BuildCountWithWhere(*diff_cfg.Table_name), qb.GetArgs()...)
 			if err != nil {
 				return err
 			}
@@ -832,19 +932,28 @@ func dynamicActionDiff(
 		decodeJSONB("diffs", &diffs)
 		decodeJSONB("batched", &batched)
 
-		// Batch code
+		// Batch code. generate_batch_number returns a SQL int, and batch_number is stored
+		// as a bigint — neither is JSON-encoded, so they're read directly rather than via
+		// decodeJSONB (which is for the jsonb columns above).
 		var batchCode string
 		if !batched {
 			// Generate a new code
+			var batchNumber int64
 			batchRow := qm.Db.QueryRow(r.Context(), `SELECT generate_batch_number($1, $2, $3)`, *cfg.Table_name, "Asset Data", req_username)
-			if err := batchRow.Scan(&batchCode); err != nil {
+			if err := batchRow.Scan(&batchNumber); err != nil {
 				log.Error("BATCH_CODE_ERROR", "error", err)
 				http.Error(w, "Error generating batch code", http.StatusInternalServerError)
 				return
 			}
+			batchCode = strconv.FormatInt(batchNumber, 10)
 		} else {
 			// Read the existing batch code
-			decodeJSONB("batch_number", &batchCode)
+			switch v := row["batch_number"].(type) {
+			case int64:
+				batchCode = strconv.FormatInt(v, 10)
+			case int32:
+				batchCode = strconv.FormatInt(int64(v), 10)
+			}
 		}
 
 		// Build sync arrays from diffs

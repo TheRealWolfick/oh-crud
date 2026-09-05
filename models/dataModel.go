@@ -44,6 +44,12 @@ type DataModelFieldRules struct {
 	Enum []string    `yaml:"enum"`
 }
 
+type DataModelJsonSelect struct {
+	Action *string    `yaml:"action"`
+	ApplyOn *string  `yaml:"apply-on"`
+	TreatAs *string     `yaml:"treat-as"`
+}
+
 // DataModelField describes the schema for a single field within a DataModel.
 type DataModelField struct {
 	// Field metadata
@@ -60,8 +66,10 @@ type DataModelField struct {
 	Default  *string `yaml:"default"`
 	// Atlas metadata
 	Migration *string `yaml:"migration"`
+	// Rules metadata
 	Private *bool `yaml:"private"`
 	Rules *DataModelFieldRules `yaml:"rules"`
+	JSON_select *DataModelJsonSelect `yaml:"json-select"`
 }
 
 // DataModelFieldPublicSchema is the public/exposed allowance of a datamodelfield.
@@ -77,6 +85,14 @@ type DataModelFieldPublicSchema struct {
 	Default            string `yaml:"default"`
 	// Atlas metadata
 	Rules              *DataModelFieldRules `yaml:"rules"`
+	// Select_override describes a json-select abstraction on this field, if configured
+	// (see DataModelJsonSelect). Nil for every field that isn't abstracted.
+	Select_override    *DataModelJsonSelect `yaml:"json-select"`
+	// Select_expression is the SQL expression GET responses actually select for this
+	// field when Select_override is set (e.g. "jsonb_array_length(missing_from_supplied)"),
+	// aliased back onto Select_override.TreatAs rather than the field's stored Type/DB_type.
+	// Empty when Select_override is nil.
+	Select_expression  string `yaml:"select-expression"`
 }
 
 // End_pointsAllowed controls which HTTP methods are enabled for a given endpoint.

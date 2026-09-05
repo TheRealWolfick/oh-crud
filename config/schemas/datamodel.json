@@ -153,6 +153,14 @@
             "type": "array",
             "items": { "type": "string" }
           },
+          "json-select": { 
+            "type": "object",
+            "properties": {
+              "action": { "type": "string", "enum": ["count"] },
+              "apply-on": { "type": "string" },
+              "treat-as": { "type": "string", "enum": ["int", "float"] }
+            }
+          },
           "include-in-diff":   { "type": "boolean" },
           "required-on-insert": { "type": "boolean" },
           "absolute-match":    { "type": "boolean" },

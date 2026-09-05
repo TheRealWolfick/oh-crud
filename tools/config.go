@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"gopkg.in/yaml.v3"
 	"lotusforge.au/api-server/models"
@@ -35,18 +35,61 @@ func LoadYAMLIntoModel[T any](path string) (*T, error) {
 	return nil, errors.New("File passed was not a yaml file")
 }
 
-func DecodeFieldType(typ string) (reflect.Kind, error) {
-	switch typ {
-	case "int":
-		return reflect.Int, nil
-	case "float":
-		return reflect.Float64, nil
-	case "string":
-		return reflect.String, nil
-	case "bool":
-		return reflect.Bool, nil
+// FieldKind identifies a model field's config-declared type ("int", "json", "time", ...).
+// It exists so WHERE-clause building (setWhere) and value validation (ValidateFieldValue)
+// can distinguish types like "time" and "json" that don't map onto distinct reflect.Kind
+// values (both could otherwise only be represented as reflect.Struct/reflect.Map).
+type FieldKind string
+
+const (
+	FieldInt    FieldKind = "int"
+	FieldFloat  FieldKind = "float"
+	FieldString FieldKind = "string"
+	FieldBool   FieldKind = "bool"
+	FieldTime   FieldKind = "time"
+	FieldJSON   FieldKind = "json"
+	FieldUUID   FieldKind = "uuid"
+)
+
+func DecodeFieldType(typ string) (FieldKind, error) {
+	switch FieldKind(typ) {
+	case FieldInt, FieldFloat, FieldString, FieldBool, FieldTime, FieldJSON, FieldUUID:
+		return FieldKind(typ), nil
 	}
-	return reflect.Invalid, fmt.Errorf("Unsupported data format %s", typ)
+	return "", fmt.Errorf("Unsupported data format %s", typ)
+}
+
+// ValidateFieldValue reports whether raw can be interpreted as the given config field
+// type. Used on the absolute-match path, where a value that fails validation is skipped
+// rather than passed through to setWhere's operator inference.
+func ValidateFieldValue(kind FieldKind, raw any) bool {
+	if raw == nil {
+		return false
+	}
+	as_string := fmt.Sprintf("%v", raw)
+
+	switch kind {
+	case FieldInt:
+		_, err := strconv.ParseInt(as_string, 10, 64)
+		return err == nil
+	case FieldFloat:
+		_, err := strconv.ParseFloat(as_string, 64)
+		return err == nil
+	case FieldBool:
+		_, err := strconv.ParseBool(as_string)
+		return err == nil
+	case FieldString:
+		return true
+	case FieldTime:
+		_, err := parseDate(as_string)
+		return err == nil
+	case FieldJSON:
+		return json.Valid([]byte(as_string))
+	case FieldUUID:
+		_, err := uuid.Parse(as_string)
+		return err == nil
+	}
+	return false
 }
 
 // GetDiffComparatorKey returns the YAML field name of the diff comparator.
@@ -170,14 +213,24 @@ func CheckFieldExists(key string, cfg *models.DataModel) (string, bool) {
 // by name, JSON key, or alias, but also checks that it is not a private field. Returns the field name
 func CheckFieldGetValid(key string, cfg *models.DataModel) (string, bool) {
 	for field_name, field_cfg := range cfg.Fields {
-		if key == field_name || key == *field_cfg.JSON {
+		if key == *field_cfg.JSON {
 			if field_cfg.Private != nil && *field_cfg.Private { return "", false }
-			return field_name, true
+
+			// Process any abstractions on the field
+			field_name_processed := field_name
+			updated_field_name, update := ConvertFieldJsonSelect(&field_cfg)
+			if update { field_name_processed = updated_field_name }
+			return field_name_processed, true
 		}
 		if len(field_cfg.JSON_alias) > 0 {
 			if slices.Contains(field_cfg.JSON_alias, key) {
 				if field_cfg.Private != nil && *field_cfg.Private { return "", false }
-				return field_name, true
+
+				// Process any abstractions on the field
+				field_name_processed := field_name
+				updated_field_name, update := ConvertFieldJsonSelect(&field_cfg)
+				if update { field_name_processed = updated_field_name }
+				return field_name_processed, true
 			}
 		}
 	}
@@ -702,13 +755,17 @@ func DynamicGetDatabaseColumns(cfg *models.DataModel, pk_only bool, req_only boo
 		pk = *cfg.Primary_key
 	}
 
+	// For each field in the config
 	for field_name, field_cfg := range cfg.Fields {
+		// Passed in selectors
 		if pk_only || req_only {
 			if pk_only {
+				// Appending only the PK
 				if field_name == pk {
 					database_columns = append(database_columns, field_name)
 				}
 			} else {
+				// Appending all Req fields
 				is_pk := field_name == pk
 				is_req := field_cfg.Required_on_insert != nil && *field_cfg.Required_on_insert
 				if is_pk || is_req {
@@ -716,13 +773,29 @@ func DynamicGetDatabaseColumns(cfg *models.DataModel, pk_only bool, req_only boo
 				}
 			}
 		} else {
+			// Append all non private fields
 			if field_cfg.Private != nil && *field_cfg.Private {
 				continue
 			}
+			// Convert any JSON field selects. It is currently not believed to be required for PK only
+			// and req only selections
+			updated_field_name, updated := ConvertFieldJsonSelect(&field_cfg)
+			if updated { field_name = updated_field_name }
 			database_columns = append(database_columns, field_name)
 		}
 	}
 	return database_columns
+}
+
+// ConvertFieldJsonSelect returns the SELECT-list expression for a field with a valid
+// json-select abstraction (e.g. "jsonb_array_length(col) AS col"), aliased back to its
+// own JSON key so the response shape is unaffected. Returns ("", false) if no valid
+// abstraction applies. See jsonSelectExpr (queryManager.go) for the WHERE-clause
+// equivalent, which needs the bare expression without the alias.
+func ConvertFieldJsonSelect(cfg *models.DataModelField) (string, bool) {
+	expr, valid := jsonSelectExpr(cfg)
+	if !valid { return "", false }
+	return fmt.Sprintf("%s AS %s", expr, *cfg.JSON), true
 }
 
 

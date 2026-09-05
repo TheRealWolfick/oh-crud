@@ -218,7 +218,7 @@ func applyParameters(
 		// Equality — use absolute-match path when the field is configured for it.
 		if (field_cfg.Absolute_match != nil && *field_cfg.Absolute_match) ||
 			(p.Op != nil && *p.Op == "=") {
-			if !tools.ValidateValue(field_type, raw) {
+			if !tools.ValidateFieldValue(field_type, raw) {
 				continue
 			}
 			qb.SetWhereAbsolute(field_name, raw)

@@ -56,8 +56,9 @@ func main() {
 
 
 	// Load default models from default, base-model, and special-models dir
-	all_models := loadModelsFromDir(default_models_dir, logger)
-	all_models = append(all_models, loadModelsFromDir(models_dir, logger)...)
+	default_models := loadModelsFromDir(default_models_dir, logger)
+	base_models := loadModelsFromDir(models_dir, logger)
+	all_models := append(default_models, base_models...)
 	// all_models = append(all_models, loadModelsFromDir(special_models_dir, logger)...)
 
 	// Sync database schema for all loaded models.
@@ -76,14 +77,30 @@ func main() {
 	// Register config-driven routes
 	handlerRegister := tools.NewHandlerRegistry(mux)
 	modelRegister := tools.NewModelRegistry()
-	for _, dm := range all_models {
+
+	// Process the default models first, then base models. This is to ensure the diffs model has been loaded
+	// before any diff references are created
+	for _, dm := range default_models {
 		modelRegister.Register(&dm)
 		if dm.End_point == nil || *dm.End_point == "" {
 			logger.Debug(fmt.Sprintf("Skipping end point for: %s", *dm.Name))
 			continue
 		}
-		handlers.RegisterRoutes(&dm, handlerRegister, authMiddleware, qm, server_conf, evh, gate, modelRegister)
+		handlers.RegisterRoutes(&dm, nil, handlerRegister, authMiddleware, qm, server_conf, evh, gate, modelRegister)
 	}
+	diff_model, found := modelRegister.ByTableName("diffs")
+	if (!found) { logger.Error("Diffs table was not loaded") }
+	for _, dm := range base_models {
+		modelRegister.Register(&dm)
+		if dm.End_point == nil || *dm.End_point == "" {
+			logger.Debug(fmt.Sprintf("Skipping end point for: %s", *dm.Name))
+			continue
+		}
+		if (found) {
+		handlers.RegisterRoutes(&dm, diff_model, handlerRegister, authMiddleware, qm, server_conf, evh, gate, modelRegister)
+		} else { handlers.RegisterRoutes(&dm, nil, handlerRegister, authMiddleware, qm, server_conf, evh, gate, modelRegister) }
+	}
+
 
 	// Load and register declarative functions. Must happen after models are
 	// registered because each function validates against its bound model.
@@ -94,7 +111,7 @@ func main() {
 	}
 
 	// OpenAPI spec endpoint
-	mux.Handle("GET /openapi.json", handlers.NewOpenAPIHandler(modelRegister))
+	mux.Handle("GET /openapi.json", handlers.NewOpenAPIHandler(modelRegister, functionRegister))
 
 	// Load the file watchers
 	go monitors.ModelsMonitor(handlerRegister, modelRegister, authMiddleware, qm, gate, server_conf, evh)

@@ -99,10 +99,12 @@ X-User-Note: Imported from external sync
 | `GET /health`       | No   | Returns the literal text `OK`                      |
 | `GET /openapi.json` | No   | OpenAPI 3.0.3, regenerated per request from loaded models. No CORS headers. |
 
-The generated spec covers CRUD, `/group`, and `/diff` paths, with per-field query
-parameters and request schemas. It does **not** describe `/fn/*`, `/history/*`, `/admin/*`,
-or websockets, and it declares no security scheme — treat it as a field/route inventory,
-not a complete contract.
+The generated spec covers CRUD, `/group`, `/diff`, and declarative-function
+(`/{ep}/fn/{name}`) paths, with per-field query parameters and request schemas. A field with
+a `json-select` override (see §6) carries a `description` noting the read/write shape
+mismatch. It does **not** describe the built-in `/fn/schema` and `/fn/aggregate` endpoints,
+`/history/*`, `/admin/*`, or websockets, and it declares no security scheme — treat it as a
+field/route inventory, not a complete contract.
 
 ---
 
@@ -236,6 +238,7 @@ Default (no prefix) behaviour by type:
 | `time`   | `field = <parsed date>`; unparseable → `~*` fuzzy match              |
 | `string` | `field ~* value` — **case-insensitive regex, i.e. substring search**  |
 | `uuid`   | `field ~* value`                                                     |
+| `json`   | see **JSON / jsonb querying** below                                  |
 
 `absolute-match: true` on a field forces `=` regardless. Note the string default: `?building=A`
 matches anything *containing* `A`. Anchor it (`?building=^A$`) or set `absolute-match` on the
@@ -251,6 +254,45 @@ Accepted date formats, tried in order:
 2006-01-02, 2006-01-02T15:04:05Z07:00, 2006-01-02T15:04:05,
 2006-01-02 15:04:05, 01/02/2006, 02/01/2006, RFC3339, RFC3339Nano
 ```
+
+### JSON / jsonb querying
+
+A field with `type: json` (`db-type: jsonb`) behaves differently depending on whether the
+model declares a `json-select` override for it:
+
+**Without `json-select`** (a plain jsonb field): the response returns the column's raw JSON
+value, and the only supported filter is an exact match with a JSON-valid value — e.g.
+`?raw_payload={"a":1}` becomes `raw_payload = '{"a":1}'::jsonb`. Prefixed operators (`>`,
+`>=`, etc.) are not supported and are silently dropped; anything that isn't valid JSON is
+also dropped rather than erroring.
+
+**With `json-select`** — currently the only supported form is a `count` abstraction:
+
+```yaml
+missing_from_supplied:
+  type: json
+  db-type: jsonb
+  json: missing_from_supplied
+  json-select:
+    action: count      # only "count" is implemented
+    apply-on: list      # the jsonb value is a JSON array
+    treat-as: int        # response/filter type after the abstraction
+```
+
+This changes both directions of the field:
+
+- **GET response** — the column is selected as `jsonb_array_length(missing_from_supplied) AS
+  missing_from_supplied`, so the client receives an integer (the array's length), not the
+  array itself. `GET /{ep}/fn/schema` reports this under the field's `Select_override` /
+  `Select_expression` keys (see §10) — check there rather than assuming from the YAML.
+- **GET filtering** — a query parameter against this field filters on the same expression,
+  using `treat-as` for operator inference: `?missing_from_supplied=3` becomes
+  `jsonb_array_length(missing_from_supplied) = 3`, and `?missing_from_supplied=>0` becomes
+  `jsonb_array_length(missing_from_supplied) > 0`. You cannot filter on the raw array
+  contents of an overridden field through the standard GET endpoint.
+- **Writes (POST/PUT) are unaffected** — `json-select` is a read-time abstraction only. The
+  body must still contain the raw JSON array/object; the override never applies to inserts,
+  updates, or the diff creation/actioning flows (§12).
 
 ### Soft delete
 
@@ -523,12 +565,21 @@ fields are omitted.
     "building": {
       "Type": "string", "JSON": "building", "Required": true,
       "Skip_insert": false, "DB_type": "character varying(15)",
-      "Nullable": false, "Default": "", "Rules": null
+      "Nullable": false, "Default": "", "Rules": null,
+      "Select_override": null, "Select_expression": ""
     },
     "building_description": {
       "Type": "string", "JSON": "building_description", "Required": false,
       "Skip_insert": false, "DB_type": "character varying(200)",
-      "Nullable": true, "Default": "", "Rules": null
+      "Nullable": true, "Default": "", "Rules": null,
+      "Select_override": null, "Select_expression": ""
+    },
+    "missing_from_supplied": {
+      "Type": "json", "JSON": "missing_from_supplied", "Required": false,
+      "Skip_insert": false, "DB_type": "jsonb",
+      "Nullable": true, "Default": "", "Rules": null,
+      "Select_override": { "Action": "count", "ApplyOn": "list", "TreatAs": "int" },
+      "Select_expression": "jsonb_array_length(missing_from_supplied)"
     }
   }
 }
@@ -537,7 +588,10 @@ fields are omitted.
 Reading it: `Required` = must be present to create. `Skip_insert` = server-generated, never
 send it. To update, the body must satisfy `Primary_key` or one full entry of `Unique_keys`.
 `Rules` mirrors the YAML validation rules and can be projected straight into client-side
-form validation.
+form validation. `Select_override` is non-null only for a field with a `json-select`
+abstraction (see §6) — when set, `Select_expression` is the SQL this field actually resolves
+to on GET, and the field's *effective* response/filter type is `Select_override.TreatAs`, not
+`Type`. Writes always use `Type`/`DB_type` (the raw jsonb shape) regardless of `Select_override`.
 
 ### Built-in: `aggregate`
 
@@ -635,22 +689,40 @@ base64). Inserts have `old_values: null`. Soft deletes appear as a change to `de
 
 For models with `allow-diff: true`. Purpose: submit an external dataset, compare it to what
 is stored, and get back sync instructions. The endpoints are `auth`-wrapped but **not**
-CORS-wrapped — proxy them.
+CORS-wrapped — proxy them. All three steps share one `diffs` table across every model;
+`GET`/`PUT` always scope to the calling model's own rows (below), so you never see or action
+another model's diffs even though the table is shared.
 
 **1. Create.** `POST /{ep}/diff`, body a JSON array of records (same key rules as bulk
 insert; each row must carry an identifying key). Returns `task_id`, `rows_received`,
-`rows_valid`, `rows_invalid`, `invalid_resources`. The comparison runs asynchronously and
-stores a row in `diffs` keyed by an MD5 `checksum`. No websocket event is emitted for this
-(see §9), so poll step 2 by `task_id`.
+`rows_valid`, `rows_invalid`, `invalid_resources`. The comparison runs asynchronously,
+diffing the supplied rows against what is currently stored, and stores one row in `diffs`
+keyed by an MD5 `checksum`. No websocket event is emitted for this (see §9), so poll step 2
+by `task_id`. Which fields participate is controlled per field by `include-in-diff` and
+`absolute-match`; rows are matched on the model's `diff-comparator` field. This step reads
+and diffs the model's raw stored values — `json-select` overrides (§6) never apply here, so
+a jsonb field with a `count` override is still compared as its full JSON value, not a count.
 
-**2. Read.** `GET /{ep}/diff?task_id=...` or `?checksum=...`. Returns a one-element array of
-raw `diffs` rows: `diff_id, diff_type, task_id, missing_from_supplied, missing_from_stored,
-diffs, generated_by_user, checksum, created, note, batched, batched_date`. An empty array
-means the diff hasn't finished (or found no differences — the task completes with
-`"no differences found"` and writes nothing).
+**2. Read.** `GET /{ep}/diff?task_id=...` or `?checksum=...`. Returns the standard pagination
+envelope wrapping `diffs` rows: `diff_id, diff_type, task_id, missing_from_supplied,
+missing_from_stored, diffs, generated_by_user, checksum, created, note, batched,
+batched_date`. An empty `data` array means the diff hasn't finished (or found no differences
+— the task completes with `"no differences found"` and writes nothing).
+
+This is a normal GET endpoint under the hood, so §6's field selection, sorting, and
+filtering all apply, scoped to `config/default/diffs.yaml`'s fields — with one exception:
+**`diff_type` is always forced to the calling model's own table**, overriding any
+`?diff_type=` you pass, so you can only ever read this model's own diffs even though every
+model's diffs share one table. `missing_from_supplied`, `missing_from_stored`, and `diffs`
+carry a `json-select: {action: count}` override (see §6/§10), so `GET` returns their
+**array length as an integer**, not the array itself — e.g. `?missing_from_supplied=>0` finds
+diffs with at least one row missing from the supplied dataset, but the response's
+`missing_from_supplied` field is a count, not the rows. To inspect the actual rows, read this
+same field from step 3's response instead, which returns them in full.
 
 **3. Action.** `PUT /{ep}/diff?checksum=...` (`checksum` required). Generates a batch code
-and returns the sync instructions:
+and returns the sync instructions, with the jsonb fields in full (no `json-select`
+abstraction on this endpoint):
 
 ```json
 {
@@ -662,11 +734,12 @@ and returns the sync instructions:
 }
 ```
 
-Actioning does not mutate anything — apply the instructions yourself via the normal
-`/group` write endpoints.
-
-Which fields participate is controlled per field by `include-in-diff` and `absolute-match`;
-rows are matched on the model's `diff-comparator` field.
+Actioning does not mutate anything, including the diff row's own `batched` flag — apply the
+instructions yourself via the normal `/group` write endpoints. Because `batched` is never
+set, **every `PUT` call generates a brand-new `batch_code`**, even for the same checksum
+called repeatedly; there is currently no way to fetch a previously-issued code for a diff.
+If you need one code across multiple actions, capture it from the first response and reuse
+it yourself rather than calling `PUT` again.
 
 ---
 
@@ -1107,3 +1180,7 @@ async function createAsset(row: Record<string, unknown>) {
 17. Same-field range filters aren't supported on the standard GET (only `from`/`to` on
     history).
 18. Pending schema approvals live in memory and are lost on restart.
+19. `PUT /{ep}/diff` never persists `batched`/`batch_number`, so it issues a new
+    `batch_code` on every call for the same checksum — it is not idempotent.
+20. A `json-select` override only ever applies to `GET` responses/filters; it never applies
+    to writes or to the diff create/action flows, which always see the raw jsonb value.

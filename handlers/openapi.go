@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"sort"
 	"strings"
@@ -12,15 +13,20 @@ import (
 
 // OpenAPIHandler serves a dynamically generated OpenAPI 3.0.3 spec at GET /openapi.json.
 type OpenAPIHandler struct {
-	registry *tools.ModelRegistry
+	registry         *tools.ModelRegistry
+	functionRegistry *tools.FunctionRegistry
 }
 
-func NewOpenAPIHandler(registry *tools.ModelRegistry) *OpenAPIHandler {
-	return &OpenAPIHandler{registry: registry}
+func NewOpenAPIHandler(registry *tools.ModelRegistry, functionRegistry *tools.FunctionRegistry) *OpenAPIHandler {
+	return &OpenAPIHandler{registry: registry, functionRegistry: functionRegistry}
 }
 
 func (h *OpenAPIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	spec := buildOpenAPISpec(h.registry.All())
+	var functions []*models.FunctionDef
+	if h.functionRegistry != nil {
+		functions = h.functionRegistry.All()
+	}
+	spec := buildOpenAPISpec(h.registry.All(), functions)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(spec)
 }
@@ -44,6 +50,7 @@ type oaComponents struct {
 }
 
 type oaSchema struct {
+	Ref         string               `json:"$ref,omitempty"`
 	Type        string               `json:"type,omitempty"`
 	Format      string               `json:"format,omitempty"`
 	Properties  map[string]*oaSchema `json:"properties,omitempty"`
@@ -68,6 +75,7 @@ type oaPathItem struct {
 
 type oaOperation struct {
 	Summary     string                `json:"summary"`
+	Description string                `json:"description,omitempty"`
 	OperationID string                `json:"operationId"`
 	Tags        []string              `json:"tags,omitempty"`
 	Parameters  []oaParameter         `json:"parameters,omitempty"`
@@ -99,14 +107,23 @@ type oaResponse struct {
 
 // ── Spec builder ──────────────────────────────────────────────────────────────
 
-func buildOpenAPISpec(dataModels []models.DataModel) oaSpec {
+func buildOpenAPISpec(dataModels []models.DataModel, functions []*models.FunctionDef) oaSpec {
 	spec := oaSpec{
 		OpenAPI: "3.0.3",
-		Info:    oaInfo{Title: "Asset Data API", Version: "1.0.0"},
+		Info:    oaInfo{Title: "Oh CRUD API", Version: "1.0.0"},
 		Paths:   map[string]oaPathItem{},
 		Components: oaComponents{
 			Schemas: map[string]oaSchema{},
 		},
+	}
+
+	// Index model names by end point so function paths can be tagged with the
+	// bound model's name, matching the tag every other operation on that model uses.
+	modelNameByEndpoint := map[string]string{}
+	for _, m := range dataModels {
+		if m.Name != nil && m.End_point != nil {
+			modelNameByEndpoint[*m.End_point] = *m.Name
+		}
 	}
 
 	for _, m := range dataModels {
@@ -137,7 +154,7 @@ func buildOpenAPISpec(dataModels []models.DataModel) oaSpec {
 						Content: map[string]oaMediaType{
 							"application/json": {Schema: oaSchemaRef{
 								Type:  "array",
-								Items: &oaSchema{Type: "object"},
+								Items: &oaSchema{Ref: schemaRef},
 							}},
 						},
 					},
@@ -247,6 +264,60 @@ func buildOpenAPISpec(dataModels []models.DataModel) oaSpec {
 		}
 	}
 
+	// ── Declarative function paths ───────────────────────────────────────────
+	// Functions are loaded into a separate FunctionRegistry (models.FunctionDef, not
+	// models.DataModel) and were previously invisible to this generator because it
+	// was only ever handed the model registry.
+	for _, fn := range functions {
+		if fn.Bound_to == nil || fn.Name == nil {
+			continue
+		}
+		tags := []string{*fn.Bound_to}
+		if name, ok := modelNameByEndpoint[*fn.Bound_to]; ok {
+			tags = []string{name}
+		}
+
+		params := []oaParameter{
+			{Name: "page", In: "query", Schema: oaSchema{Type: "integer"}, Description: "Page number (default 1)"},
+			{Name: "page_size", In: "query", Schema: oaSchema{Type: "integer"}, Description: "Results per page (default 25)"},
+			{Name: "sort_by", In: "query", Schema: oaSchema{Type: "string"}, Description: "Appended as a tiebreaker after the function's own sort-by"},
+		}
+		for _, p := range fn.Parameters {
+			if p.Name == nil {
+				continue
+			}
+			params = append(params, oaParameter{
+				Name:     *p.Name,
+				In:       "query",
+				Required: p.Required != nil && *p.Required,
+				Schema:   oaSchema{Type: "string"},
+			})
+		}
+
+		description := "Declarative function bound to " + *fn.Bound_to + ". `fields` is ignored — the function owns its column list; only its declared parameters produce WHERE clauses."
+		if fn.Description != nil && *fn.Description != "" {
+			description = *fn.Description
+		}
+
+		spec.Paths["/"+*fn.Bound_to+"/fn/"+*fn.Name] = oaPathItem{
+			Get: &oaOperation{
+				Summary:     "Run function " + *fn.Name,
+				Description: description,
+				OperationID: "fn" + sanitizeName(*fn.Bound_to) + sanitizeName(*fn.Name),
+				Tags:        tags,
+				Parameters:  params,
+				Responses: map[string]oaResponse{
+					"200": {
+						Description: "Success",
+						Content: map[string]oaMediaType{
+							"application/json": {Schema: oaSchemaRef{Type: "object"}},
+						},
+					},
+				},
+			},
+		}
+	}
+
 	return spec
 }
 
@@ -273,6 +344,20 @@ func buildModelSchema(m models.DataModel) oaSchema {
 		fs := fieldTypeToSchema(*field.Type)
 		if field.Nullable != nil && *field.Nullable {
 			fs.Nullable = true
+		}
+		// A json-select override changes what GET actually returns for this field
+		// (e.g. an integer count) without changing what a write should send (the raw
+		// JSON value this schema still describes) — call that out rather than silently
+		// misdescribing the read shape.
+		if expr, ok := tools.DescribeJsonSelect(&field); ok {
+			treatAs := ""
+			if field.JSON_select != nil && field.JSON_select.TreatAs != nil {
+				treatAs = *field.JSON_select.TreatAs
+			}
+			fs.Description = fmt.Sprintf(
+				"Stored as jsonb. GET responses return %s (type: %s) instead of the raw JSON value. Writes (POST/PUT) still expect the raw JSON.",
+				expr, treatAs,
+			)
 		}
 		schema.Properties[*field.JSON] = &fs
 		if field.Required_on_insert != nil && *field.Required_on_insert {

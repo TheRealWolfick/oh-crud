@@ -115,3 +115,11 @@ func (r *ModelRegistry) ByEndpoint(end_point string) (*models.DataModel, bool) {
 	}
 	return nil, false
 }
+
+// ByTableName returns the model for a specific table as per the register
+func (r *ModelRegistry) ByTableName(table_name string) (*models.DataModel, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	model, okay := r.models[table_name]
+	return model, okay
+}

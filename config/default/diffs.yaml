@@ -1,5 +1,5 @@
 name: diffs
-version: 1.1.0
+version: 1.2.0
 table-name: diffs
 end-point: ""
 primary-key: diff_id
@@ -39,16 +39,28 @@ fields:
     db-type: jsonb
     json: missing_from_supplied
     nullable: true
+    json-select:
+      action: count
+      apply-on: list
+      treat-as: int
   missing_from_stored:
     type: json
     db-type: jsonb
     json: missing_from_stored
     nullable: true
+    json-select:
+      action: count
+      apply-on: list
+      treat-as: int
   diffs:
     type: json
     db-type: jsonb
     json: diffs
     nullable: true
+    json-select:
+      action: count
+      apply-on: list
+      treat-as: int
   generated_by_user:
     type: string
     db-type: character varying(20)

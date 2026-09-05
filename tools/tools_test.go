@@ -52,7 +52,7 @@ func TestQueryBuilder(t *testing.T) {
 
   t.Run("Does a new query builder have updates?", func(t *testing.T) {if qb.HasUpdates() {t.Error("Expected there to be no updates")}})
 
-	qb.SetWhere("dbword", "primvalue", reflect.String)
+	qb.SetWhere("dbword", "primvalue", FieldString)
 	qb.SetValue("dbsomething" ,*insertStruct.Something)
 	qb.SetValue("dbvalue", *insertStruct.Value)
 
