@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -926,35 +927,38 @@ func dynamicActionDiff(
 		var missingFromSupplied []map[string]any
 		var missingFromStored []map[string]any
 		var diffs []models.Item_Diff[map[string]any]
-		var batched bool
 		decodeJSONB("missing_from_supplied", &missingFromSupplied)
 		decodeJSONB("missing_from_stored", &missingFromStored)
 		decodeJSONB("diffs", &diffs)
-		decodeJSONB("batched", &batched)
 
-		// Batch code. generate_batch_number returns a SQL int, and batch_number is stored
-		// as a bigint — neither is JSON-encoded, so they're read directly rather than via
-		// decodeJSONB (which is for the jsonb columns above).
-		var batchCode string
-		if !batched {
-			// Generate a new code
-			var batchNumber int64
-			batchRow := qm.Db.QueryRow(r.Context(), `SELECT generate_batch_number($1, $2, $3)`, *cfg.Table_name, "Asset Data", req_username)
-			if err := batchRow.Scan(&batchNumber); err != nil {
+		// Claim this diff for batching with a single atomic UPDATE: the WHERE clause only
+		// matches while batched is still false, so Postgres's row lock on the update
+		// serializes concurrent PUTs for the same checksum (e.g. a client firing several
+		// diff-related requests in parallel on first open) -- only the request that wins the
+		// race generates and persists a batch number, and every other concurrent (or later)
+		// request falls through to the SELECT below and reads back the committed value
+		// instead of calling generate_batch_number again.
+		var batchNumber int64
+		claimRow := qm.Db.QueryRow(r.Context(), `
+			UPDATE diffs
+			SET batched = true, batch_number = generate_batch_number($1, 'Asset Data', $2), batched_date = now()
+			WHERE diff_type = $1 AND checksum = $3 AND batched = false
+			RETURNING batch_number`, *cfg.Table_name, req_username, checksum)
+		if err := claimRow.Scan(&batchNumber); err != nil {
+			if !errors.Is(err, pgx.ErrNoRows) {
 				log.Error("BATCH_CODE_ERROR", "error", err)
 				http.Error(w, "Error generating batch code", http.StatusInternalServerError)
 				return
 			}
-			batchCode = strconv.FormatInt(batchNumber, 10)
-		} else {
-			// Read the existing batch code
-			switch v := row["batch_number"].(type) {
-			case int64:
-				batchCode = strconv.FormatInt(v, 10)
-			case int32:
-				batchCode = strconv.FormatInt(int64(v), 10)
+			// Already batched -- read back the committed batch number.
+			existingRow := qm.Db.QueryRow(r.Context(), `SELECT batch_number FROM diffs WHERE diff_type = $1 AND checksum = $2`, *cfg.Table_name, checksum)
+			if err := existingRow.Scan(&batchNumber); err != nil {
+				log.Error("BATCH_CODE_ERROR", "error", err)
+				http.Error(w, "Error reading batch code", http.StatusInternalServerError)
+				return
 			}
 		}
+		batchCode := strconv.FormatInt(batchNumber, 10)
 
 		// Build sync arrays from diffs
 		syncStored := make([]map[string]any, 0)

@@ -5,6 +5,11 @@ AS $$
 DECLARE
     v_latest_batch_number int;
 BEGIN
+    -- Serialize concurrent callers for the same (table_name, service): the
+    -- SELECT MAX(...)+1 below is read-then-write and not safe against two
+    -- overlapping transactions computing the same next number.
+    PERFORM pg_advisory_xact_lock(hashtext(p_table_name || ':' || p_service));
+
     SELECT COALESCE(MAX(batch_number), 0) + 1
       INTO v_latest_batch_number
       FROM batch_numbers
