@@ -244,6 +244,12 @@ Default (no prefix) behaviour by type:
 matches anything *containing* `A`. Anchor it (`?building=^A$`) or set `absolute-match` on the
 field when you need exact matching.
 
+`#NULL` and `#NOTNULL` are reserved sigil values honored on every field, regardless of type or
+`absolute-match`: `?field=#NULL` → `field IS NULL`, `?field=#NOTNULL` → `field IS NOT NULL`. For
+non-string fields any other `#`-prefixed value is dropped; for string fields, a `#`-prefixed
+value other than the two exact sigils still falls through to the normal `~*` free-text search
+(e.g. `?tag=#urgent`).
+
 Multiple different fields AND together. The same field twice does **not** produce a range on
 the standard GET endpoint — the second value overwrites the first (only the history endpoint
 supports `from`/`to` ranges).
