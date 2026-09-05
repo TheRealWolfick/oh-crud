@@ -455,6 +455,13 @@ func syncModel(ctx context.Context, pool *pgxpool.Pool, model *models.DataModel,
 	hclPath := hclPathFor(tableName)
 
 	if !needsSync(model, hclPath) {
+		// The schema version already matches, so there is nothing to apply. A change
+		// recorded on an earlier edit can still be sitting in the gate, though: once the
+		// config has been fixed (or the DB has caught up) that entry is stale, and while
+		// it stays the file monitor keeps skipping route registration for the table and
+		// logs "Pending change waiting" on every write. Re-diff and clear it if the
+		// desired state is no longer destructive, so the table recovers without a restart.
+		reconcileStalePending(ctx, pool, model, allModels, gate, logger)
 		logger.Debug("Schema up to date", "table", tableName, "version", versionStr(model))
 		return
 	}
@@ -482,6 +489,11 @@ func syncModel(ctx context.Context, pool *pgxpool.Pool, model *models.DataModel,
 		return
 	}
 
+	// Non-destructive from here on. If a (destructive) change was recorded for this
+	// table on an earlier edit, this edit has superseded it — drop it now, or the file
+	// monitor will keep skipping route registration for the table indefinitely.
+	clearPending(gate, tableName, logger)
+
 	if len(changes) == 0 {
 		// Version bumped but no schema delta — still refresh sidecars so we don't re-diff.
 		writeSnapshot(model, logger)
@@ -499,6 +511,55 @@ func syncModel(ctx context.Context, pool *pgxpool.Pool, model *models.DataModel,
 
 	writeSnapshot(model, logger)
 	logger.Info("Schema sync complete", "table", tableName, "version", versionStr(model))
+}
+
+// clearPending removes any change recorded for tableName and logs that it happened.
+// It is a no-op when the gate is nil or holds nothing for the table. Call it once a
+// fresh diff has shown the table's desired state to be non-destructive: the recorded
+// change is always a destructive one, so a later non-destructive edit supersedes it,
+// and leaving it in the gate makes the file monitor skip the table's routes forever.
+func clearPending(gate *PendingApprovalGate, tableName string, logger *slog.Logger) {
+	if gate == nil {
+		return
+	}
+	if _, pending := gate.Pending(tableName); !pending {
+		return
+	}
+	gate.Remove(tableName)
+	logger.Info("Cleared superseded pending schema change", "table", tableName)
+}
+
+// reconcileStalePending re-runs the schema diff for a table that is otherwise up to
+// date and clears a stale gate entry when the desired state no longer contains a
+// destructive change. This is what lets a table that got stuck — a destructive change
+// was recorded, then the config was fixed so the next apply succeeded, but nothing
+// ever removed the gate entry — recover on the following file write instead of needing
+// a server restart. If the diff still reports a destructive change, or cannot be
+// computed, the entry is left untouched.
+func reconcileStalePending(ctx context.Context, pool *pgxpool.Pool, model *models.DataModel, allModels []models.DataModel, gate *PendingApprovalGate, logger *slog.Logger) {
+	if gate == nil {
+		return
+	}
+	tableName := *model.Table_name
+	if _, pending := gate.Pending(tableName); !pending {
+		return
+	}
+
+	ptrs, tableNames := buildCombined(model, allModels)
+	combinedHCL, err := AllModelsToHCL(ptrs)
+	if err != nil {
+		logger.Warn("Could not verify stale pending change (HCL generation failed)", "table", tableName, "error", err)
+		return
+	}
+	_, destructive, err := NewSchemaGenerator(pool).planChanges(ctx, tableNames, combinedHCL)
+	if err != nil {
+		logger.Warn("Could not verify stale pending change (schema diff failed)", "table", tableName, "error", err)
+		return
+	}
+	if destructive != "" {
+		return
+	}
+	clearPending(gate, tableName, logger)
 }
 
 // ApplyApproved commits every approved pending change in one combined apply. Approved
