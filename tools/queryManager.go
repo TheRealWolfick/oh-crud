@@ -30,6 +30,7 @@ type QueryBuilder struct {
 	offset       int
 	sort         []string
 	schemaBuilder bool
+	aggregating  bool
 }
 
 type SetCallback interface {
@@ -53,13 +54,14 @@ func NewQueryBuilder(logger *slog.Logger) *QueryBuilder {
 		offset:         0,
 		sort:           []string{},
 		schemaBuilder:  false,
+		aggregating:    false,
 	}
 }
 
 func (qb *QueryBuilder) GetArgs() []any { return qb.args }
 
 func (qb *QueryBuilder) GetPage() int {
-	if qb.offset == 0 {
+	if qb.offset == 0 || qb.limit == 0 {
 		return 1
 	}
 	return qb.offset/qb.limit + 1
@@ -71,7 +73,9 @@ func (qb *QueryBuilder) IsSchemaBuilder() bool { return qb.schemaBuilder }
 func (qb *QueryBuilder) GetFields() []string { return qb.fields }
 func (qb *QueryBuilder) GetValues() []any    { return qb.args }
 
-func (qb *QueryBuilder) GetPageSize() int { return qb.offset }
+// GetPageSize reports the page size (row limit) applied to the query. Zero means
+// the query is unpaginated — every matching row is returned.
+func (qb *QueryBuilder) GetPageSize() int { return qb.limit }
 
 func (qb *QueryBuilder) GetArgsAsString() string {
 	args_string := []string{}
@@ -635,8 +639,8 @@ func (qb *QueryBuilder) BuildSelect(table_name string, select_fields []string) s
 		sb.WriteString(fmt.Sprintf(" GROUP BY %s", strings.Join(qb.groups, ", ")))
 	}
 
-	if len(qb.sort) > 0 {
-		sb.WriteString(fmt.Sprintf(" ORDER BY %s", strings.Join(qb.sort, ", ")))
+	if terms := qb.orderByTerms(); len(terms) > 0 {
+		sb.WriteString(fmt.Sprintf(" ORDER BY %s", strings.Join(terms, ", ")))
 	}
 	if qb.limit != 0 {
 		sb.WriteString(fmt.Sprintf(" LIMIT %v", qb.limit))
@@ -647,6 +651,40 @@ func (qb *QueryBuilder) BuildSelect(table_name string, select_fields []string) s
 
 	sb.WriteString(";")
 	return sb.String()
+}
+
+// orderByTerms returns the ORDER BY terms for the query. When the query groups
+// rows, every group-by column is appended (after any caller-supplied sort, as a
+// tiebreaker) so that LIMIT/OFFSET paging over groups is deterministic and
+// complete. Without a total ordering PostgreSQL may emit group rows in an
+// arbitrary order that varies between runs, which makes paged aggregate results
+// silently skip or repeat rows.
+func (qb *QueryBuilder) orderByTerms() []string {
+	if len(qb.groups) == 0 {
+		return qb.sort
+	}
+	terms := append([]string{}, qb.sort...)
+	for _, g := range qb.groups {
+		if !sortTermsInclude(terms, g) {
+			terms = append(terms, fmt.Sprintf("%s ASC", g))
+		}
+	}
+	return terms
+}
+
+// sortTermsInclude reports whether col already appears as the expression part of
+// one of the "<expr> ASC|DESC" sort terms.
+func sortTermsInclude(terms []string, col string) bool {
+	for _, t := range terms {
+		expr := t
+		if i := strings.LastIndex(t, " "); i != -1 {
+			expr = t[:i]
+		}
+		if strings.TrimSpace(expr) == col {
+			return true
+		}
+	}
+	return false
 }
 
 // Primarily for returning the fields, field types etc so a frontend solution can build tables based on that
@@ -710,10 +748,25 @@ func (qb *QueryBuilder) BuildCount(table string) string {
 	return fmt.Sprintf("SELECT COUNT(*) FROM %s;", table)
 }
 
-// BuildCountWithWhere is like BuildCount but applies the same WHERE clauses as BuildSelect.
-// It shares qb.args, so the same args slice must be passed to the count query.
+// BuildCountWithWhere returns the query that counts the rows BuildSelect would
+// return, ignoring LIMIT/OFFSET. It shares qb.args, so the same args slice must
+// be passed to the count query.
+//
+//   - Plain query: COUNT(*) with the same WHERE clause.
+//   - Aggregating query with GROUP BY: the number of group rows, obtained by
+//     wrapping the grouped selection in a subquery.
+//   - Aggregating query without GROUP BY: the result collapses to a single row,
+//     so the count is always 1.
 func (qb *QueryBuilder) BuildCountWithWhere(table string) string {
-	return fmt.Sprintf("SELECT COUNT(*) FROM %s%s;", table, qb.buildWhereClause())
+	if !qb.aggregating {
+		return fmt.Sprintf("SELECT COUNT(*) FROM %s%s;", table, qb.buildWhereClause())
+	}
+	if len(qb.groups) == 0 {
+		return "SELECT 1;"
+	}
+	groups := strings.Join(qb.groups, ", ")
+	return fmt.Sprintf("SELECT COUNT(*) FROM (SELECT %s FROM %s%s GROUP BY %s) AS sub;",
+		groups, table, qb.buildWhereClause(), groups)
 }
 
 // BuildUpdate builds a parameterized UPDATE query from the where and value clauses
@@ -767,24 +820,46 @@ type FieldResolver func(string) (string, bool)
 // `page=all` disables pagination. Defaults: page=1, page_size=25.
 // Exported because the function executor (handlers/functionHandler.go) reuses it.
 func (qb *QueryBuilder) ApplyPagination(r *http.Request) {
+	qb.applyPagination(r, 25)
+}
+
+// ApplyPaginationUnbounded is like ApplyPagination but leaves the query
+// unpaginated when the caller supplies no `page_size` (rather than defaulting to
+// 25 rows). Used for declarative functions, where a silent 25-row cap would
+// truncate aggregated/grouped results and the caller has no signal that rows
+// were dropped. An explicit `page`/`page_size` (or `page=all`) is still honoured.
+func (qb *QueryBuilder) ApplyPaginationUnbounded(r *http.Request) {
+	qb.applyPagination(r, 0)
+}
+
+// applyPagination sets limit/offset from the `page`/`page_size` params.
+// defaultPageSize is used when `page_size` is absent or invalid; a non-positive
+// defaultPageSize (or `page=all`) leaves the query unpaginated.
+func (qb *QueryBuilder) applyPagination(r *http.Request, defaultPageSize int) {
 	page := r.FormValue("page")
 	page_size := r.FormValue("page_size")
+
+	if strings.ToLower(page) == "all" {
+		return
+	}
 
 	page_int := 1
 	if page != "" && page != "0" && IsInt(page) {
 		page_int = ConvertToInt(page)
 	}
-	page_size_int := 25
+	if page_int < 1 { page_int = 1 }
+
+	page_size_int := defaultPageSize
 	if page_size != "" && page_size != "0" && IsInt(page_size) {
 		page_size_int = ConvertToInt(page_size)
 	}
-	if page_size_int < 0 { page_size_int = 25 }
-	if page_int < 0 { page_int = 1 }
-
-	if strings.ToLower(page) != "all" {
-		qb.SetLimit(page_size_int)
-		qb.SetOffset(page_size_int * (page_int - 1))
+	if page_size_int < 0 { page_size_int = defaultPageSize }
+	if page_size_int == 0 {
+		return
 	}
+
+	qb.SetLimit(page_size_int)
+	qb.SetOffset(page_size_int * (page_int - 1))
 }
 
 // processFieldSelect reads the `fields` URL param and adds each token that resolves
@@ -961,6 +1036,12 @@ func (qb *QueryBuilder) ApplyAggregateSpec(spec AggregateSpec, cfg *models.DataM
 	var was_agg bool
 	var agg_fields []string
 
+	// Remember that this query produces grouped/aggregate output so the row-count
+	// query (BuildCountWithWhere) counts group rows rather than base rows.
+	if spec.IsAggregating() {
+		qb.aggregating = true
+	}
+
 	// 1. Plain SELECT fields.
 	for _, field := range spec.Fields {
 		f, allowed := CheckFieldGetValid(field, cfg)
@@ -1049,7 +1130,14 @@ func (qb *QueryBuilder) processURLParams(r *http.Request, cfg *models.DataModel,
 	switch r.PathValue("function") {
 	case "aggregate":
 		if !check_for_functions { return fmt.Errorf("This end point doesn't support functions") }
-		return qb.processAggregate(r, cfg)
+		if err := qb.processAggregate(r, cfg); err != nil {
+			return err
+		}
+		// Pagination applies on top of the grouped query. BuildSelect guarantees a
+		// deterministic ORDER BY over the group-by columns, so LIMIT/OFFSET paging
+		// walks every group row exactly once.
+		qb.ApplyPagination(r)
+		return nil
 	case "schema":
 		if !check_for_functions { return fmt.Errorf("This end point doesn't support functions") }
 		qb.schemaBuilder = true
