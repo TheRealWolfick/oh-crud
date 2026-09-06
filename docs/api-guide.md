@@ -44,11 +44,14 @@ The response always includes `page`, `page_size`, and `total_count` keys so
 the caller can compute "has more pages?" without re-issuing the request.
 `page_size` echoes the applied row limit (`0` when the query is unpaginated).
 
-For a **grouped/aggregate** query (`group_by` and/or `aggregate`), `total_count`
-is the number of **group rows**, not the number of underlying table rows, so the
+For a query that returns a **set of distinct rows** — `group_by`, or a bare
+`aggregate=distinct:…` with no `group_by` — `total_count` is the number of those
+rows (groups / distinct values), not the number of underlying table rows, so the
 page math is meaningful. Such queries are also given an implicit `ORDER BY` over
-every group-by column (appended after any caller `sort_by` as a tiebreaker) so
-that `LIMIT`/`OFFSET` paging visits each group exactly once.
+the group-by / distinct columns (appended after any caller `sort_by` as a
+tiebreaker) so that `LIMIT`/`OFFSET` paging visits each row exactly once. A bare
+scalar aggregate (`count`, `sum:…`, …) with no `group_by` is a single row, so
+`total_count` is `1`.
 
 ### Field selection
 
@@ -175,6 +178,12 @@ JSON alias, not `private`).
 `distinct:building~floor` renders `distinct(building,floor)`. Fields that
 don't resolve are dropped; the token is kept as long as at least one
 resolves.
+
+A `distinct:` token used **without** `group_by` produces one row per distinct
+value (or per distinct tuple, for the `~` form). Such a query is treated like a
+grouped one: it gets an implicit `ORDER BY` on the distinct column(s) so
+`page`/`page_size` walk the distinct rows deterministically, and `total_count`
+is the number of distinct rows. `page=all` returns them all.
 
 #### Example
 

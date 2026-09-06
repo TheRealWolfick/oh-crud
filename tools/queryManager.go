@@ -31,6 +31,7 @@ type QueryBuilder struct {
 	sort         []string
 	schemaBuilder bool
 	aggregating  bool
+	distinctFields []string // resolved columns of a DISTINCT projection (aggregate=distinct:...) when there is no GROUP BY
 }
 
 type SetCallback interface {
@@ -55,6 +56,7 @@ func NewQueryBuilder(logger *slog.Logger) *QueryBuilder {
 		sort:           []string{},
 		schemaBuilder:  false,
 		aggregating:    false,
+		distinctFields: nil,
 	}
 }
 
@@ -653,23 +655,46 @@ func (qb *QueryBuilder) BuildSelect(table_name string, select_fields []string) s
 	return sb.String()
 }
 
-// orderByTerms returns the ORDER BY terms for the query. When the query groups
-// rows, every group-by column is appended (after any caller-supplied sort, as a
-// tiebreaker) so that LIMIT/OFFSET paging over groups is deterministic and
-// complete. Without a total ordering PostgreSQL may emit group rows in an
-// arbitrary order that varies between runs, which makes paged aggregate results
+// orderByTerms returns the ORDER BY terms for the query. Whenever the query
+// produces a set of distinct rows — a GROUP BY, or a `distinct:` projection with
+// no GROUP BY — every one of those key columns is appended (after any
+// caller-supplied sort, as a tiebreaker) so that LIMIT/OFFSET paging is
+// deterministic and complete. Without a total ordering PostgreSQL may emit the
+// rows in an arbitrary order that varies between runs, which makes paged results
 // silently skip or repeat rows.
 func (qb *QueryBuilder) orderByTerms() []string {
-	if len(qb.groups) == 0 {
+	keys := qb.groups
+	if len(keys) == 0 {
+		if expr, ok := qb.distinctProjection(); ok {
+			keys = []string{expr}
+		}
+	}
+	if len(keys) == 0 {
 		return qb.sort
 	}
 	terms := append([]string{}, qb.sort...)
-	for _, g := range qb.groups {
-		if !sortTermsInclude(terms, g) {
-			terms = append(terms, fmt.Sprintf("%s ASC", g))
+	for _, k := range keys {
+		if !sortTermsInclude(terms, k) {
+			terms = append(terms, fmt.Sprintf("%s ASC", k))
 		}
 	}
 	return terms
+}
+
+// distinctProjection returns the SQL expression the query is selecting DISTINCT
+// on when it is a `distinct:` aggregate with no GROUP BY (e.g. a bare
+// `?aggregate=distinct:building`), and whether such a projection applies. For a
+// single field it is the column name; for `distinct:a~b~c` it is the row
+// constructor `(a, b, c)`, matching how ParseAggregateFuncString renders the
+// SELECT list. A GROUP BY takes precedence and disables this.
+func (qb *QueryBuilder) distinctProjection() (string, bool) {
+	if len(qb.groups) > 0 || len(qb.distinctFields) == 0 {
+		return "", false
+	}
+	if len(qb.distinctFields) == 1 {
+		return qb.distinctFields[0], true
+	}
+	return "(" + strings.Join(qb.distinctFields, ", ") + ")", true
 }
 
 // sortTermsInclude reports whether col already appears as the expression part of
@@ -755,18 +780,24 @@ func (qb *QueryBuilder) BuildCount(table string) string {
 //   - Plain query: COUNT(*) with the same WHERE clause.
 //   - Aggregating query with GROUP BY: the number of group rows, obtained by
 //     wrapping the grouped selection in a subquery.
-//   - Aggregating query without GROUP BY: the result collapses to a single row,
-//     so the count is always 1.
+//   - `distinct:` projection with no GROUP BY: the number of distinct rows,
+//     obtained by wrapping a SELECT DISTINCT in a subquery.
+//   - Bare aggregate (count/sum/avg/min/max) with no GROUP BY: the result
+//     collapses to a single row, so the count is always 1.
 func (qb *QueryBuilder) BuildCountWithWhere(table string) string {
 	if !qb.aggregating {
 		return fmt.Sprintf("SELECT COUNT(*) FROM %s%s;", table, qb.buildWhereClause())
 	}
-	if len(qb.groups) == 0 {
-		return "SELECT 1;"
+	if len(qb.groups) > 0 {
+		groups := strings.Join(qb.groups, ", ")
+		return fmt.Sprintf("SELECT COUNT(*) FROM (SELECT %s FROM %s%s GROUP BY %s) AS sub;",
+			groups, table, qb.buildWhereClause(), groups)
 	}
-	groups := strings.Join(qb.groups, ", ")
-	return fmt.Sprintf("SELECT COUNT(*) FROM (SELECT %s FROM %s%s GROUP BY %s) AS sub;",
-		groups, table, qb.buildWhereClause(), groups)
+	if expr, ok := qb.distinctProjection(); ok {
+		return fmt.Sprintf("SELECT COUNT(*) FROM (SELECT DISTINCT %s FROM %s%s) AS sub;",
+			expr, table, qb.buildWhereClause())
+	}
+	return "SELECT 1;"
 }
 
 // BuildUpdate builds a parameterized UPDATE query from the where and value clauses
@@ -1057,7 +1088,17 @@ func (qb *QueryBuilder) ApplyAggregateSpec(spec AggregateSpec, cfg *models.DataM
 		if !valid { continue }
 		if slices.Contains(qb.fields, parsed) { continue }
 		qb.fields = append(qb.fields, parsed)
-		if wasagg { was_agg, agg_fields = wasagg, aggfields }
+		if wasagg {
+			was_agg, agg_fields = wasagg, aggfields
+			// Track the columns a `distinct:` projection selects on so that, when
+			// there is no GROUP BY, BuildSelect can still impose a deterministic
+			// ORDER BY and BuildCountWithWhere can count the distinct rows.
+			for _, af := range aggfields {
+				if !slices.Contains(qb.distinctFields, af) {
+					qb.distinctFields = append(qb.distinctFields, af)
+				}
+			}
+		}
 	}
 
 	// 3. GROUP BY columns — also added to SELECT (PostgreSQL requires it) if it is not in a distinct clause.
@@ -1071,6 +1112,12 @@ func (qb *QueryBuilder) ApplyAggregateSpec(spec AggregateSpec, cfg *models.DataM
 			if was_agg && slices.Contains(agg_fields, field) { continue }
 			qb.fields = append(qb.fields, f)
 		}
+	}
+
+	// A GROUP BY takes precedence over a bare `distinct:` projection for both
+	// ordering and counting, so drop the distinct tracking when grouping.
+	if len(qb.groups) > 0 {
+		qb.distinctFields = nil
 	}
 
 	// 4. Sort. Tokens may name an aggregate (resolved via ParseAggregateFuncString),
