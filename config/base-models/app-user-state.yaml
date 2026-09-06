@@ -1,0 +1,17 @@
+name: App User State
+version: 1.1.0
+table-name: app_user_state
+allow-diff: false
+end-point: app/user-state
+primary-key: state_id
+unique-keys:
+  uk_app_user_state: { unique-key-fields: [username, scope] }
+end-points-allowed: { GET: [], PUT: [], POST: [], DELETE: [] }
+fields:
+  state_id:      { type: int,    db-type: serial, skip-insert: true }
+  username:      { type: string, db-type: character varying(50), required-on-insert: true }
+  scope:         { type: string, db-type: character varying(20), required-on-insert: true }   # main | diff
+  checksum:      { type: string, db-type: character varying(64), nullable: true }             # bound Oh CRUD diff, when scope=diff
+  payload:       { type: string, db-type: text, default: "" }                                  # JSON: { log[], planned[], view }
+  asset_refs:    { type: string, db-type: text, default: "" }                                  # comma-joined asset_no set the state touches
+  updated_at:    { type: string, db-type: timestamptz, default: now(), skip-insert: true }

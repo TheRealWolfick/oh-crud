@@ -1,0 +1,13 @@
+name: App Setting
+version: 1.1.0
+table-name: app_settings
+end-point: app/setting
+allow-diff: false
+primary-key: setting_key
+end-points-allowed: { GET: [], PUT: [], POST: [], DELETE: [] }
+fields:
+  setting_key:   { type: string, db-type: character varying(60), required-on-insert: true }   # e.g. map.ignored_asset_categories
+  setting_value: { type: string, db-type: text, default: "" }                                  # JSON-encoded value
+  scope:         { type: string, db-type: character varying(40), default: "global" }           # global | domain: | user:
+  updated_by:    { type: string, db-type: character varying(50), nullable: true }
+  updated_at:    { type: string, db-type: timestamptz, default: now(), skip-insert: true }
