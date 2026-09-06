@@ -49,6 +49,11 @@ Foreign keys is a collection of foreign key objects.
 foreign-key-fields:         A list of fields in this table that form the foreign key
 foreign-key-target-table:   The table the foreign key is referencing
 foreign-key-target-fields:  A list of the fields the foreign key is referencing on the target table
+foreign-key-target-field-description:
+                            Optional. The name of a field on the target table that holds a human-readable
+                            description of the referenced record (e.g. fk is `room`, description is
+                            `room_description`). It is surfaced by the `schema` function for frontend
+                            display only and has no effect on validation, querying, or schema migration.
 foreign-key-on-update:      What should the field do if the target value is updated*
 foreign-key-on-delete:      What should the field do if the target value is deleted*
 \* Valid actions are SET NULL, CASCADE, SET DEFAULT, RESTRICT, NO ACTION
