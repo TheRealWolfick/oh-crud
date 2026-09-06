@@ -7,11 +7,12 @@ type ConfigError struct {
 }
 
 type ForeignKey struct {
-	Fields        []string `yaml:"foreign-key-fields"`
-	Target_table  *string  `yaml:"foreign-key-target-table"`
-	Target_fields []string `yaml:"foreign-key-target-fields"`
-	ON_UPDATE     *string  `yaml:"foreign-key-on-update"`
-	ON_DELETE     *string  `yaml:"foreign-key-on-delete"`
+	Fields                   []string `yaml:"foreign-key-fields"`
+	Target_table             *string  `yaml:"foreign-key-target-table"`
+	Target_fields            []string `yaml:"foreign-key-target-fields"`
+	Target_field_description *string  `yaml:"foreign-key-target-field-description"`
+	ON_UPDATE                *string  `yaml:"foreign-key-on-update"`
+	ON_DELETE                *string  `yaml:"foreign-key-on-delete"`
 }
 
 type UniqueKey struct {

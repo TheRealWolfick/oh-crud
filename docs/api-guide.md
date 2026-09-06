@@ -202,9 +202,14 @@ is the backing PostgreSQL table, `Primary_key` is the primary-key field,
 `Unique_keys` is a list of field-name groups that each form a unique constraint,
 and `Foreign_keys` is a list of the model's foreign-key constraints. Each entry
 in `Foreign_keys` has `Fields` (the local columns), `Target_table`,
-`Target_fields` (the referenced columns), and the optional `ON_UPDATE` /
-`ON_DELETE` referential actions (`null` when the config does not set them).
-`Foreign_keys` is an empty list when the model declares none.
+`Target_fields` (the referenced columns), the optional `ON_UPDATE` /
+`ON_DELETE` referential actions (`null` when the config does not set them), and
+the optional `Target_field_description` — the name of a field on the target
+table that holds a human-readable description of the referenced record (set via
+`foreign-key-target-field-description` in the config, `null` when unset). It is
+provided purely so a frontend can show a friendly label next to the foreign key
+and has no effect on the API's behaviour. `Foreign_keys` is an empty list when
+the model declares none.
 
 The required field specifies what is required to create a new resource, while
 a call to use an update must fulfil either a primary or unique key in the supplied
@@ -233,6 +238,7 @@ Returns:
       "Fields": ["db_domain"],
       "Target_table": "domain",
       "Target_fields": ["db_domain"],
+      "Target_field_description": "domain_description",
       "ON_UPDATE": "CASCADE",
       "ON_DELETE": null
     }

@@ -113,6 +113,7 @@
           "foreign-key-fields":        { "type": "array", "items": { "type": "string" }, "minItems": 1 },
           "foreign-key-target-table":  { "type": "string" },
           "foreign-key-target-fields": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+          "foreign-key-target-field-description": { "type": "string" },
           "foreign-key-on-update": {
             "type": "string",
             "enum": ["CASCADE", "SET NULL", "SET DEFAULT", "RESTRICT", "NO ACTION"]
