@@ -229,8 +229,8 @@ func ValidateFunction(fn *models.FunctionDef, model_reg *ModelRegistry) []error 
 	// We use a throwaway QueryBuilder for the parse; it doesn't mutate cfg.
 	scratch := NewQueryBuilder(slog.Default())
 	for _, a := range fn.Aggregate {
-		if _, ok := ParseAggregateFuncString(a, scratch, cfg); !ok {
-			errs = append(errs, fmt.Errorf("function %q: aggregate token %q is invalid (expected count, sum:f, avg:f, min:f, max:f)",
+		if _, ok, _, _ := ParseAggregateFuncString(a, scratch, cfg); !ok {
+			errs = append(errs, fmt.Errorf("function %q: aggregate token %q is invalid (expected count, sum:f, avg:f, min:f, max:f, distinct:f~f..)",
 				deref(fn.Name), a))
 		}
 	}
@@ -249,7 +249,7 @@ func ValidateFunction(fn *models.FunctionDef, model_reg *ModelRegistry) []error 
 	}
 	for _, s := range fn.Sort_by {
 		token := strings.TrimSpace(strings.Split(s, "~")[0])
-		if _, ok := ParseAggregateFuncString(token, scratch, cfg); ok {
+		if _, ok, _, _ := ParseAggregateFuncString(token, scratch, cfg); ok {
 			continue
 		}
 		if declaredFields[token] {
