@@ -158,10 +158,16 @@ declarative function.
 | `avg:field`  | `AVG(field)`              |
 | `min:field`  | `MIN(field)`              |
 | `max:field`  | `MAX(field)`              |
-| `distinct:field` | `DISTINCT(field)`     |
+| `distinct:field`            | `DISTINCT(field)`         |
+| `distinct:field1~field2~…`  | `DISTINCT(field1,field2,…)`|
 
 `field` must resolve via the same rules as `?fields=` (model field name or
 JSON alias, not `private`).
+
+`distinct` also accepts a `~`-separated list of fields — e.g.
+`distinct:building~floor` renders `distinct(building,floor)`. Fields that
+don't resolve are dropped; the token is kept as long as at least one
+resolves.
 
 #### Example
 
