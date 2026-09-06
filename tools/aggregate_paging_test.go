@@ -21,6 +21,7 @@ func aggregateTestModel() *models.DataModel {
 			"id":               {Type: ptr("int"), JSON: ptr("id"), DB_type: ptr("serial")},
 			"building":         {Type: ptr("string"), JSON: ptr("building"), DB_type: ptr("text")},
 			"floor":            {Type: ptr("string"), JSON: ptr("floor"), DB_type: ptr("text")},
+			"room":             {Type: ptr("string"), JSON: ptr("room"), DB_type: ptr("text")},
 			"condition_rating": {Type: ptr("float"), JSON: ptr("condition_rating"), DB_type: ptr("double precision")},
 		},
 	}
@@ -141,6 +142,64 @@ func TestAggregateCount_NoGroupByIsOne(t *testing.T) {
 
 	if strings.TrimSpace(count) != "SELECT 1;" {
 		t.Errorf("aggregate without GROUP BY should count as 1 row, got: %s", count)
+	}
+}
+
+// TestAggregateDistinct_Single covers `?aggregate=distinct:col` with no
+// group_by: it selects DISTINCT on many rows, so it needs a deterministic
+// ORDER BY for paging and a distinct-row count (not the collapsed "SELECT 1").
+func TestAggregateDistinct_Single(t *testing.T) {
+	qb, q, count := aggregateReq("?aggregate=distinct:building&page=2&page_size=20")
+
+	if !strings.Contains(q, "distinct(building)") {
+		t.Fatalf("expected distinct(building) in SELECT, got: %s", q)
+	}
+	if !strings.Contains(q, "ORDER BY building ASC") {
+		t.Errorf("distinct projection must get a deterministic ORDER BY, got: %s", q)
+	}
+	if !strings.Contains(q, "LIMIT 20") || !strings.Contains(q, "OFFSET 20") {
+		t.Errorf("page/page_size must both apply, got: %s", q)
+	}
+	want := "SELECT COUNT(*) FROM (SELECT DISTINCT building FROM assets) AS sub;"
+	if count != want {
+		t.Errorf("distinct count mismatch:\n  got:  %s\n  want: %s", count, want)
+	}
+	if qb.GetPage() != 2 {
+		t.Errorf("GetPage should be 2, got %d", qb.GetPage())
+	}
+}
+
+// TestAggregateDistinct_Multi covers `?aggregate=distinct:a~b~c`, which renders
+// a row constructor in the SELECT list; ORDER BY / count must use the same
+// row form.
+func TestAggregateDistinct_Multi(t *testing.T) {
+	_, q, count := aggregateReq("?aggregate=distinct:building~floor~room&page=2&page_size=20")
+
+	if !strings.Contains(q, "distinct(building,floor,room)") {
+		t.Fatalf("expected distinct(building,floor,room) in SELECT, got: %s", q)
+	}
+	if !strings.Contains(q, "ORDER BY (building, floor, room) ASC") {
+		t.Errorf("multi-field distinct must order by the row form, got: %s", q)
+	}
+	if !strings.Contains(q, "LIMIT 20") || !strings.Contains(q, "OFFSET 20") {
+		t.Errorf("page/page_size must both apply, got: %s", q)
+	}
+	want := "SELECT COUNT(*) FROM (SELECT DISTINCT (building, floor, room) FROM assets) AS sub;"
+	if count != want {
+		t.Errorf("multi distinct count mismatch:\n  got:  %s\n  want: %s", count, want)
+	}
+}
+
+// TestAggregateDistinct_GroupByWins ensures a GROUP BY alongside a distinct
+// token falls back to the grouped ordering/count path.
+func TestAggregateDistinct_GroupByWins(t *testing.T) {
+	_, q, count := aggregateReq("?group_by=building&aggregate=distinct:floor")
+
+	if !strings.Contains(q, "GROUP BY building") || !strings.Contains(q, "ORDER BY building ASC") {
+		t.Errorf("group_by should drive ordering, got: %s", q)
+	}
+	if !strings.HasPrefix(count, "SELECT COUNT(*) FROM (SELECT building FROM assets GROUP BY building)") {
+		t.Errorf("group_by should drive the count, got: %s", count)
 	}
 }
 
