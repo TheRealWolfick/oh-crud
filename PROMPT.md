@@ -616,7 +616,7 @@ GET /{ep}/fn/aggregate?group_by=building&aggregate=count,avg:condition_rating&so
 | Param       | Form                             | Notes                                             |
 |-------------|----------------------------------|---------------------------------------------------|
 | `group_by`  | `col1,col2`                      | Added to both SELECT and GROUP BY                 |
-| `aggregate` | `count,sum:f,avg:f,min:f,max:f`  | `count` → `count(*)`, takes no operand            |
+| `aggregate` | `count,sum:f,avg:f,min:f,max:f,distinct:f` | `count` → `count(*)`, takes no operand; `distinct:f` → `distinct(f)` |
 | `sort_by`   | `count~desc,building~asc`        | Must already be in the SELECT list                |
 
 At least one of the three must be supplied, else `400`. Pagination applies. Unresolvable or

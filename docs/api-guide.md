@@ -158,6 +158,7 @@ declarative function.
 | `avg:field`  | `AVG(field)`              |
 | `min:field`  | `MIN(field)`              |
 | `max:field`  | `MAX(field)`              |
+| `distinct:field` | `DISTINCT(field)`     |
 
 `field` must resolve via the same rules as `?fields=` (model field name or
 JSON alias, not `private`).
