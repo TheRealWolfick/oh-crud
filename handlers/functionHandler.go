@@ -124,8 +124,10 @@ func getFunctionResource(
 			return
 		}
 
-		// Apply pagination.
-		qb.ApplyPagination(r)
+		// Apply pagination. Declarative functions are unbounded by default — a
+		// silent 25-row cap would truncate aggregated/grouped output — but an
+		// explicit page/page_size (or page=all) is still honoured.
+		qb.ApplyPaginationUnbounded(r)
 
 		// Build queries for the data and total counts
 		var query string
