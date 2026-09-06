@@ -42,7 +42,17 @@ func configLastGoodPath(tableName string) string {
 
 // needsSync returns true when:
 //   - the .hcl file does not exist yet, OR
-//   - the stored version doesn't match the model's current version
+//   - the sidecar version file is missing (new table), OR
+//   - the model's current version is strictly greater than the stored version
+//
+// A version that is equal to, or lower than, the stored version does NOT trigger
+// a sync. Acting on a decrease is actively harmful: Atlas would diff the older
+// desired state against the live DB and generate changes that revert the table to
+// the older shape. Undoing the newer version's additions (dropping a nullable
+// column, an FK, an index) is non-destructive, so it slips past the approval gate
+// and applies silently — a downgrade of one config file rolls the table back. The
+// HTTP handler registry already guards on a strict increase (tools.Register via
+// CheckVersionIncrease); this brings the schema-sync path in line with it.
 func needsSync(model *models.DataModel, hclPath string) bool {
 	if _, err := os.Stat(hclPath); os.IsNotExist(err) {
 		return true
@@ -65,7 +75,28 @@ func needsSync(model *models.DataModel, hclPath string) bool {
 	if model.Version == nil {
 		return false
 	}
-	return strings.TrimSpace(string(stored)) != strings.TrimSpace(*model.Version)
+
+	storedVersion := strings.TrimSpace(string(stored))
+	currentVersion := strings.TrimSpace(*model.Version)
+	if storedVersion == currentVersion {
+		return false
+	}
+
+	increased, err := tools.CheckVersionIncrease(storedVersion, currentVersion)
+	if increased {
+		return true
+	}
+	// Not a strict increase: either the config version went backwards or one of the
+	// two strings could not be parsed. Either way, leave the live schema alone and
+	// make the mismatch visible instead of silently reverting the table.
+	slog.Warn(
+		"config version is not ahead of the applied schema version; skipping schema sync",
+		"table", *model.Table_name,
+		"applied", storedVersion,
+		"config", currentVersion,
+		"detail", err,
+	)
+	return false
 }
 
 // writeVersion persists the applied version alongside the .hcl file.
