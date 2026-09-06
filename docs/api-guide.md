@@ -38,10 +38,17 @@ out of a particular one.
 | Parameter   | Default | Notes                                                          |
 |-------------|---------|----------------------------------------------------------------|
 | `page`      | `1`     | 1-indexed. `page=all` disables pagination entirely.            |
-| `page_size` | `25`    | Negative or non-integer values fall back to default.           |
+| `page_size` | `25`    | Negative or non-integer values fall back to default. `0` behaves like an absent value. |
 
 The response always includes `page`, `page_size`, and `total_count` keys so
 the caller can compute "has more pages?" without re-issuing the request.
+`page_size` echoes the applied row limit (`0` when the query is unpaginated).
+
+For a **grouped/aggregate** query (`group_by` and/or `aggregate`), `total_count`
+is the number of **group rows**, not the number of underlying table rows, so the
+page math is meaningful. Such queries are also given an implicit `ORDER BY` over
+every group-by column (appended after any caller `sort_by` as a tiebreaker) so
+that `LIMIT`/`OFFSET` paging visits each group exactly once.
 
 ### Field selection
 
@@ -181,10 +188,17 @@ Builds:
 SELECT building, count(*), avg(condition_rating)
 FROM asset_data
 GROUP BY building
-ORDER BY count DESC;
+ORDER BY count DESC, building ASC
+LIMIT 25;
 ```
 
-Standard pagination params (`page`, `page_size`) apply on top.
+(`building ASC` is the implicit tiebreaker; `LIMIT 25` is the default page.)
+
+Standard pagination params (`page`, `page_size`) apply on top, defaulting to
+`page_size=25`. The grouped query carries an implicit `ORDER BY building` (all
+group-by columns) so paging is deterministic, and `total_count` reports the
+number of buildings rather than the number of asset rows. Pass `page=all` to
+retrieve every group in one response.
 
 ---
 
@@ -314,7 +328,7 @@ audit log at `GET /{endpoint}/history/{key}`, where `{key}` is the
 {
   "task_type": "Get Resource History",
   "page": 1,
-  "page_size": 0,
+  "page_size": 25,
   "total_count": 42,
   "data": [
     {
@@ -444,6 +458,17 @@ A function defines its response shape. Two consequences:
 - The standard field-driven WHERE inference is also off. Only your
   declared `parameters` produce WHERE clauses. If you want a filter to be
   callable from the URL, add it under `parameters:`.
+
+### Pagination
+
+Declarative functions are **unbounded by default** — with no `page`/`page_size`
+in the URL the function returns every matching row. This differs from the
+standard GET endpoint (which defaults to 25) because a silent cap would quietly
+truncate aggregated results and the caller has no signal that rows were dropped.
+
+An explicit `?page=` / `?page_size=` (or `?page=all`) is still honoured, and
+`total_count` is group-aware for aggregating functions, exactly as on the
+built-in `aggregate`.
 
 ### Hot reload
 
