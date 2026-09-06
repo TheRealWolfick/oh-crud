@@ -2,6 +2,7 @@ package tools
 
 import (
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -31,16 +32,57 @@ func aggregateTestModel() *models.DataModel {
 // path value set (matching the router), runs it through the query builder, and
 // returns the builder plus the rendered SELECT and count queries.
 func aggregateReq(query string) (qb *QueryBuilder, q string, count string) {
-	cfg := aggregateTestModel()
-	req := httptest.NewRequest("GET", "/assets/fn/aggregate"+query, nil)
+	return aggregateReqCfg(aggregateTestModel(), query)
+}
+
+// aggregateReqCfg is aggregateReq against an explicit model. It mirrors
+// getResource: SetDefaults (soft-delete WHERE, etc.) runs before URL parsing.
+func aggregateReqCfg(cfg *models.DataModel, query string) (qb *QueryBuilder, q string, count string) {
+	table := *cfg.Table_name
+	req := httptest.NewRequest("GET", "/"+*cfg.End_point+"/fn/aggregate"+query, nil)
 	req.SetPathValue("function", "aggregate")
 	qb = NewQueryBuilder(GetBasicLogger())
+	if err := qb.SetDefaults(cfg, req); err != nil {
+		panic(err)
+	}
 	if err := qb.ProcessURLParams(req, cfg); err != nil {
 		panic(err)
 	}
-	q = qb.BuildSelect("assets", qb.GetFields())
-	count = qb.BuildCountWithWhere("assets")
+	if qb.HasFields() {
+		q = qb.BuildSelect(table, qb.GetFields())
+	} else {
+		q = qb.BuildSelect(table, []string{"*"})
+	}
+	count = qb.BuildCountWithWhere(table)
 	return qb, q, count
+}
+
+// softDeleteAggregateModel mirrors the shape that triggered the production bug:
+// a soft-delete model (SetDefaults binds `deleted_flag = $1`) with a plain
+// column and its description column, both distinct-able.
+func softDeleteAggregateModel() *models.DataModel {
+	return &models.DataModel{
+		Name:        ptr("Building"),
+		Version:     ptr("1.0.0"),
+		Table_name:  ptr("buildings"),
+		End_point:   ptr("building"),
+		Primary_key: ptr("building_id"),
+		Soft_delete: ptr(true),
+		Fields: map[string]models.DataModelField{
+			"building_id":          {Type: ptr("int"), JSON: ptr("building_id"), DB_type: ptr("smallserial")},
+			"building":             {Type: ptr("string"), JSON: ptr("building"), DB_type: ptr("character varying(15)")},
+			"building_description": {Type: ptr("string"), JSON: ptr("building_description"), DB_type: ptr("character varying(200)")},
+		},
+	}
+}
+
+// placeholderCount counts consecutive $1..$N tokens in a SQL string.
+func placeholderCount(sql string) int {
+	n := 0
+	for i := 1; strings.Contains(sql, "$"+strconv.Itoa(i)); i++ {
+		n++
+	}
+	return n
 }
 
 // TestAggregateURLPath_PaginatesWithDefault locks in that the built-in
@@ -135,13 +177,15 @@ func TestAggregateCount_GroupAware(t *testing.T) {
 	}
 }
 
-// TestAggregateCount_NoGroupByIsOne verifies an aggregate with no GROUP BY (a
-// single collapsed row) reports a count of 1.
+// TestAggregateCount_NoGroupByIsOne verifies a bare scalar aggregate with no
+// GROUP BY counts its single collapsed row while still carrying the table/WHERE
+// so any bound args (soft-delete, filters) match the placeholders.
 func TestAggregateCount_NoGroupByIsOne(t *testing.T) {
 	_, _, count := aggregateReq("?aggregate=count,avg:condition_rating")
 
-	if strings.TrimSpace(count) != "SELECT 1;" {
-		t.Errorf("aggregate without GROUP BY should count as 1 row, got: %s", count)
+	want := "SELECT COUNT(*) FROM (SELECT 1 FROM assets LIMIT 1) AS sub;"
+	if count != want {
+		t.Errorf("bare aggregate count mismatch:\n  got:  %s\n  want: %s", count, want)
 	}
 }
 
@@ -200,6 +244,59 @@ func TestAggregateDistinct_GroupByWins(t *testing.T) {
 	}
 	if !strings.HasPrefix(count, "SELECT COUNT(*) FROM (SELECT building FROM assets GROUP BY building)") {
 		t.Errorf("group_by should drive the count, got: %s", count)
+	}
+}
+
+// TestAggregate_SoftDelete_CountKeepsWhereArgs is the regression for the
+// production error "expected 0 arguments, got 1": on a soft-delete model
+// SetDefaults binds `deleted_flag = $1`, and every count-query branch must carry
+// that WHERE placeholder so it matches qb.GetArgs().
+func TestAggregate_SoftDelete_CountKeepsWhereArgs(t *testing.T) {
+	cases := []string{
+		"?aggregate=distinct:building~building_description",
+		"?aggregate=distinct:building",
+		"?aggregate=count",
+		"?aggregate=count,avg:building_id",
+		"?group_by=building&aggregate=count",
+	}
+	for _, q := range cases {
+		t.Run(q, func(t *testing.T) {
+			qb, _, count := aggregateReqCfg(softDeleteAggregateModel(), q)
+
+			nArgs := len(qb.GetArgs())
+			if nArgs != 1 {
+				t.Fatalf("expected soft-delete to bind exactly 1 arg, got %d", nArgs)
+			}
+			if got := placeholderCount(count); got != nArgs {
+				t.Errorf("count query has %d placeholders but %d args would be passed\n  count: %s",
+					got, nArgs, count)
+			}
+			if !strings.Contains(count, "WHERE") {
+				t.Errorf("count query dropped the WHERE clause: %s", count)
+			}
+			if strings.TrimSpace(count) == "SELECT 1;" {
+				t.Errorf("count query is a bare SELECT 1 (args mismatch): %s", count)
+			}
+		})
+	}
+}
+
+// TestAggregate_DistinctDescription_FullShape pins the exact queries for the
+// request the user hit.
+func TestAggregate_DistinctDescription_FullShape(t *testing.T) {
+	qb, q, count := aggregateReqCfg(softDeleteAggregateModel(),
+		"?aggregate=distinct:building~building_description&page=2&page_size=20")
+
+	wantData := "SELECT distinct(building,building_description) FROM buildings WHERE deleted_flag = $1 ORDER BY (building, building_description) ASC LIMIT 20 OFFSET 20;"
+	if q != wantData {
+		t.Errorf("data query:\n  got:  %s\n  want: %s", q, wantData)
+	}
+	wantCount := "SELECT COUNT(*) FROM (SELECT DISTINCT (building, building_description) FROM buildings WHERE deleted_flag = $1) AS sub;"
+	if count != wantCount {
+		t.Errorf("count query:\n  got:  %s\n  want: %s", count, wantCount)
+	}
+	if qb.GetPage() != 2 || qb.GetPageSize() != 20 {
+		t.Errorf("page/size metadata: page=%d size=%d", qb.GetPage(), qb.GetPageSize())
 	}
 }
 

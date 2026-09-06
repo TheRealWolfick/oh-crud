@@ -783,7 +783,12 @@ func (qb *QueryBuilder) BuildCount(table string) string {
 //   - `distinct:` projection with no GROUP BY: the number of distinct rows,
 //     obtained by wrapping a SELECT DISTINCT in a subquery.
 //   - Bare aggregate (count/sum/avg/min/max) with no GROUP BY: the result
-//     collapses to a single row, so the count is always 1.
+//     collapses to a single row.
+//
+// Every branch emits qb.buildWhereClause() so the query's `$N` placeholder
+// count always matches qb.args — a bare `SELECT 1` would be handed the bound
+// WHERE args (e.g. the soft-delete flag) and rejected as "expected 0 arguments,
+// got 1".
 func (qb *QueryBuilder) BuildCountWithWhere(table string) string {
 	if !qb.aggregating {
 		return fmt.Sprintf("SELECT COUNT(*) FROM %s%s;", table, qb.buildWhereClause())
@@ -797,7 +802,10 @@ func (qb *QueryBuilder) BuildCountWithWhere(table string) string {
 		return fmt.Sprintf("SELECT COUNT(*) FROM (SELECT DISTINCT %s FROM %s%s) AS sub;",
 			expr, table, qb.buildWhereClause())
 	}
-	return "SELECT 1;"
+	// Bare scalar aggregate: the data query yields exactly one row. Count it via
+	// the same table/WHERE so the placeholder count matches the bound args.
+	return fmt.Sprintf("SELECT COUNT(*) FROM (SELECT 1 FROM %s%s LIMIT 1) AS sub;",
+		table, qb.buildWhereClause())
 }
 
 // BuildUpdate builds a parameterized UPDATE query from the where and value clauses
