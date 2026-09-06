@@ -958,6 +958,9 @@ func splitCSV(s string) []string {
 // qb.fields / qb.groups / qb.sort. Tokens that don't resolve are silently
 // skipped (consistent with the existing aggregate URL behaviour).
 func (qb *QueryBuilder) ApplyAggregateSpec(spec AggregateSpec, cfg *models.DataModel) error {
+	var was_agg bool
+	var agg_fields []string
+
 	// 1. Plain SELECT fields.
 	for _, field := range spec.Fields {
 		f, allowed := CheckFieldGetValid(field, cfg)
@@ -967,7 +970,16 @@ func (qb *QueryBuilder) ApplyAggregateSpec(spec AggregateSpec, cfg *models.DataM
 		}
 	}
 
-	// 2. GROUP BY columns — also added to SELECT (PostgreSQL requires it).
+	// 3. Aggregate function expressions — added to SELECT.
+	for _, field := range spec.Aggregate {
+		parsed, valid, wasagg, aggfields := ParseAggregateFuncString(field, qb, cfg)
+		if !valid { continue }
+		if slices.Contains(qb.fields, parsed) { continue }
+		qb.fields = append(qb.fields, parsed)
+		if wasagg { was_agg, agg_fields = wasagg, aggfields }
+	}
+
+	// 3. GROUP BY columns — also added to SELECT (PostgreSQL requires it) if it is not in a distinct clause.
 	for _, field := range spec.GroupBy {
 		f, allowed := CheckFieldGetValid(field, cfg)
 		if !allowed { continue }
@@ -975,16 +987,9 @@ func (qb *QueryBuilder) ApplyAggregateSpec(spec AggregateSpec, cfg *models.DataM
 			qb.groups = append(qb.groups, f)
 		}
 		if !slices.Contains(qb.fields, f) {
+			if was_agg && slices.Contains(agg_fields, field) { continue }
 			qb.fields = append(qb.fields, f)
 		}
-	}
-
-	// 3. Aggregate function expressions — added to SELECT.
-	for _, field := range spec.Aggregate {
-		parsed, valid := ParseAggregateFuncString(field, qb, cfg)
-		if !valid { continue }
-		if slices.Contains(qb.fields, parsed) { continue }
-		qb.fields = append(qb.fields, parsed)
 	}
 
 	// 4. Sort. Tokens may name an aggregate (resolved via ParseAggregateFuncString),
@@ -993,7 +998,7 @@ func (qb *QueryBuilder) ApplyAggregateSpec(spec AggregateSpec, cfg *models.DataM
 	for _, field := range spec.SortBy {
 		sort_slice := strings.Split(field, "~")
 		token := strings.TrimSpace(sort_slice[0])
-		parsed, valid := ParseAggregateFuncString(token, qb, cfg)
+		parsed, valid, _, _ := ParseAggregateFuncString(token, qb, cfg)
 		if !valid {
 			if !slices.Contains(qb.groups, token) { continue }
 			parsed = token

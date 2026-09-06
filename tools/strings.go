@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -55,16 +56,19 @@ func Generate32CharString() (string, error) {
 	return generateRandomString(32)
 }
 
-func ParseAggregateFuncString(field string, qb *QueryBuilder, cfg *models.DataModel) (string, bool) {
+
+// Process an aggregate function string. This effectively transforms the function and ensures it
+// is in a valid format and the columns selected are valid.
+func ParseAggregateFuncString(field string, qb *QueryBuilder, cfg *models.DataModel) (string, bool, bool, []string ) {
 	if field == "count" {
-		return "count(*)", true
+		return "count(*)", true, false, nil
 	}
 
 	// Skip if not a valid field
-	if !strings.Contains(field, ":") { return "", false }
+	if !strings.Contains(field, ":") { return "", false, false, nil }
 
 	// Process functions
-	s := strings.Split(field, ":"); if len(s) != 2 { return "", false }
+	s := strings.Split(field, ":"); if len(s) != 2 { return "", false, false, nil }
 	fnc, sub_field := s[0], s[1]
 
 	switch fnc {
@@ -77,23 +81,23 @@ func ParseAggregateFuncString(field string, qb *QueryBuilder, cfg *models.DataMo
 				if allowed { allowed_sub_fields = append(allowed_sub_fields, f) }
 			}
 			if len(allowed_sub_fields) > 0 {
-				return fmt.Sprintf("%s(%s)", fnc, strings.Join(allowed_sub_fields, ",")), true
+				return fmt.Sprintf("%s(%s)", fnc, strings.Join(allowed_sub_fields, ",")), true, true, allowed_sub_fields
 			}
 		} else {
 			f, allowed := CheckFieldGetValid(sub_field, cfg)
 			if allowed { 
-				return  fmt.Sprintf("%s(%s)", fnc, f), true
+				return  fmt.Sprintf("%s(%s)", fnc, f), true, true, []string{f}
 			}
 		}
 	case "avg", "min", "max", "sum":
 		f, allowed := CheckFieldGetValid(sub_field, cfg)
 		if allowed { 
-			return  fmt.Sprintf("%s(%s)", fnc, f), true
+			return  fmt.Sprintf("%s(%s)", fnc, f), true, false, nil
 		}
 	default:
 		qb.logger.Debug("Invalid function passed into aggregate function", "func", fnc)
 	}
-	return "", false
+	return "", false, false, nil
 }
 
 // convertString converts a raw form string into the requested kind.
