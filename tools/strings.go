@@ -68,7 +68,7 @@ func ParseAggregateFuncString(field string, qb *QueryBuilder, cfg *models.DataMo
 	fnc, sub_field := s[0], s[1]
 
 	switch fnc {
-	case "avg", "min", "max", "sum":
+	case "avg", "min", "max", "sum", "distinct":
 		f, allowed := CheckFieldGetValid(sub_field, cfg)
 		if allowed { 
 			return  fmt.Sprintf("%s(%s)", fnc, f), true
