@@ -565,7 +565,12 @@ fields are omitted.
 {
   "Name": "Building",
   "Version": "1.3.9",
+  "Table_name": "building",
   "Primary_key": "building_id",
+  "Foreign_keys": [
+    { "Fields": ["db_domain"], "Target_table": "domain",
+      "Target_fields": ["db_domain"], "ON_UPDATE": "CASCADE", "ON_DELETE": null }
+  ],
   "Unique_keys": [ ["building"], ["building", "db_domain"] ],
   "Fields": {
     "building": {
@@ -591,7 +596,10 @@ fields are omitted.
 }
 ```
 
-Reading it: `Required` = must be present to create. `Skip_insert` = server-generated, never
+Reading it: `Table_name` is the backing Postgres table; `Foreign_keys` lists the model's
+FK constraints (`Fields` → `Target_table`.`Target_fields`, with optional `ON_UPDATE` /
+`ON_DELETE` actions that are `null` when unset), and is `[]` when the model declares none.
+`Required` = must be present to create. `Skip_insert` = server-generated, never
 send it. To update, the body must satisfy `Primary_key` or one full entry of `Unique_keys`.
 `Rules` mirrors the YAML validation rules and can be projected straight into client-side
 form validation. `Select_override` is non-null only for a field with a `json-select`
@@ -608,7 +616,7 @@ GET /{ep}/fn/aggregate?group_by=building&aggregate=count,avg:condition_rating&so
 | Param       | Form                             | Notes                                             |
 |-------------|----------------------------------|---------------------------------------------------|
 | `group_by`  | `col1,col2`                      | Added to both SELECT and GROUP BY                 |
-| `aggregate` | `count,sum:f,avg:f,min:f,max:f`  | `count` → `count(*)`, takes no operand            |
+| `aggregate` | `count,sum:f,avg:f,min:f,max:f,distinct:f` | `count` → `count(*)`, takes no operand; `distinct:f` → `distinct(f)`, and `distinct:f1~f2` → `distinct(f1,f2)` |
 | `sort_by`   | `count~desc,building~asc`        | Must already be in the SELECT list                |
 
 At least one of the three must be supplied, else `400`. Pagination applies. Unresolvable or

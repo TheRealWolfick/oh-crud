@@ -158,9 +158,16 @@ declarative function.
 | `avg:field`  | `AVG(field)`              |
 | `min:field`  | `MIN(field)`              |
 | `max:field`  | `MAX(field)`              |
+| `distinct:field`            | `DISTINCT(field)`         |
+| `distinct:field1~field2~…`  | `DISTINCT(field1,field2,…)`|
 
 `field` must resolve via the same rules as `?fields=` (model field name or
 JSON alias, not `private`).
+
+`distinct` also accepts a `~`-separated list of fields — e.g.
+`distinct:building~floor` renders `distinct(building,floor)`. Fields that
+don't resolve are dropped; the token is kept as long as at least one
+resolves.
 
 #### Example
 
@@ -190,6 +197,15 @@ parameters.
 
 It does not return any fields that are marked as private in the config file
 
+The top-level object also carries database metadata for the model: `Table_name`
+is the backing PostgreSQL table, `Primary_key` is the primary-key field,
+`Unique_keys` is a list of field-name groups that each form a unique constraint,
+and `Foreign_keys` is a list of the model's foreign-key constraints. Each entry
+in `Foreign_keys` has `Fields` (the local columns), `Target_table`,
+`Target_fields` (the referenced columns), and the optional `ON_UPDATE` /
+`ON_DELETE` referential actions (`null` when the config does not set them).
+`Foreign_keys` is an empty list when the model declares none.
+
 The required field specifies what is required to create a new resource, while
 a call to use an update must fulfil either a primary or unique key in the supplied
 fields. If a unique key is to be updated, the primary key must be specified
@@ -210,7 +226,17 @@ Returns:
 {
   "Name": "Building",
   "Version": "1.3.6",
+  "Table_name": "building",
   "Primary_key": "building_id",
+  "Foreign_keys": [
+    {
+      "Fields": ["db_domain"],
+      "Target_table": "domain",
+      "Target_fields": ["db_domain"],
+      "ON_UPDATE": "CASCADE",
+      "ON_DELETE": null
+    }
+  ],
   "Unique_keys": [
     [
       "building"

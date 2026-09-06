@@ -68,6 +68,23 @@ func ParseAggregateFuncString(field string, qb *QueryBuilder, cfg *models.DataMo
 	fnc, sub_field := s[0], s[1]
 
 	switch fnc {
+	case "distinct":
+		if strings.Contains(sub_field, "~") {
+			sub_sub_fields := strings.Split(sub_field, "~")
+			allowed_sub_fields := []string{}
+			for _, ssf := range sub_sub_fields {
+				f, allowed := CheckFieldGetValid(ssf, cfg)
+				if allowed { allowed_sub_fields = append(allowed_sub_fields, f) }
+			}
+			if len(allowed_sub_fields) > 0 {
+				return fmt.Sprintf("%s(%s)", fnc, strings.Join(allowed_sub_fields, ",")), true
+			}
+		} else {
+			f, allowed := CheckFieldGetValid(sub_field, cfg)
+			if allowed { 
+				return  fmt.Sprintf("%s(%s)", fnc, f), true
+			}
+		}
 	case "avg", "min", "max", "sum":
 		f, allowed := CheckFieldGetValid(sub_field, cfg)
 		if allowed { 
