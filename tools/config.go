@@ -209,11 +209,11 @@ func CheckFieldExists(key string, cfg *models.DataModel) (string, bool) {
 	return "", false
 }
 
-// CheckFieldGetValid validates is very similar to CheckFieldExists in that a key matches a field 
+// CheckFieldGetValid validates is very similar to CheckFieldExists in that a key matches a field
 // by name, JSON key, or alias, but also checks that it is not a private field. Returns the field name
 func CheckFieldGetValid(key string, cfg *models.DataModel) (string, bool) {
 	for field_name, field_cfg := range cfg.Fields {
-		if key == *field_cfg.JSON {
+		if key == field_name || key == *field_cfg.JSON {
 			if field_cfg.Private != nil && *field_cfg.Private { return "", false }
 
 			// Process any abstractions on the field
