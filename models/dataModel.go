@@ -137,7 +137,9 @@ type DataModelPublicSchema struct {
 	Name                 string                                `yaml:"name"`
 	Version              string                                `yaml:"version"`
 	// Database metadata
+	Table_name           string                                `yaml:"table_name"`
 	Primary_key          string                                `yaml:"primary-key"`
+	Foreign_keys         []ForeignKey                          `yaml:"-"`
 	Unique_keys          [][]string                            `yaml:"-"`
 	Fields               map[string]DataModelFieldPublicSchema `yaml:"fields"`
 }

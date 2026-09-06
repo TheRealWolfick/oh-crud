@@ -660,10 +660,20 @@ func (qb *QueryBuilder) BuildSchema(cfg *models.DataModel) *models.DataModelPubl
 		}
 	}
 
+	// Build the foreign keys
+	foreign_keys := []models.ForeignKey{}
+	if cfg.Foreign_keys != nil {
+		for _, v := range cfg.Foreign_keys {
+			foreign_keys = append(foreign_keys, v)
+		}
+	}
+
 	schema := &models.DataModelPublicSchema{
 		Name: StringDeref(cfg.Name),
 		Version: StringDeref(cfg.Version),
+		Table_name: StringDeref(cfg.Table_name),
 		Primary_key: StringDeref(cfg.Primary_key),
+		Foreign_keys: foreign_keys,
 		Unique_keys: unique_keys,
 		Fields: map[string]models.DataModelFieldPublicSchema{},
 	}
