@@ -8,8 +8,14 @@
 #           CRUD's approval: assets carrying a department code not present in
 #           `departments` must be reconciled first (a `distinct:department`
 #           aggregate on asset/data vs. the departments table shows the gap).
+#   1.3.1 — record `foreign-key-target-field-description` on every FK whose
+#           target table has a human-readable descriptor column. The editing
+#           UI uses it to show that description as a subheading under the code
+#           value (in the combobox list and the committed value) instead of
+#           guessing a description column by name. mh_locations has no such
+#           column, so fk_asset_location carries none.
 name: Asset Data
-version: 1.3.0
+version: 1.3.1
 table-name: asset_data
 end-point: asset/data
 track-history: true
@@ -28,6 +34,7 @@ foreign-keys:
     foreign-key-target-table: departments
     foreign-key-target-fields:
       - dept_code
+    foreign-key-target-field-description: dept_description
     foreign-key-on-update: CASCADE
   fk_asset_assetcategory:
     foreign-key-fields:
@@ -35,6 +42,7 @@ foreign-keys:
     foreign-key-target-table: asset_categories
     foreign-key-target-fields:
       - cat_code
+    foreign-key-target-field-description: description
     foreign-key-on-update: CASCADE
   fk_asset_bfroom_combo:
     foreign-key-fields:
@@ -46,6 +54,7 @@ foreign-keys:
       - building
       - floor
       - room
+    foreign-key-target-field-description: room_description
     foreign-key-on-update: CASCADE
   fk_asset_building_domain:
     foreign-key-fields:
@@ -55,6 +64,7 @@ foreign-keys:
     foreign-key-target-fields:
       - building
       - db_domain
+    foreign-key-target-field-description: building_description
     foreign-key-on-update: CASCADE
   fk_asset_conditionrating:
     foreign-key-fields:
@@ -62,6 +72,7 @@ foreign-keys:
     foreign-key-target-table: condition_ratings
     foreign-key-target-fields:
       - condition_rating
+    foreign-key-target-field-description: description
     foreign-key-on-update: CASCADE
   fk_asset_location:
     foreign-key-fields:

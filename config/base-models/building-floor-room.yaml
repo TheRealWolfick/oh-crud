@@ -1,6 +1,10 @@
 ---
+# Changelog:
+#   1.3.2 — record `foreign-key-target-field-description: dept_description` on
+#           fk_building_floor_room_dept so the FK-constrained editor can show
+#           the department name under the dept code without name-guessing.
 name: Building Floor Room
-version: 1.3.1
+version: 1.3.2
 table-name: building_floor_room_combo
 end-point: room
 allow-diff: false
@@ -23,6 +27,7 @@ foreign-keys:
     foreign-key-target-table: departments
     foreign-key-target-fields:
       - dept_code
+    foreign-key-target-field-description: dept_description
     foreign-key-on-update: CASCADE
     foreign-key-on-delete: SET NULL
 
