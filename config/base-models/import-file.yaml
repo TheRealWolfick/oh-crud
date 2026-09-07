@@ -1,0 +1,122 @@
+---
+# Oh CRUD table for the Import Workbench's saved-file library.
+#
+# Every upload keeps its raw bytes on disk (UPLOADS_DIR/import-files/<file_id>.<ext>)
+# and one record here: the filename, a content hash, sheet names, row count,
+# the user's key/value metadata, and — per file — how many rows have been
+# committed to Oh CRUD and which of them succeeded, so a resume never
+# re-submits data that already landed.
+#
+# imported_row_keys is the list of source row indices (__i) Oh CRUD has
+# accepted for this file's content. It's keyed off content_hash too (see the
+# app store), so even a fresh re-upload of the same bytes inherits the locks.
+#
+# Same two-tier persistence as app-import-workflow: local JSON cache +
+# Oh CRUD, reconciled at boot by a monotonic rev inside `payload`... actually
+# this table stores the columns directly (not a JSONB blob) so the metadata
+# and counts are queryable for the library's search/sort.
+name: Import File
+version: 1.0.0
+table-name: app_import_files
+end-point: app/import-file
+allow-diff: false
+track-history: false
+
+primary-key: file_id
+
+end-points-allowed:
+  GET: []
+  POST: []
+  PUT: []
+  DELETE: []
+  POST-GROUP: []
+  PUT-GROUP: []
+  DELETE-GROUP: []
+  DIFF: []
+
+fields:
+  file_id:
+    type: string
+    json: file_id
+    db-type: character varying(24)
+    required-on-insert: true
+  owner:
+    type: string
+    json: owner
+    db-type: character varying(64)
+    required-on-insert: true
+  filename:
+    type: string
+    json: filename
+    db-type: character varying(300)
+    required-on-insert: true
+  ext:
+    type: string
+    json: ext
+    db-type: character varying(12)
+    default: ""
+  content_hash:
+    type: string
+    json: content_hash
+    db-type: character varying(64)
+    default: ""
+  size_bytes:
+    type: int
+    json: size_bytes
+    db-type: bigint
+    default: 0
+  sheet_names:
+    type: json
+    json: sheet_names
+    db-type: jsonb
+    nullable: true
+  total_rows:
+    type: int
+    json: total_rows
+    db-type: integer
+    default: 0
+  uploaded_date:
+    type: string
+    json: uploaded_date
+    db-type: timestamp without time zone
+    default: "now()"
+  updated_date:
+    type: string
+    json: updated_date
+    db-type: timestamp without time zone
+    nullable: true
+  metadata:
+    type: json
+    json: metadata
+    db-type: jsonb
+    nullable: true          # { "<key>": "<value>", ... }
+  committed_count:
+    type: int
+    json: committed_count
+    db-type: integer
+    default: 0
+  succeeded_count:
+    type: int
+    json: succeeded_count
+    db-type: integer
+    default: 0
+  imported_row_keys:
+    type: json
+    json: imported_row_keys
+    db-type: jsonb
+    nullable: true          # [__i, ...] rows Oh CRUD has accepted
+  last_workflow_id:
+    type: string
+    json: last_workflow_id
+    db-type: character varying(24)
+    nullable: true
+  last_status:
+    type: string
+    json: last_status
+    db-type: character varying(16)
+    default: "new"          # new | in_progress | committed
+  rev:
+    type: int
+    json: rev
+    db-type: integer
+    default: 0
