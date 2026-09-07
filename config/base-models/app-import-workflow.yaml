@@ -1,0 +1,72 @@
+---
+# Saved Import Workbench workflows — the reusable "recipe" for shaping an
+# uploaded spreadsheet into an Oh CRUD create/update. One row per workflow.
+# This service holds the live copy in memory + a local-disk mirror
+# (import_store.py); this table is the durable backing so a backend restart
+# doesn't lose saved recipes.
+#
+# `payload` is JSONB — {"log": [<Action.to_dict()>...], "source_meta":
+# {filename, columns, had_header}, "rev": <int>, "saved_at": <epoch>} — the
+# same document approach as app_diff_state.payload. The spreadsheet DATA is
+# never stored; every reuse replays the recipe against a freshly uploaded
+# file. One writer (single FastAPI replica), so last-write-wins is fine. The
+# top-level `version` column mirrors payload.rev for cheap boot reconciliation.
+#
+# Changelog:
+#   1.0.0 — new table (additive, non-destructive).
+name: App Import Workflow
+version: 1.0.0
+table-name: app_import_workflow
+end-point: app/import-workflow
+allow-diff: false
+
+primary-key: workflow_id
+
+unique-keys:
+  uk_app_import_workflow_name:
+    unique-key-fields:
+      - name
+
+end-points-allowed:
+  GET: []
+  PUT: []
+  POST: []
+  DELETE: []
+  PUT-GROUP: []
+  POST-GROUP: []
+  DELETE-GROUP: []
+  DIFF: []
+
+fields:
+  workflow_id:
+    type: string
+    json: workflow_id
+    db-type: character varying(64)
+    required-on-insert: true
+  name:
+    type: string
+    json: name
+    db-type: character varying(120)
+    required-on-insert: true
+  payload:
+    type: json
+    json: payload
+    db-type: jsonb
+    nullable: true
+  version:
+    type: int
+    json: version
+    db-type: integer
+    default: 0
+    nullable: true
+  updated_by:
+    type: string
+    json: updated_by
+    db-type: character varying(50)
+    nullable: true
+  updated_at:
+    type: string
+    json: updated_at
+    db-type: timestamptz
+    default: now()
+    nullable: true
