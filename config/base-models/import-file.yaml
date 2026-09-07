@@ -16,7 +16,7 @@
 # this table stores the columns directly (not a JSONB blob) so the metadata
 # and counts are queryable for the library's search/sort.
 name: Import File
-version: 1.0.0
+version: 1.1.0
 table-name: app_import_files
 end-point: app/import-file
 allow-diff: false
@@ -69,7 +69,17 @@ fields:
     type: json
     json: sheet_names
     db-type: jsonb
-    nullable: true
+    nullable: true          # every worksheet in the workbook
+  loaded_sheets:
+    type: json
+    json: loaded_sheets
+    db-type: jsonb
+    nullable: true          # the sheets actually opened into the workbench
+  recipe_log:
+    type: json
+    json: recipe_log
+    db-type: jsonb
+    nullable: true          # the action log as it stood, for resume
   total_rows:
     type: int
     json: total_rows
@@ -100,6 +110,11 @@ fields:
     json: succeeded_count
     db-type: integer
     default: 0
+  dropped_count:
+    type: int
+    json: dropped_count
+    db-type: integer
+    default: 0              # rows the recipe removes (droprows / header / dropsheet)
   imported_row_keys:
     type: json
     json: imported_row_keys
