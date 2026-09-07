@@ -1,6 +1,17 @@
 ---
+# Changelog:
+#   1.2.3 — record `foreign-key-target-field-description: floor_description` on
+#           fk_building_floor_floor. `floor_description` is a column of the
+#           `floors` table (the FK target), so this is a direct descriptor:
+#           it makes `floors.floor_description` the label origin for `floor`,
+#           which then flows back through every table whose `floor` FK-links
+#           here (building_floor_room_combo, and asset/data transitively).
+#   1.2.2 — record `foreign-key-target-field-description: building_description`
+#           on fk_building_floor_building so the FK descriptor graph can reach
+#           a building label from a (building, floor) composite (asset/data's
+#           building/floor/room cascade branches through here).
 name: Building Floor
-version: 1.2.1
+version: 1.2.3
 table-name: building_floor_combo
 end-point: bfloor
 allow-diff: false
@@ -14,6 +25,7 @@ foreign-keys:
     foreign-key-target-table: buildings
     foreign-key-target-fields:
       - building
+    foreign-key-target-field-description: building_description
     foreign-key-on-update: CASCADE
   fk_building_floor_floor:
     foreign-key-fields:
@@ -21,6 +33,7 @@ foreign-keys:
     foreign-key-target-table: floors
     foreign-key-target-fields:
       - floor
+    foreign-key-target-field-description: floor_description
     foreign-key-on-update: CASCADE
 
 unique-keys:

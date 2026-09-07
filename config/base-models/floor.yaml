@@ -1,6 +1,14 @@
 ---
+# Changelog:
+#   1.3.0 — new field `floor_description` (db `character varying(120)`,
+#           nullable): a human label for a floor code. This is the description
+#           ORIGIN for `floor` across the FK graph — the (building, floor)
+#           and (building, floor, room) composites that branch through
+#           building_floor_combo / building_floor_room_combo resolve their
+#           `floor` label here. Schema delta: ADD COLUMN floor_description
+#           character varying(120) — additive, no data loss.
 name: Floor
-version: 1.2.1
+version: 1.3.0
 table-name: floors
 end-point: floor
 allow-diff: false
@@ -32,3 +40,9 @@ fields:
     db-type: character varying(4)
     required-on-insert: true
     absolute-match: true
+  floor_description:
+    type: string
+    json: floor_description
+    db-type: character varying(120)
+    default: ""
+    nullable: true

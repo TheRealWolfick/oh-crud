@@ -1,0 +1,114 @@
+---
+# Oh CRUD table design for the Analytics area's immutable aggregation history.
+#
+# The asset data itself carries no time dimension we can trust for trend
+# charts (added_date is sparse, history tracks individual field edits, not
+# portfolio-level totals). This table is the analytics area's own append-only
+# ledger: every time a dashboard is "captured" — on demand, or on a schedule —
+# one row is written per (widget, group bucket, metric). Rows are never
+# updated or deleted, so the series a KPI tile or a line chart draws is a true
+# record of what the portfolio looked like at each capture, under the exact
+# filter set that was in effect.
+#
+# capture_id ties one capture's rows together; filter_hash lets the app pull
+# back only the points that share the current filter set so a trend compares
+# like with like.
+name: Analytics Snapshot
+version: 1.0.0
+table-name: analytics_snapshots
+end-point: analytics/snapshot
+allow-diff: false
+track-history: false
+
+primary-key: snapshot_id
+
+end-points-allowed:
+  GET: []
+  POST: []
+  POST-GROUP: []
+  # deliberately no PUT / DELETE — the history is immutable
+  PUT: []
+  DELETE: []
+  PUT-GROUP: []
+  DELETE-GROUP: []
+  DIFF: []
+
+fields:
+  snapshot_id:
+    type: int
+    json: snapshot_id
+    db-type: serial
+    skip-insert: true
+    include-in-diff: false
+  capture_id:
+    type: string
+    json: capture_id
+    db-type: character varying(36)
+    required-on-insert: true
+    include-in-diff: false
+  captured_date:
+    type: string
+    json: captured_date
+    db-type: timestamp without time zone
+    default: "now()"
+    include-in-diff: false
+  captured_by:
+    type: string
+    json: captured_by
+    db-type: character varying(64)
+    default: ""
+    include-in-diff: false
+  reason:
+    type: string
+    json: reason
+    db-type: character varying(20)
+    default: "manual"        # manual | scheduled | migration
+    include-in-diff: false
+  dashboard:
+    type: string
+    json: dashboard
+    db-type: character varying(64)
+    required-on-insert: true
+    include-in-diff: false
+  widget:
+    type: string
+    json: widget
+    db-type: character varying(64)
+    required-on-insert: true
+    include-in-diff: false
+  metric:
+    type: string
+    json: metric
+    db-type: character varying(64)
+    required-on-insert: true
+    include-in-diff: false
+  group_key:
+    type: string
+    json: group_key
+    db-type: character varying(200)
+    nullable: true           # null for a scalar / KPI widget
+    include-in-diff: false
+  value:
+    type: float
+    json: value
+    db-type: double precision
+    default: 0
+    include-in-diff: false
+  scope_row_count:
+    type: int
+    json: scope_row_count
+    db-type: integer
+    default: 0
+    include-in-diff: false
+  filter_hash:
+    type: string
+    json: filter_hash
+    db-type: character varying(16)
+    default: "none"
+    include-in-diff: false
+  filter_json:
+    type: json
+    json: filter_json
+    db-type: jsonb
+    nullable: true
+    include-in-diff: false

@@ -1,5 +1,13 @@
 ---
 # Changelog:
+#   1.4.2 — record `foreign-key-target-field-description: floor_description` on
+#           fk_building_floor_room_bfloor (describes its `floor` target field).
+#           `floor_description` is NOT a column of the immediate target
+#           (building_floor_combo) — it lives on `floors`, one hop further —
+#           so the descriptor graph must follow the chain up to the origin
+#           (see schema_catalog._resolve_edge). The declaration makes
+#           building_floor_room_combo.floor (and any future FK into it) carry
+#           the floors-origin label.
 #   1.4.1 — `date_audited` drops its `now()` default: NULL now means "never
 #           audited" (the DB is being reset to all-NULL). The maps area's
 #           audit-completion analytics carry a dedicated never-audited bar.
@@ -12,7 +20,7 @@
 #           fk_building_floor_room_dept so the FK-constrained editor can show
 #           the department name under the dept code without name-guessing.
 name: Building Floor Room
-version: 1.4.1
+version: 1.4.2
 table-name: building_floor_room_combo
 end-point: room
 allow-diff: false
@@ -28,6 +36,7 @@ foreign-keys:
     foreign-key-target-fields:
       - building
       - floor
+    foreign-key-target-field-description: floor_description
     foreign-key-on-update: CASCADE
   fk_building_floor_room_dept:
     foreign-key-fields:
