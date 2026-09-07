@@ -13,14 +13,33 @@
 # capture_id ties one capture's rows together; filter_hash lets the app pull
 # back only the points that share the current filter set so a trend compares
 # like with like.
+#
+# filter_set_id points at the saved filter set the capture ran under (NULL =
+# the unfiltered "all assets" baseline). ON DELETE CASCADE: deleting a saved
+# filter set removes every snapshot ever captured under it.
+#
+# Changelog:
+#   1.1.0 — add fk_snapshot_filter_set (filter_set_id -> analytics_filter_sets,
+#           ON DELETE CASCADE). Additive; existing rows get NULL.
 name: Analytics Snapshot
-version: 1.0.0
+version: 1.1.0
 table-name: analytics_snapshots
 end-point: analytics/snapshot
 allow-diff: false
 track-history: false
 
 primary-key: snapshot_id
+
+foreign-keys:
+  fk_snapshot_filter_set:
+    foreign-key-fields:
+      - filter_set_id
+    foreign-key-target-table: analytics_filter_sets
+    foreign-key-target-fields:
+      - filter_set_id
+    foreign-key-target-field-description: name
+    foreign-key-on-update: CASCADE
+    foreign-key-on-delete: CASCADE
 
 end-points-allowed:
   GET: []
@@ -99,6 +118,18 @@ fields:
     json: scope_row_count
     db-type: integer
     default: 0
+    include-in-diff: false
+  filter_set_id:
+    type: string
+    json: filter_set_id
+    db-type: character varying(36)
+    nullable: true            # null = the unfiltered "all assets" baseline
+    include-in-diff: false
+  filter_set_name:
+    type: string
+    json: filter_set_name
+    db-type: character varying(120)
+    default: ""               # denormalised label at capture time
     include-in-diff: false
   filter_hash:
     type: string

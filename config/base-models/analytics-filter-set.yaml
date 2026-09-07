@@ -1,0 +1,66 @@
+---
+# Oh CRUD table for the Analytics area's named, reusable filter sets.
+#
+# A filter set is a saved list of filter clauses ([{col, op, value}, …]) the
+# user can load into the analytics page with one click. `filter_set_id` is a
+# stable UUID assigned once and kept across renames — it is the key the
+# analytics_snapshots table cascades on, so deleting a set removes every
+# snapshot captured under it.
+#
+# Per-user: `owner` is the username. `sort_order` drives the drawer order and
+# is renumbered on a rearrange.
+name: Analytics Filter Set
+version: 1.0.0
+table-name: analytics_filter_sets
+end-point: analytics/filter-set
+allow-diff: false
+track-history: false
+
+primary-key: filter_set_id
+
+end-points-allowed:
+  GET: []
+  POST: []
+  PUT: []
+  DELETE: []
+  POST-GROUP: []
+  PUT-GROUP: []
+  DELETE-GROUP: []
+  DIFF: []
+
+fields:
+  filter_set_id:
+    type: string
+    json: filter_set_id
+    db-type: character varying(36)
+    required-on-insert: true
+  owner:
+    type: string
+    json: owner
+    db-type: character varying(64)
+    required-on-insert: true
+  name:
+    type: string
+    json: name
+    db-type: character varying(120)
+    required-on-insert: true
+  sort_order:
+    type: int
+    json: sort_order
+    db-type: integer
+    default: 0
+  filter_json:
+    type: json
+    json: filter_json
+    db-type: jsonb
+    nullable: true
+  created_date:
+    type: string
+    json: created_date
+    db-type: timestamp without time zone
+    default: "now()"
+  updated_date:
+    type: string
+    json: updated_date
+    db-type: timestamp without time zone
+    nullable: true
