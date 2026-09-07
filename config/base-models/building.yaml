@@ -1,6 +1,6 @@
 ---
 name: Building
-version: 1.3.10
+version: 1.3.11
 table-name: buildings
 end-point: building
 allow-diff: false
@@ -17,6 +17,7 @@ foreign-keys:
     foreign-key-target-table: domains
     foreign-key-target-fields:
       - domain_code
+    foreign-key-target-field-description: domain_description
     foreign-key-on-update: CASCADE
 
 unique-keys:
