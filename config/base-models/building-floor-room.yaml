@@ -1,5 +1,9 @@
 ---
 # Changelog:
+#   1.4.1 — `date_audited` drops its `now()` default: NULL now means "never
+#           audited" (the DB is being reset to all-NULL). The maps area's
+#           audit-completion analytics carry a dedicated never-audited bar.
+#           Schema delta: ALTER COLUMN date_audited DROP DEFAULT — no data loss.
 #   1.4.0 — new field `date_audited` (db `date`, nullable, default now()): when
 #           this room was last physically audited. The maps area's "Audit"
 #           density mode and audit-completion analytics read it. Schema delta:
@@ -8,7 +12,7 @@
 #           fk_building_floor_room_dept so the FK-constrained editor can show
 #           the department name under the dept code without name-guessing.
 name: Building Floor Room
-version: 1.4.0
+version: 1.4.1
 table-name: building_floor_room_combo
 end-point: room
 allow-diff: false
@@ -89,5 +93,4 @@ fields:
     type: string
     json: date_audited
     db-type: date
-    default: "now()"
     nullable: true
