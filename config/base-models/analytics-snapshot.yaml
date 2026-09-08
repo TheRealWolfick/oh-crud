@@ -21,8 +21,12 @@
 # Changelog:
 #   1.1.0 — add fk_snapshot_filter_set (filter_set_id -> analytics_filter_sets,
 #           ON DELETE CASCADE). Additive; existing rows get NULL.
+#   1.2.0 — value: double precision -> numeric(16,4). Oh CRUD's config
+#           validator rejects a bare `double precision` db-type, so the whole
+#           file failed validation and never deployed; numeric(16,4) holds any
+#           portfolio-level sum with cents to spare.
 name: Analytics Snapshot
-version: 1.1.0
+version: 1.2.0
 table-name: analytics_snapshots
 end-point: analytics/snapshot
 allow-diff: false
@@ -110,7 +114,7 @@ fields:
   value:
     type: float
     json: value
-    db-type: double precision
+    db-type: numeric(16,4)
     default: 0
     include-in-diff: false
   scope_row_count:
