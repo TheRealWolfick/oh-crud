@@ -173,6 +173,29 @@ func TestValidateDataModel(t *testing.T) {
 		}
 	})
 
+	t.Run("field unknown db-type", func(t *testing.T) {
+		m := basicModel()
+		f := m.Fields["name"]
+		f.DB_type = ptr("nonsense type")
+		m.Fields["name"] = f
+		if err := ValidateDataModel(m); err == nil {
+			t.Error("expected error for field with unknown db-type")
+		}
+	})
+
+	t.Run("multi-word floating-point db-types are accepted", func(t *testing.T) {
+		for _, dbType := range []string{"double precision", "real", "float8", "numeric(16,4)", "numeric (10, 2)"} {
+			m := basicModel()
+			f := m.Fields["count"]
+			f.Type = ptr("float")
+			f.DB_type = ptr(dbType)
+			m.Fields["count"] = f
+			if err := ValidateDataModel(m); err != nil {
+				t.Errorf("db-type %q: unexpected validation error: %v", dbType, err)
+			}
+		}
+	})
+
 	t.Run("field unknown migration strategy", func(t *testing.T) {
 		m := basicModel()
 		f := m.Fields["name"]

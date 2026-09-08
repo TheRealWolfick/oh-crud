@@ -14,10 +14,6 @@
 # <name>. A serial `alignment_id` is the primary key so a row can be addressed
 # directly. Mirrors map-room-override's shape.
 #
-# dx/dy are `numeric(10,2)` — the maps UI rounds nudges to 2dp, and a floor
-# plan's source coordinates never approach the ~1e8 range that leaves. (Oh
-# CRUD's config validator rejects a bare `double precision` db-type.)
-#
 # Changelog:
 #   1.0.0 — new table (additive, non-destructive).
 name: Map Floor Alignment
@@ -82,12 +78,12 @@ fields:
   dx:
     type: float
     json: dx
-    db-type: numeric(10,2)
+    db-type: double precision
     default: 0
   dy:
     type: float
     json: dy
-    db-type: numeric(10,2)
+    db-type: double precision
     default: 0
   note:
     type: string

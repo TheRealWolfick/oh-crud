@@ -598,12 +598,18 @@ func ValidateDataModel(m models.DataModel) error {
 		"int": true, "float": true, "string": true,
 		"bool": true, "json": true, "time": true, "uuid": true,
 	}
+	// Keep this in sync with schematools.hclType — every db-type Atlas can emit
+	// HCL for must validate here too, otherwise a model that migrates cleanly
+	// still fails config validation and never deploys (e.g. `double precision`).
 	validDBTypes := map[string]bool{
-		"int": true, "integer": true, "bigint": true, "smallint": true,
-		"boolean": true, "jsonb": true, "json": true, "uuid": true,
+		"int": true, "integer": true, "int4": true, "bigint": true, "int8": true,
+		"smallint": true, "int2": true,
+		"boolean": true, "bool": true, "jsonb": true, "json": true, "uuid": true,
 		"timestamptz": true, "text": true, "numeric": true, "timestamp without time zone": true,
-		"timestamp with time zone": true, "date": true, "varchar": true, "character varying": true,
-		"char": true, "character": true, "decimal": true, "serial": true, "smallserial": true,
+		"timestamp with time zone": true, "timestamp": true, "date": true,
+		"varchar": true, "character varying": true, "char": true, "character": true,
+		"decimal": true, "real": true, "float4": true, "double precision": true, "float8": true,
+		"serial": true, "smallserial": true, "bigserial": true,
 	}
 	validMigrations := map[string]bool{
 		"alter": true, "skip": true, "recreate": true,
@@ -624,7 +630,7 @@ func ValidateDataModel(m models.DataModel) error {
 		if field.DB_type == nil || strings.TrimSpace(*field.DB_type) == "" {
 			errs = append(errs, fmt.Sprintf("%s: db-type is required", prefix))
 		} else {
-			baseType := strings.ToLower(strings.Split(*field.DB_type, "(")[0])
+			baseType := strings.ToLower(strings.TrimSpace(strings.Split(*field.DB_type, "(")[0]))
 			if !validDBTypes[baseType] && baseType != "varchar" {
 				errs = append(errs, fmt.Sprintf("%s: unknown db-type %q", prefix, *field.DB_type))
 			}
