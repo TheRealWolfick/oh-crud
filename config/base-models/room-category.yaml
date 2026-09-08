@@ -1,0 +1,53 @@
+---
+# Lookup table for room-type categories — the tokens the Asset Maps typology
+# base map colours rooms by (CLINICAL, OFFICE, CORRIDOR, ...). `room`
+# (building_floor_room_combo.room_category) FK-references this, so the map's
+# room-type picker gets its option list AND each option's description from the
+# existing FK-constrained-editor plumbing (schema catalog -> reference_cache ->
+# /api/maps/refdata -> the Combobox).
+#
+# Shaped like asset/category: a short string code as the primary key, a
+# free-text description, an is_active flag, plus a sort_order for the picker.
+# Seed it with scripts/seed-room-categories.sql.
+#
+# Changelog:
+#   1.0.0 — new table (additive, non-destructive).
+name: Room Category
+version: 1.0.0
+table-name: room_categories
+end-point: room/category
+allow-diff: false
+
+primary-key: category_code
+
+end-points-allowed:
+  GET: []
+  PUT: []
+  POST: []
+  DELETE: []
+  PUT-GROUP: []
+  POST-GROUP: []
+  DELETE-GROUP: []
+  DIFF: []
+
+fields:
+  category_code:
+    type: string
+    json: category_code
+    db-type: character varying(30)
+    required-on-insert: true
+  description:
+    type: string
+    json: description
+    db-type: character varying(200)
+    default: ""
+  sort_order:
+    type: int
+    json: sort_order
+    db-type: smallint
+    default: 0
+  is_active:
+    type: bool
+    json: is_active
+    db-type: boolean
+    default: true

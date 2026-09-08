@@ -1,5 +1,19 @@
 ---
 # Changelog:
+#   1.6.0 — fk_building_floor_room_category: room_category -> room_categories
+#           (category_code), carrying `foreign-key-target-field-description:
+#           description` so the map's room-type picker shows each token's
+#           description via the FK-constrained-editor plumbing. ON UPDATE
+#           CASCADE / ON DELETE SET NULL. **Populate room_categories first**
+#           (scripts/seed-room-categories.sql) — adding a FK over a column
+#           that already has values is gated on the values reconciling.
+#   1.5.0 — new field `room_category` (db `character varying(30)`, nullable):
+#           the room-type token (CLINICAL, OFFICE, CORRIDOR, ...) the maps
+#           area's typology base map colours rooms by. Set from the map's room
+#           panel; when present it wins over the GeoJSON `category` property,
+#           which in turn wins over the description-derived guess. Schema
+#           delta: ADD COLUMN room_category character varying(30) — additive,
+#           no data loss.
 #   1.4.2 — record `foreign-key-target-field-description: floor_description` on
 #           fk_building_floor_room_bfloor (describes its `floor` target field).
 #           `floor_description` is NOT a column of the immediate target
@@ -20,7 +34,7 @@
 #           fk_building_floor_room_dept so the FK-constrained editor can show
 #           the department name under the dept code without name-guessing.
 name: Building Floor Room
-version: 1.4.2
+version: 1.6.0
 table-name: building_floor_room_combo
 end-point: room
 allow-diff: false
@@ -45,6 +59,15 @@ foreign-keys:
     foreign-key-target-fields:
       - dept_code
     foreign-key-target-field-description: dept_description
+    foreign-key-on-update: CASCADE
+    foreign-key-on-delete: SET NULL
+  fk_building_floor_room_category:
+    foreign-key-fields:
+      - room_category
+    foreign-key-target-table: room_categories
+    foreign-key-target-fields:
+      - category_code
+    foreign-key-target-field-description: description
     foreign-key-on-update: CASCADE
     foreign-key-on-delete: SET NULL
 
@@ -102,4 +125,9 @@ fields:
     type: string
     json: date_audited
     db-type: date
+    nullable: true
+  room_category:
+    type: string
+    json: room_category
+    db-type: character varying(30)
     nullable: true
