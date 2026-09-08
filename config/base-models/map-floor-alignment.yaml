@@ -1,0 +1,103 @@
+---
+# Per-floor (and per-layer) x/y alignment nudges for the Asset Maps area.
+# Floor plans are digitised from separate DXF layers / separate exports that
+# don't always share an origin; an alignment row shifts one floor — or one
+# layer within a floor — by (dx, dy) *source coordinate units* so it lines up
+# with the rest of the building. It is applied at render time by the maps
+# frontend; the geometry endpoint still serves un-nudged coordinates.
+#
+# Identity is the (building, floor, layer) triple (unique key). `layer` is:
+#   "all"    — the whole floor (rooms + every overlay move together)
+#   "rooms"  — the room polygons only
+#   <name>   — one overlay (plan, elec, fire, ...) only
+# The effective nudge for the rooms is  all + rooms; for an overlay,  all +
+# <name>. A serial `alignment_id` is the primary key so a row can be addressed
+# directly. Mirrors map-room-override's shape.
+#
+# Changelog:
+#   1.0.0 — new table (additive, non-destructive).
+name: Map Floor Alignment
+version: 1.0.0
+table-name: map_floor_alignment
+end-point: map/floor-alignment
+allow-diff: false
+
+primary-key: alignment_id
+
+foreign-keys:
+  fk_map_floor_alignment_bfloor:
+    foreign-key-fields:
+      - building
+      - floor
+    foreign-key-target-table: building_floor_combo
+    foreign-key-target-fields:
+      - building
+      - floor
+    foreign-key-on-update: CASCADE
+
+unique-keys:
+  uk_map_floor_alignment_triple:
+    unique-key-fields:
+      - building
+      - floor
+      - layer
+
+end-points-allowed:
+  GET: []
+  PUT: []
+  POST: []
+  DELETE: []
+  PUT-GROUP: []
+  POST-GROUP: []
+  DELETE-GROUP: []
+  DIFF: []
+
+fields:
+  alignment_id:
+    type: int
+    json: alignment_id
+    db-type: serial
+    skip-insert: true
+  building:
+    type: string
+    json: building
+    db-type: character varying(15)
+    required-on-insert: true
+  floor:
+    type: string
+    json: floor
+    db-type: character varying(4)
+    required-on-insert: true
+    absolute-match: true
+  layer:
+    type: string
+    json: layer
+    db-type: character varying(40)
+    required-on-insert: true
+    absolute-match: true
+  dx:
+    type: float
+    json: dx
+    db-type: double precision
+    default: 0
+  dy:
+    type: float
+    json: dy
+    db-type: double precision
+    default: 0
+  note:
+    type: string
+    json: note
+    db-type: character varying(255)
+    nullable: true
+  created_by:
+    type: string
+    json: created_by
+    db-type: character varying(50)
+    nullable: true
+  updated_at:
+    type: string
+    json: updated_at
+    db-type: timestamptz
+    default: now()
+    nullable: true
