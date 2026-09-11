@@ -1,6 +1,10 @@
 name: events
 version: 1.2.6
 table-name: events
+description: "A table that records all the events that occur in the database, given that they are set to persist to the db."
+meta:
+  persist: true
+  report: true
 end-point: events
 primary-key: event_id
 end-points-allowed:
@@ -28,16 +32,19 @@ fields:
     db-type: character varying(15)
     default: "missing"
     required-on-insert: true
+    description: "The action that the event is taking place. This is typically the CRUD action."
   status:
     type: string
     json: status
     default: "missing"
     db-type: character varying(10)
+    description: "The status of the related action. Typically queued, started, success, warn or fail."
   topic:
     type: string
     json: topic
     db-type: character varying(30)
     nullable: true
+    description: "The topic that this event is related to. This may be a table (technically an end point), or a declared function."
   log:
     type: json
     json: log
@@ -45,6 +52,7 @@ fields:
       - event_log
     db-type: jsonb
     nullable: true
+    description: "This is the events information."
   time:
     type: time
     json: event_time
