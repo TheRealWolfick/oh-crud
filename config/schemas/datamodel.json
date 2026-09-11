@@ -16,6 +16,8 @@
     "diff-comparator": { "type": "string" },
     "primary-key": { "type": "string" },
     "admin-roles": { "type": "array", "items": { "type": "string" }},
+    "description": { "type": "string" },
+    "meta": { "type": "object", "additionalProperties": true },
 
     "web-hooks": {
       "type": "object",
@@ -133,7 +135,8 @@
         "required": ["unique-key-fields"],
         "additionalProperties": false,
         "properties": {
-          "unique-key-fields": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+          "unique-key-fields": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+          "unique-key-field-description": { "type": "string" }
         }
       }
     },
@@ -169,73 +172,75 @@
           "db-type":  { "type": "string" },
           "nullable": { "type": "boolean" },
           "default":  { "type": ["string", "number", "boolean"] },
+          "description": { "type": "string" },
+          "meta": { "type": "object", "additionalProperties": true },
           "migration": {
-            "type": "string",
-            "enum": ["alter", "skip", "recreate"]
+           "type": "string",
+           "enum": ["alter", "skip", "recreate"]
           },
           "private": { "type": "boolean" },
           "rules": { 
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "min": { "type": "number" },
-              "max": { "type": "number" },
-              "pattern": { "type": "string" },
-              "max-length": { "type": "number" },
-              "enum": { 
-                "type": "array",
-                "items": { "type": ["string", "number"] }
-              }
+           "type": "object",
+           "additionalProperties": false,
+           "properties": {
+            "min": { "type": "number" },
+            "max": { "type": "number" },
+            "pattern": { "type": "string" },
+            "max-length": { "type": "number" },
+            "enum": { 
+             "type": "array",
+             "items": { "type": ["string", "number"] }
             }
+           }
           }
         },
         "allOf": [ 
-          {
-            "if": {
-              "properties": {
-                "type": { "enum": ["int", "float"] }
-              },
-              "required": ["type"]
-            },
-            "then": {
-              "properties": {
-                "rules": {
-                  "properties": { 
-                    "min": { "type": "number" },
-                    "max": { "type": "number" },
-                    "enum": {
-                      "type": "array",
-                      "items": { "type": "number" }
-                    }
-                  },
-                  "additionalProperties": false
-                }
-              }
-            }
+         {
+          "if": {
+           "properties": {
+            "type": { "enum": ["int", "float"] }
+           },
+           "required": ["type"]
           },
-          {
-            "if": {
-              "properties": {
-                "type": { "enum": ["string"] }
-              },
-              "required": ["type"]
-            },
-            "then": {
-              "properties": {
-                "rules": {
-                  "properties": { 
-                    "pattern": { "type": "string" },
-                    "max-length": { "type": "number" },
-                    "enum": {
-                      "type": "array",
-                      "items": { "type": "string" }
-                    }
-                  },
-                  "additionalProperties": false
-                }
+          "then": {
+           "properties": {
+            "rules": {
+             "properties": { 
+              "min": { "type": "number" },
+              "max": { "type": "number" },
+              "enum": {
+               "type": "array",
+               "items": { "type": "number" }
               }
+             },
+             "additionalProperties": false
             }
+           }
           }
+         },
+         {
+          "if": {
+           "properties": {
+            "type": { "enum": ["string"] }
+           },
+           "required": ["type"]
+          },
+          "then": {
+           "properties": {
+            "rules": {
+             "properties": { 
+              "pattern": { "type": "string" },
+              "max-length": { "type": "number" },
+              "enum": {
+               "type": "array",
+               "items": { "type": "string" }
+              }
+             },
+             "additionalProperties": false
+            }
+           }
+          }
+         }
         ]
       }
     }
