@@ -565,6 +565,8 @@ fields are omitted.
 {
   "Name": "Building",
   "Version": "1.3.9",
+  "Description": "Buildings on site.",
+  "Meta": { "icon": "building" },
   "Table_name": "building",
   "Primary_key": "building_id",
   "Foreign_keys": [
@@ -575,20 +577,22 @@ fields are omitted.
   "Fields": {
     "building": {
       "Type": "string", "JSON": "building", "Required": true,
-      "Skip_insert": false, "DB_type": "character varying(15)",
-      "Nullable": false, "Default": "", "Rules": null,
+      "Skip_insert": false, "Description": "", "DB_type": "character varying(15)",
+      "Nullable": false, "Default": "", "Rules": null, "Meta": null,
       "Select_override": null, "Select_expression": ""
     },
     "building_description": {
       "Type": "string", "JSON": "building_description", "Required": false,
-      "Skip_insert": false, "DB_type": "character varying(200)",
+      "Skip_insert": false, "Description": "Human-readable name of the building.",
+      "DB_type": "character varying(200)",
       "Nullable": true, "Default": "", "Rules": null,
+      "Meta": { "icon": "building" },
       "Select_override": null, "Select_expression": ""
     },
     "missing_from_supplied": {
       "Type": "json", "JSON": "missing_from_supplied", "Required": false,
-      "Skip_insert": false, "DB_type": "jsonb",
-      "Nullable": true, "Default": "", "Rules": null,
+      "Skip_insert": false, "Description": "", "DB_type": "jsonb",
+      "Nullable": true, "Default": "", "Rules": null, "Meta": null,
       "Select_override": { "Action": "count", "ApplyOn": "list", "TreatAs": "int" },
       "Select_expression": "jsonb_array_length(missing_from_supplied)"
     }
@@ -606,6 +610,10 @@ form validation. `Select_override` is non-null only for a field with a `json-sel
 abstraction (see §6) — when set, `Select_expression` is the SQL this field actually resolves
 to on GET, and the field's *effective* response/filter type is `Select_override.TreatAs`, not
 `Type`. Writes always use `Type`/`DB_type` (the raw jsonb shape) regardless of `Select_override`.
+`Description` and `Meta` (at both the model level and on each field) come straight from the
+YAML's `description:`/`meta:` keys — they're purely informational, passed through so the
+frontend can drive display text and other data-driven UI behaviour. Oh CRUD itself never reads
+them: they have no effect on validation, querying, diffing, or migration.
 
 ### Built-in: `aggregate`
 
@@ -866,6 +874,8 @@ allow-diff: false                 # enables /diff routes
 diff-comparator: building         # required when allow-diff is true
 admin-roles:                      # who may use /admin/pending and /admin/approve
   - admin_buildings
+description: Buildings on site.   # optional; frontend display only, see `schema` below
+meta: { icon: building }          # optional; free-form frontend data, see `schema` below
 
 primary-key: building_id
 
@@ -918,6 +928,8 @@ fields:
     db-type: character varying(200)
     nullable: true
     include-in-diff: false        # default true
+    description: Human-readable name of the building.  # frontend display only
+    meta: { icon: building }      # optional; free-form frontend data
     rules:
       max-length: 200
       pattern: "^[A-Za-z].*"

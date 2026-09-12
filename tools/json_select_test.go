@@ -109,6 +109,40 @@ func TestBuildSchema_DescribesJsonSelectOverride(t *testing.T) {
 	}
 }
 
+func TestBuildSchema_CopiesDescriptionAndMeta(t *testing.T) {
+	cfg := jsonSelectTestModel()
+	cfg.Description = ptr("Row-level diffs awaiting review.")
+	cfg.Meta = map[string]any{"icon": "diff"}
+
+	field := cfg.Fields["diff_type"]
+	field.Description = ptr("What kind of change this row represents.")
+	field.Meta = map[string]any{"widget": "select"}
+	cfg.Fields["diff_type"] = field
+
+	qb := NewQueryBuilder(GetBasicLogger())
+	schema := qb.BuildSchema(cfg)
+
+	if schema.Description != "Row-level diffs awaiting review." {
+		t.Errorf("expected model Description to be copied through, got %+v", schema.Description)
+	}
+	if schema.Meta["icon"] != "diff" {
+		t.Errorf("expected model Meta to be copied through, got %+v", schema.Meta)
+	}
+
+	got := schema.Fields["diff_type"]
+	if got.Description != "What kind of change this row represents." {
+		t.Errorf("expected field Description to be copied through, got %+v", got.Description)
+	}
+	if got.Meta["widget"] != "select" {
+		t.Errorf("expected field Meta to be copied through, got %+v", got.Meta)
+	}
+
+	untouched := schema.Fields["raw_payload"]
+	if untouched.Description != "" || untouched.Meta != nil {
+		t.Errorf("expected no Description/Meta on a field that didn't set them, got %+v", untouched)
+	}
+}
+
 func TestDynamicGetDatabaseColumns_JsonSelect(t *testing.T) {
 	cfg := jsonSelectTestModel()
 	cols := DynamicGetDatabaseColumns(cfg, false, false)
