@@ -739,6 +739,8 @@ func (qb *QueryBuilder) BuildSchema(cfg *models.DataModel) *models.DataModelPubl
 		Foreign_keys: foreign_keys,
 		Unique_keys: unique_keys,
 		Fields: map[string]models.DataModelFieldPublicSchema{},
+		Description: StringDeref(cfg.Description),
+		Meta: cfg.Meta,
 	}
 
 	// Record all the fields
@@ -753,6 +755,8 @@ func (qb *QueryBuilder) BuildSchema(cfg *models.DataModel) *models.DataModelPubl
 				Nullable: BoolDeref(v.Nullable),
 				Default: StringDeref(v.Default),
 				Rules: v.Rules,
+				Description: StringDeref(v.Description),
+				Meta: v.Meta,
 			}
 			// Describe any json-select abstraction: GET responses for this field select
 			// Select_expression (e.g. jsonb_array_length(col)) instead of the raw jsonb

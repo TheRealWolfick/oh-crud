@@ -82,7 +82,7 @@ type DataModelFieldPublicSchema struct {
 	JSON               string               `yaml:"json"`
 	Required           bool                 `yaml:"required-on-insert"`
 	Skip_insert        bool                 `yaml:"skip-insert"`
-	Description        *string              `yaml:"description"`
+	Description        string              `yaml:"description"`
 	// Database metadata
 	DB_type            string               `yaml:"db-type"`
 	Nullable           bool                 `yaml:"nullable"`
@@ -116,25 +116,27 @@ type End_pointsAllowed struct {
 // DataModel is the top-level representation of a YAML config file.
 type DataModel struct {
 	// Model metadata
-	Name                 *string  `yaml:"name"`
-	Type                 *string  `yaml:"type"`
-	Version              *string  `yaml:"version"`
-	Track_history        *bool    `yaml:"track-history"`
-	Track_history_field  *string  `yaml:"track-history-field"`
-	Soft_delete          *bool    `yaml:"soft-delete"`
-	Webhooks             *EventAction `yaml:"web-hooks"`
+	Name                 *string                   `yaml:"name"`
+	Type                 *string                   `yaml:"type"`
+	Version              *string                   `yaml:"version"`
+	Track_history        *bool                     `yaml:"track-history"`
+	Track_history_field  *string                   `yaml:"track-history-field"`
+	Soft_delete          *bool                     `yaml:"soft-delete"`
+	Webhooks             *EventAction              `yaml:"web-hooks"`
+	Description          *string                   `yaml:"description"`
+	Meta                 map[string]any            `yaml:"meta"`
 	// Database metadata
-	Table_name          *string                   `yaml:"table-name"`
-	End_point           *string                   `yaml:"end-point"`
-	End_points_allowed  *End_pointsAllowed        `yaml:"end-points-allowed"`
-	Allow_diff          *bool                     `yaml:"allow-diff"`
-	Diff_comparator     *string                   `yaml:"diff-comparator"`
-	Primary_key         *string                  `yaml:"primary-key"`
-	Foreign_keys        map[string]ForeignKey     `yaml:"foreign-keys"`
-	Unique_keys         map[string]UniqueKey      `yaml:"unique-keys"`
-	Fields              map[string]DataModelField `yaml:"fields"`
-	Admin_roles         []string                  `yaml:"admin-roles"`
-	Filepath            *string                   `yaml:"-"`
+	Table_name           *string                   `yaml:"table-name"`
+	End_point            *string                   `yaml:"end-point"`
+	End_points_allowed   *End_pointsAllowed        `yaml:"end-points-allowed"`
+	Allow_diff           *bool                     `yaml:"allow-diff"`
+	Diff_comparator      *string                   `yaml:"diff-comparator"`
+	Primary_key          *string                   `yaml:"primary-key"`
+	Foreign_keys         map[string]ForeignKey     `yaml:"foreign-keys"`
+	Unique_keys          map[string]UniqueKey      `yaml:"unique-keys"`
+	Fields               map[string]DataModelField `yaml:"fields"`
+	Admin_roles          []string                  `yaml:"admin-roles"`
+	Filepath             *string                   `yaml:"-"`
 }
 
 // DataModelPublicSchema is available item that can be sent back to the end user / exposed.
@@ -142,6 +144,8 @@ type DataModelPublicSchema struct {
 	// Model metadata
 	Name                 string                                `yaml:"name"`
 	Version              string                                `yaml:"version"`
+	Description          string                               `yaml:"description"`
+	Meta                 map[string]any                        `yaml:"meta"`
 	// Database metadata
 	Table_name           string                                `yaml:"table_name"`
 	Primary_key          string                                `yaml:"primary-key"`
