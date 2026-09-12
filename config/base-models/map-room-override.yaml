@@ -1,24 +1,93 @@
+---
+# Manual room-code fixups for the Asset Maps area. Legacy asset rows carry room
+# codes that don't match any polygon's `room_code` in the floor GeoJSON; an
+# override binds one (building, floor, asset_room) to a real polygon code so
+# those assets can still be placed. Replaces asset-maps' SQLite
+# `room_code_overrides` table (same columns).
+#
+# Identity is the (building, floor, asset_room) triple (unique key); a serial
+# `override_id` is the primary key so the row can be addressed directly.
+# `updated_at` follows app-diff-state's shape (nullable, default now(), not
+# skip-insert).
+#
+# Changelog:
+#   1.0.0 — new table (additive, non-destructive).
 name: Map Room Override
 version: 1.0.0
-table-name: map_room_overrides
+table-name: map_room_override
 end-point: map/room-override
 allow-diff: false
+
 primary-key: override_id
-unique-keys:
-  uk_map_room_override: { unique-key-fields: [building, floor, asset_room] }
+
 foreign-keys:
   fk_map_room_override_bfloor:
-    foreign-key-fields: [building, floor]
+    foreign-key-fields:
+      - building
+      - floor
     foreign-key-target-table: building_floor_combo
-    foreign-key-target-fields: [building, floor]
+    foreign-key-target-fields:
+      - building
+      - floor
     foreign-key-on-update: CASCADE
-end-points-allowed: { GET: [], PUT: [], POST: [], DELETE: [] }
+
+unique-keys:
+  uk_map_room_override_triple:
+    unique-key-fields:
+      - building
+      - floor
+      - asset_room
+
+end-points-allowed:
+  GET: []
+  PUT: []
+  POST: []
+  DELETE: []
+  PUT-GROUP: []
+  POST-GROUP: []
+  DELETE-GROUP: []
+  DIFF: []
+
 fields:
-  override_id:        { type: int,    db-type: serial, skip-insert: true }
-  building:           { type: string, db-type: character varying(15), required-on-insert: true }
-  floor:              { type: string, db-type: character varying(4),  required-on-insert: true, absolute-match: true }
-  asset_room:         { type: string, db-type: character varying(15), required-on-insert: true }
-  geojson_room_code:  { type: string, db-type: character varying(15), required-on-insert: true }
-  note:               { type: string, db-type: character varying(200), nullable: true }
-  created_by:         { type: string, db-type: character varying(50),  nullable: true }
-  created_at:         { type: string, db-type: timestamptz, db-default: now(), skip-insert: true }
+  override_id:
+    type: int
+    json: override_id
+    db-type: serial
+    skip-insert: true
+  building:
+    type: string
+    json: building
+    db-type: character varying(15)
+    required-on-insert: true
+  floor:
+    type: string
+    json: floor
+    db-type: character varying(4)
+    required-on-insert: true
+    absolute-match: true
+  asset_room:
+    type: string
+    json: asset_room
+    db-type: character varying(30)
+    required-on-insert: true
+  geojson_room_code:
+    type: string
+    json: geojson_room_code
+    db-type: character varying(30)
+    required-on-insert: true
+  note:
+    type: string
+    json: note
+    db-type: character varying(255)
+    nullable: true
+  created_by:
+    type: string
+    json: created_by
+    db-type: character varying(50)
+    nullable: true
+  updated_at:
+    type: string
+    json: updated_at
+    db-type: timestamptz
+    default: now()
+    nullable: true

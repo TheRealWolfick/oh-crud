@@ -1,6 +1,11 @@
 ---
+# Changelog:
+#   1.2.2 — record `foreign-key-target-field-description: building_description`
+#           on fk_departments_building for the FK-constrained editor's
+#           subheading. building_floor_combo has no descriptor column, so
+#           fk_department_bfloor carries none.
 name: Department
-version: 1.2.1
+version: 1.2.2
 table-name: departments
 end-point: department
 allow-diff: false
@@ -14,6 +19,7 @@ foreign-keys:
     foreign-key-target-table: buildings
     foreign-key-target-fields:
       - building
+    foreign-key-target-field-description: building_description
     foreign-key-on-update: NO ACTION
   fk_department_bfloor:
     foreign-key-fields:

@@ -1,4 +1,7 @@
 ---
+# Changelog:
+#   1.3.11 — record `foreign-key-target-field-description: domain_description`
+#            on fk_buildings_domain for the FK-constrained editor's subheading.
 name: Building
 version: 1.3.11
 table-name: buildings

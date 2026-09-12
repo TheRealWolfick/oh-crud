@@ -9,17 +9,6 @@
 # `payload` is JSONB — {"log": [<Action.to_dict()>...], "locked": [<id>...],
 # "rev": <int>, "saved_at": <epoch>} — stored as a real JSON document, the same
 # way asset/data's user_defined_fields is. One writer (single FastAPI replica),
-#---
-# The Diff Console's shared, cross-user resolution log — one row per diff
-# checksum. This service holds the live copy in memory (diff_store.py); this
-# table is the durable backing so a backend restart doesn't lose which
-# resolutions were queued and, more importantly, which were already
-# committed (locked). Without it, a diff that had been fully actioned before
-# a reboot came back looking un-actioned.
-#
-# `payload` is JSONB — {"log": [<Action.to_dict()>...], "locked": [<id>...],
-# "rev": <int>, "saved_at": <epoch>} — stored as a real JSON document, the same
-# way asset/data's user_defined_fields is. One writer (single FastAPI replica),
 # so last-write-wins is fine. The top-level `version` column mirrors the
 # payload's `rev` so a cheap `GET ?fields=checksum,version` tells the backend
 # what's persisted per checksum without pulling the payloads.

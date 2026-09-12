@@ -1,5 +1,11 @@
 ---
 # Changelog:
+#   1.7.0 — new field `audited_by` (db `character varying(60)`, nullable): the
+#           username of whoever completed the room's most recent audit
+#           (RBAC Stage 3a) — shown next to `date_audited` in the maps room
+#           panel. Set alongside `date_audited` whenever "Complete audit"
+#           runs; never user-editable directly. Schema delta: ADD COLUMN
+#           audited_by character varying(60) — additive, no data loss.
 #   1.6.0 — fk_building_floor_room_category: room_category -> room_categories
 #           (category_code), carrying `foreign-key-target-field-description:
 #           description` so the map's room-type picker shows each token's
@@ -34,7 +40,7 @@
 #           fk_building_floor_room_dept so the FK-constrained editor can show
 #           the department name under the dept code without name-guessing.
 name: Building Floor Room
-version: 1.6.0
+version: 1.7.0
 table-name: building_floor_room_combo
 end-point: room
 allow-diff: false
@@ -125,6 +131,11 @@ fields:
     type: string
     json: date_audited
     db-type: date
+    nullable: true
+  audited_by:
+    type: string
+    json: audited_by
+    db-type: character varying(60)
     nullable: true
   room_category:
     type: string

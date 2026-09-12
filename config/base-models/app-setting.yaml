@@ -1,13 +1,53 @@
+---
+# Small key/value store for this service's own app-level settings. First user:
+# the Asset Maps area's `ignoredAssetCategories` list (key = "map"). One row
+# per setting key; `value` is a JSONB document, same as app_diff_state.payload.
+# One writer (single FastAPI replica), so last-write-wins is fine.
+#
+# `updated_at` mirrors app-diff-state's shape: nullable, default now(), NOT
+# skip-insert, and the backend sends an ISO8601 value on every write — under an
+# earlier (broken) shape a NOT NULL column with no default made every insert
+# fail with 'null value in column "updated_at" ... violates not-null constraint'.
+#
+# Changelog:
+#   1.0.0 — new table (additive, non-destructive).
 name: App Setting
-version: 1.1.0
-table-name: app_settings
+version: 1.0.0
+table-name: app_setting
 end-point: app/setting
 allow-diff: false
-primary-key: setting_key
-end-points-allowed: { GET: [], PUT: [], POST: [], DELETE: [] }
+
+primary-key: key
+
+end-points-allowed:
+  GET: []
+  PUT: []
+  POST: []
+  DELETE: []
+  PUT-GROUP: []
+  POST-GROUP: []
+  DELETE-GROUP: []
+  DIFF: []
+
 fields:
-  setting_key:   { type: string, db-type: character varying(60), required-on-insert: true }   # e.g. map.ignored_asset_categories
-  setting_value: { type: string, db-type: text, default: "" }                                  # JSON-encoded value
-  scope:         { type: string, db-type: character varying(40), default: "global" }           # global | domain: | user:
-  updated_by:    { type: string, db-type: character varying(50), nullable: true }
-  updated_at:    { type: string, db-type: timestamptz, default: now(), skip-insert: true }
+  key:
+    type: string
+    json: key
+    db-type: character varying(64)
+    required-on-insert: true
+  value:
+    type: json
+    json: value
+    db-type: jsonb
+    nullable: true
+  updated_by:
+    type: string
+    json: updated_by
+    db-type: character varying(50)
+    nullable: true
+  updated_at:
+    type: string
+    json: updated_at
+    db-type: timestamptz
+    default: now()
+    nullable: true
