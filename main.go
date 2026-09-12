@@ -162,12 +162,12 @@ func loadModelsFromDir(dir string, logger interface{ Warn(string, ...any); Error
 		}
 		fp := fmt.Sprintf("%s/%s", dir, info.Name())
 		data, err := tools.LoadYAMLIntoModel[models.DataModel](fp)
-		data.Filepath = &fp
-		result = append(result, *data)
 		if err != nil {
 			logger.Warn(fmt.Sprintf("Failed to load config file: %s", info.Name()), "error", err)
 			continue
 		}
+		data.Filepath = &fp
+		result = append(result, *data)
 		if err := tools.ValidateDataModel(*data); err != nil {
 			logger.Warn(fmt.Sprintf("Config file failed validation: %s", info.Name()), "error", err)
 			continue
