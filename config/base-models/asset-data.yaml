@@ -14,8 +14,36 @@
 #           value (in the combobox list and the committed value) instead of
 #           guessing a description column by name. mh_locations has no such
 #           column, so fk_asset_location carries none.
+#   1.4.0 — room audit rework. New field `found` (bool, default false): was
+#           this asset physically found during the room's most recent audit —
+#           confirmed as part of every audit, alongside condition_rating/make/
+#           model, which now all carry `meta.audit: true` (the app's room
+#           audit flow reads that flag to know which fields it must have a
+#           user confirm/edit per asset before that asset's audit can
+#           complete — see backend/app/room_audit.py). `condition_rating` also
+#           carries `meta.stamps_date_field: condition_rating_date`: the app
+#           auto-sets that date to today whenever condition_rating is written
+#           without the date ALSO given explicitly in the same write. `meta.
+#           category` added to make/model/condition_rating/condition_rating_
+#           date/found purely for UI grouping (no app behaviour keys off it
+#           being a *specific* value — any string groups fields that share it).
+#           Also records `meta.currency: true` on every dollar-value field
+#           (disposal_cost, installation_cost, purchase_cost) so the editing
+#           UI can format/enter them as currency instead of a plain float —
+#           the mechanism already existed (see schema_catalog.py's Field.meta
+#           docstring) but had never actually been set on these columns.
+#           Additive, non-destructive.
+#   1.5.0 — audit channels. `meta.audit` changes shape: instead of a bare
+#           `true`, it's now a list of audit_channel codes this field belongs
+#           to (a field belongs to exactly one channel in practice, but the
+#           value is a list for forward compatibility with the datamodel
+#           format). condition_rating/make/model/found are tagged
+#           `audit: [ENGINEERING]` as a first pass, matching "Engineering
+#           audits assets" — reassign before deploying if that's not the
+#           right channel for these four. Additive, non-destructive (no
+#           column change, only a meta-value shape change).
 name: Asset Data
-version: 1.3.1
+version: 1.5.0
 table-name: asset_data
 end-point: asset/data
 track-history: true
@@ -149,12 +177,19 @@ fields:
     db-type: smallint
     nullable: true
     include-in-diff: true
+    meta:
+      audit:
+        - ENGINEERING
+      category: Condition
+      stamps_date_field: condition_rating_date
   condition_rating_date:
     type: string
     json: condition_rating_date
     db-type: date
     nullable: true
     include-in-diff: true
+    meta:
+      category: Condition
   contact_id:
     type: string
     json: contact_ID
@@ -183,6 +218,8 @@ fields:
     db-type: numeric(10,2)
     nullable: true
     include-in-diff: true
+    meta:
+      currency: true
   disposal_date:
     type: string
     json: disposal_date
@@ -233,6 +270,8 @@ fields:
     db-type: numeric(10,2)
     nullable: true
     include-in-diff: true
+    meta:
+      currency: true
   invoice_no:
     type: string
     json: invoice_no
@@ -275,6 +314,10 @@ fields:
     db-type: character varying(40)
     nullable: true
     include-in-diff: true
+    meta:
+      audit:
+        - ENGINEERING
+      category: Identification
   manufacturer:
     type: string
     json: manufacturer
@@ -292,6 +335,10 @@ fields:
     db-type: character varying(60)
     nullable: true
     include-in-diff: true
+    meta:
+      audit:
+        - ENGINEERING
+      category: Identification
   owning_cost_center:
     type: string
     json: owning_cost_center
@@ -304,6 +351,8 @@ fields:
     db-type: numeric(10,2)
     nullable: true
     include-in-diff: true
+    meta:
+      currency: true
   purchase_date:
     type: string
     json: purchase_date
@@ -419,3 +468,19 @@ fields:
     db-type: smallint
     nullable: true
     include-in-diff: false
+  found:
+    type: bool
+    json: found
+    db-type: boolean
+    default: "false"
+    nullable: true
+    include-in-diff: true
+    description: >-
+      Confirmed as part of every room audit: was this asset physically
+      present and located where the map/records say it is. Defaults to
+      false for a newly added asset (not yet audited); set true or false
+      each time the asset is checked off during a room audit.
+    meta:
+      audit:
+        - ENGINEERING
+      category: Condition

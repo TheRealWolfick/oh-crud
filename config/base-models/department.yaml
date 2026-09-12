@@ -4,8 +4,16 @@
 #           on fk_departments_building for the FK-constrained editor's
 #           subheading. building_floor_combo has no descriptor column, so
 #           fk_department_bfloor carries none.
+#   1.3.0 — audit channels. New field `audit_data` (jsonb, nullable — no
+#           default): mirrors building_floor_room_combo's audit_data exactly,
+#           but for unit="department" audit channels — a department's rooms
+#           can span multiple buildings/floors with no single room row to
+#           hold this state, so it lives on the department itself instead.
+#           Opaque to Oh CRUD; read/written only by the maps area's audit
+#           flow (see audit-channel.yaml, department-audit-log.yaml).
+#           Additive, non-destructive.
 name: Department
-version: 1.2.2
+version: 1.3.0
 table-name: departments
 end-point: department
 allow-diff: false
@@ -74,3 +82,12 @@ fields:
     json: is_active
     db-type: boolean
     default: true
+  audit_data:
+    type: json
+    json: audit_data
+    db-type: jsonb
+    nullable: true
+    description: >-
+      Per-channel audit state for unit="department" audit channels (see
+      audit-channel.yaml) — mirrors building_floor_room_combo.audit_data.
+      Opaque to Oh CRUD; read/written only by the maps area's audit flow.

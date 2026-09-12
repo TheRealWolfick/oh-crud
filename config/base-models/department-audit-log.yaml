@@ -1,0 +1,83 @@
+---
+# Changelog:
+#   1.0.0 — new table (additive, non-destructive). Mirrors room-audit-log.yaml
+#           exactly, but for unit="department" channels (see
+#           audit-channel.yaml): a department's rooms don't necessarily share
+#           a floor or building, or even touch each other, so there's no
+#           single room row to log a department-wide completion against —
+#           this table is keyed by dept_code instead. One row per
+#           (department, channel) completion event, append-only. `answers`
+#           holds every department-scope custom check's answer for that
+#           completion (there's no field-linked mode for department-scope
+#           checks, so nothing is omitted the way room_audit_log omits
+#           built-in/field-linked values).
+name: Department Audit Log
+version: 1.0.0
+table-name: department_audit_log
+end-point: audit/department-log
+allow-diff: false
+admin-roles:
+  - admin_assets
+
+primary-key: log_id
+
+foreign-keys:
+  fk_department_audit_log_dept:
+    foreign-key-fields:
+      - dept_code
+    foreign-key-target-table: departments
+    foreign-key-target-fields:
+      - dept_code
+    foreign-key-target-field-description: description
+    foreign-key-on-update: CASCADE
+  fk_department_audit_log_channel:
+    foreign-key-fields:
+      - channel_code
+    foreign-key-target-table: audit_channel
+    foreign-key-target-fields:
+      - channel_code
+    foreign-key-target-field-description: label
+    foreign-key-on-update: CASCADE
+
+end-points-allowed:
+  GET: []
+  PUT: []
+  POST: []
+  DELETE: []
+  PUT-GROUP: []
+  POST-GROUP: []
+  DELETE-GROUP: []
+  DIFF: []
+
+fields:
+  log_id:
+    type: int
+    json: log_id
+    db-type: serial
+    skip-insert: true
+  dept_code:
+    type: string
+    json: dept_code
+    db-type: character varying(15)
+    required-on-insert: true
+  channel_code:
+    type: string
+    json: channel_code
+    db-type: character varying(30)
+    required-on-insert: true
+  completed_at:
+    type: string
+    json: completed_at
+    db-type: timestamptz
+    default: "now()"
+    nullable: true
+  completed_by:
+    type: string
+    json: completed_by
+    db-type: character varying(60)
+    nullable: true
+  answers:
+    type: json
+    json: answers
+    db-type: jsonb
+    nullable: true

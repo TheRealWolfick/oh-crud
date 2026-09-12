@@ -1,0 +1,104 @@
+---
+# Changelog:
+#   1.0.0 — new table (additive, non-destructive). Append-only history of
+#           completed room audits, one row per (room, channel) completion
+#           event — the "audit register"/"audit log" a channel like Clinical
+#           or Engineering wants, independent of every other channel's own
+#           history on the same room. Written once when a channel's audit
+#           goes fully complete for a room's current assets (see
+#           backend/app/room_audit.py / routers/maps.py); never updated or
+#           deleted afterward.
+#
+#           `answers` only holds what has nowhere else to live: non-
+#           field-linked custom check values (boolean/number/text) plus the
+#           list of asset_no covered by this completion. It deliberately does
+#           NOT re-store built-in audited fields (condition_rating, make,
+#           model, found, room_category) or field-linked custom check
+#           values — those already live on asset/data (which carries
+#           track-history: true, keyed by asset_no) or the room row itself,
+#           so this table is never a second source of truth for them.
+name: Room Audit Log
+version: 1.0.0
+table-name: room_audit_log
+end-point: audit/room-log
+allow-diff: false
+admin-roles:
+  - admin_assets
+
+primary-key: log_id
+
+foreign-keys:
+  fk_room_audit_log_room:
+    foreign-key-fields:
+      - building
+      - floor
+      - room
+    foreign-key-target-table: building_floor_room_combo
+    foreign-key-target-fields:
+      - building
+      - floor
+      - room
+    foreign-key-target-field-description: room_description
+    foreign-key-on-update: CASCADE
+  fk_room_audit_log_channel:
+    foreign-key-fields:
+      - channel_code
+    foreign-key-target-table: audit_channel
+    foreign-key-target-fields:
+      - channel_code
+    foreign-key-target-field-description: label
+    foreign-key-on-update: CASCADE
+
+end-points-allowed:
+  GET: []
+  PUT: []
+  POST: []
+  DELETE: []
+  PUT-GROUP: []
+  POST-GROUP: []
+  DELETE-GROUP: []
+  DIFF: []
+
+fields:
+  log_id:
+    type: int
+    json: log_id
+    db-type: serial
+    skip-insert: true
+  building:
+    type: string
+    json: building
+    db-type: character varying(15)
+    required-on-insert: true
+  floor:
+    type: string
+    json: floor
+    db-type: character varying(4)
+    required-on-insert: true
+    absolute-match: true
+  room:
+    type: string
+    json: room
+    db-type: character varying(15)
+    required-on-insert: true
+  channel_code:
+    type: string
+    json: channel_code
+    db-type: character varying(30)
+    required-on-insert: true
+  completed_at:
+    type: string
+    json: completed_at
+    db-type: timestamptz
+    default: "now()"
+    nullable: true
+  completed_by:
+    type: string
+    json: completed_by
+    db-type: character varying(60)
+    nullable: true
+  answers:
+    type: json
+    json: answers
+    db-type: jsonb
+    nullable: true

@@ -1,0 +1,140 @@
+---
+# Changelog:
+#   1.0.0 — new table (additive, non-destructive). Admin-defined custom room
+#           audit checks that go beyond the built-in per-asset audit:true
+#           fields (asset/data's condition_rating/make/model/found) and the
+#           room_category review (see building-floor-room.yaml 1.8.0) —
+#           e.g. "free from mould" on BATHROOM rooms, "number of medical gas
+#           outlets" on PATIENT BAY / OPERATING THEATRE rooms, or a
+#           "refrigerant type" check on assets in the domestic-refrigerator /
+#           condensing-unit categories. A check applies either to a ROOM
+#           (scope="room", matched by room_categories) or to an ASSET within
+#           a room (scope="asset", matched by asset_categories) — never both.
+#
+#           answer_type is "boolean" / "number" / "text" for a standalone
+#           question (its answer is saved into building_floor_room_combo's
+#           new audit_data jsonb column — see that datamodel), or
+#           "field_link" to instead reflect a real field on another table
+#           (field_link_table/field_link_field, e.g. "asset/data" /
+#           "refrigerant") — a field-linked check's control mirrors that
+#           field's own type/FK constraints, prefills from the linked row's
+#           current value, and confirming it during an audit writes straight
+#           back to that field (the same way a built-in audit:true field
+#           does), not into audit_data at all.
+#   1.1.0 — audit channels. New required field `channel_code` (FK ->
+#           audit_channel.channel_code): every check now belongs to exactly
+#           one channel (RBAC's Permissions.audit_channels gates who may
+#           complete it) — no shared/multi-channel checks. `scope` gains a
+#           third value, "department", for a check that belongs to a
+#           unit="department" channel (see audit-channel.yaml) — answered
+#           once for the whole department rather than per room/asset;
+#           room_categories/asset_categories are unused for that scope.
+name: Audit Check Definition
+version: 1.1.0
+table-name: audit_check_definition
+end-point: audit/check-definition
+allow-diff: false
+admin-roles:
+  - admin_assets
+
+primary-key: check_id
+
+foreign-keys:
+  fk_audit_check_channel:
+    foreign-key-fields:
+      - channel_code
+    foreign-key-target-table: audit_channel
+    foreign-key-target-fields:
+      - channel_code
+    foreign-key-target-field-description: label
+    foreign-key-on-update: CASCADE
+
+end-points-allowed:
+  GET: []
+  PUT: []
+  POST: []
+  DELETE: []
+  PUT-GROUP: []
+  POST-GROUP: []
+  DELETE-GROUP: []
+  DIFF: []
+
+fields:
+  check_id:
+    type: int
+    json: check_id
+    db-type: serial
+    skip-insert: true
+  label:
+    type: string
+    json: label
+    db-type: character varying(100)
+    required-on-insert: true
+  description:
+    type: string
+    json: description
+    db-type: character varying(500)
+    nullable: true
+  channel_code:
+    type: string
+    json: channel_code
+    db-type: character varying(30)
+    required-on-insert: true
+  scope:
+    type: string
+    json: scope
+    db-type: character varying(10)
+    required-on-insert: true
+    rules:
+      enum:
+        - room
+        - asset
+        - department
+  room_categories:
+    type: json
+    json: room_categories
+    db-type: jsonb
+    nullable: true
+  asset_categories:
+    type: json
+    json: asset_categories
+    db-type: jsonb
+    nullable: true
+  answer_type:
+    type: string
+    json: answer_type
+    db-type: character varying(20)
+    required-on-insert: true
+    rules:
+      enum:
+        - boolean
+        - number
+        - text
+        - field_link
+  field_link_table:
+    type: string
+    json: field_link_table
+    db-type: character varying(60)
+    nullable: true
+  field_link_field:
+    type: string
+    json: field_link_field
+    db-type: character varying(60)
+    nullable: true
+  active:
+    type: bool
+    json: active
+    db-type: boolean
+    default: "true"
+    nullable: true
+  created_by:
+    type: string
+    json: created_by
+    db-type: character varying(50)
+    nullable: true
+  updated_at:
+    type: string
+    json: updated_at
+    db-type: timestamptz
+    default: "now()"
+    nullable: true

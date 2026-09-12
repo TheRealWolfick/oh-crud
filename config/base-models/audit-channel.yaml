@@ -1,0 +1,125 @@
+---
+# Changelog:
+#   1.0.0 — new table (additive, non-destructive). An audit channel is the
+#           thing RBAC actually grants (Permissions.audit_channels) — a named
+#           slice of the audit work, e.g. "Engineering" (assets, mechanical/
+#           electrical categories), "Infection Prevention" (rooms only,
+#           BATHROOM category), "Clinical" (whatever room/asset categories its
+#           own checks target). A room or asset can carry checks belonging to
+#           several different channels at once; each channel completes,
+#           dates, and logs independently (see audit_check_definition and
+#           building-floor-room.yaml's audit_data / the new room_audit_log
+#           and department_audit_log tables).
+#
+#           `unit` decides what one audit action of this channel covers:
+#           "room" — the ordinary case, one audit per room (optionally also
+#           reaching into that room's assets); or "department" — one audit
+#           covers an entire department's worth of rooms as a single unit,
+#           for checks that don't make sense per-room (e.g. a single
+#           department-wide compliance question). A department's rooms don't
+#           have to be contiguous or even share a floor/building — it's still
+#           one audit record for the whole dept_code.
+#
+#           For unit="room": `room_categories`/`asset_categories` are this
+#           channel's territory — which rooms/assets it reaches at all (empty
+#           list = unrestricted, i.e. every category), gated by `audits_rooms`
+#           / `audits_assets`. WHICH specific fields/checks are asked is a
+#           separate, per-field/per-check `channel_code` tag (asset-data.yaml
+#           meta.audit, building-floor-room.yaml room_category's meta.audit,
+#           audit_check_definition.channel_code) — the channel-level category
+#           lists decide eligibility, the tags decide content.
+#
+#           For unit="department": `departments` (dept_code list, empty =
+#           every department) is the territory instead; audits_rooms/
+#           audits_assets/room_categories/asset_categories are unused.
+#           Department-unit channels are driven entirely by
+#           audit_check_definition rows with scope="department".
+name: Audit Channel
+version: 1.0.0
+table-name: audit_channel
+end-point: audit/channel
+allow-diff: false
+admin-roles:
+  - admin_assets
+
+primary-key: channel_code
+
+end-points-allowed:
+  GET: []
+  PUT: []
+  POST: []
+  DELETE: []
+  PUT-GROUP: []
+  POST-GROUP: []
+  DELETE-GROUP: []
+  DIFF: []
+
+fields:
+  channel_code:
+    type: string
+    json: channel_code
+    db-type: character varying(30)
+    required-on-insert: true
+  label:
+    type: string
+    json: label
+    db-type: character varying(100)
+    required-on-insert: true
+  description:
+    type: string
+    json: description
+    db-type: character varying(500)
+    nullable: true
+  unit:
+    type: string
+    json: unit
+    db-type: character varying(15)
+    required-on-insert: true
+    rules:
+      enum:
+        - room
+        - department
+  audits_rooms:
+    type: bool
+    json: audits_rooms
+    db-type: boolean
+    default: "true"
+    nullable: true
+  room_categories:
+    type: json
+    json: room_categories
+    db-type: jsonb
+    nullable: true
+  audits_assets:
+    type: bool
+    json: audits_assets
+    db-type: boolean
+    default: "false"
+    nullable: true
+  asset_categories:
+    type: json
+    json: asset_categories
+    db-type: jsonb
+    nullable: true
+  departments:
+    type: json
+    json: departments
+    db-type: jsonb
+    nullable: true
+  active:
+    type: bool
+    json: active
+    db-type: boolean
+    default: "true"
+    nullable: true
+  created_by:
+    type: string
+    json: created_by
+    db-type: character varying(50)
+    nullable: true
+  updated_at:
+    type: string
+    json: updated_at
+    db-type: timestamptz
+    default: "now()"
+    nullable: true

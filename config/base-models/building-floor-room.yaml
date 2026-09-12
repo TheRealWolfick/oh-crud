@@ -39,8 +39,37 @@
 #   1.3.2 — record `foreign-key-target-field-description: dept_description` on
 #           fk_building_floor_room_dept so the FK-constrained editor can show
 #           the department name under the dept code without name-guessing.
+#   1.8.0 — room audit rework. `room_category` now carries `meta.audit: true`
+#           — the app's room audit flow reads this to add a "room type is
+#           still correct" review item to every room's checklist, alongside
+#           the per-asset audit:true fields on asset/data (see that
+#           datamodel's 1.4.0 changelog entry and backend/app/room_audit.py).
+#           New field `audit_data` (jsonb, nullable — no default; the app
+#           treats a missing/null value as `{}`): holds the
+#           results of user-defined custom audit checks (see the new
+#           audit_check_definition table) that don't map onto any existing
+#           column — e.g. a room-scoped "free from mould" yes/no, or a
+#           "number of medical gas outlets" count. Keyed by check_id at the
+#           top level; an asset-scoped custom check (one with no direct
+#           asset/data field to write into) nests under a per-asset_no key
+#           instead. Additive, non-destructive.
+#   1.9.0 — audit channels. `room_category`'s `meta.audit` changes from a
+#           bare `true` to a list of audit_channel codes (see asset-data.yaml
+#           1.5.0's changelog entry for the same shape change) — tagged
+#           `[ENGINEERING]` as a first pass, reassign if wrong before
+#           deploying. DROP COLUMN `date_audited`, DROP COLUMN `audited_by`:
+#           completion is now per-channel (audit_data.channels[code].
+#           date_audited/audited_by, plus the append-only room_audit_log),
+#           so one whole-room scalar date/by no longer means anything —
+#           there is no single "the room's audit," only each channel's own.
+#           Destructive: any existing date_audited/audited_by values are
+#           lost. `audit_data`'s shape also changes — everything nests under
+#           a per-channel key now (`audit_data.channels.<code>.{checks,
+#           asset_checks, in_progress, complete, date_audited, audited_by}`)
+#           instead of top-level `checks`/`asset_checks`/`in_progress` — see
+#           backend/app/room_audit.py.
 name: Building Floor Room
-version: 1.7.0
+version: 1.9.0
 table-name: building_floor_room_combo
 end-point: room
 allow-diff: false
@@ -127,18 +156,22 @@ fields:
     json: dept_code
     db-type: character varying(15)
     nullable: true
-  date_audited:
-    type: string
-    json: date_audited
-    db-type: date
-    nullable: true
-  audited_by:
-    type: string
-    json: audited_by
-    db-type: character varying(60)
-    nullable: true
   room_category:
     type: string
     json: room_category
     db-type: character varying(30)
     nullable: true
+    meta:
+      audit:
+        - ENGINEERING
+  audit_data:
+    type: json
+    json: audit_data
+    db-type: jsonb
+    nullable: true
+    description: >-
+      Results of user-defined custom audit checks scoped to this room's
+      category or to an asset category found in it (see the
+      audit_check_definition table) that have no existing column of their
+      own to write into — e.g. a room-scoped yes/no or a numeric count.
+      Opaque to Oh CRUD; read/written only by the maps area's audit flow.
