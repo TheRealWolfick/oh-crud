@@ -109,6 +109,22 @@ func TestBuildSchema_DescribesJsonSelectOverride(t *testing.T) {
 	}
 }
 
+func TestBuildSchema_CopiesTrackHistory(t *testing.T) {
+	cfg := jsonSelectTestModel()
+	cfg.Track_history = ptr(true)
+	cfg.Track_history_field = ptr("history")
+
+	qb := NewQueryBuilder(GetBasicLogger())
+	schema := qb.BuildSchema(cfg)
+
+	if !schema.Track_history {
+		t.Errorf("expected Track_history to be copied through, got %+v", schema.Track_history)
+	}
+	if schema.Track_history_field != "history" {
+		t.Errorf("expected Track_history_field to be copied through, got %+v", schema.Track_history_field)
+	}
+}
+
 func TestBuildSchema_CopiesDescriptionAndMeta(t *testing.T) {
 	cfg := jsonSelectTestModel()
 	cfg.Description = ptr("Row-level diffs awaiting review.")

@@ -739,6 +739,8 @@ func (qb *QueryBuilder) BuildSchema(cfg *models.DataModel) *models.DataModelPubl
 		Foreign_keys: foreign_keys,
 		Unique_keys: unique_keys,
 		Fields: map[string]models.DataModelFieldPublicSchema{},
+		Track_history: BoolDeref(cfg.Track_history),
+		Track_history_field: StringDeref(cfg.Track_history_field),
 		Description: StringDeref(cfg.Description),
 		Meta: cfg.Meta,
 	}
