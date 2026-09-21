@@ -144,6 +144,8 @@ type DataModelPublicSchema struct {
 	// Model metadata
 	Name                 string                                `yaml:"name"`
 	Version              string                                `yaml:"version"`
+	Track_history        bool                                  `yaml:"track-history"`
+	Track_history_field  string                                `yaml:"track-history-field"`
 	Description          string                               `yaml:"description"`
 	Meta                 map[string]any                        `yaml:"meta"`
 	// Database metadata
