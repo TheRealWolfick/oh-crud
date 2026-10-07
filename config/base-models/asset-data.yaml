@@ -42,14 +42,106 @@
 #           audits assets" — reassign before deploying if that's not the
 #           right channel for these four. Additive, non-destructive (no
 #           column change, only a meta-value shape change).
+#   1.5.1 — reverted 1.5.0's `meta.audit` shape change: it's a bare `true`
+#           again on condition_rating/make/model/found. In testing, binding
+#           a built-in field to one hardcoded channel meant it only ever
+#           showed up under an audit literally named "ENGINEERING" — these
+#           fields are channel-agnostic, asked by every channel that audits
+#           assets and reaches a matching asset (an empty/absent new
+#           `meta.audit_categories` list means every category the owning
+#           channel already reaches; set it to narrow a field to specific
+#           categories, e.g. a hypothetical audited `refrigerant` field
+#           restricted to `[RE-DR, RE-MR, ME-CU]`). Only a custom check's own
+#           `channel_code` binds it to one channel — built-in fields never
+#           do. No schema change, meta-value only.
+#   1.6.0 — asset details modal. New table-level `meta.detail_categories`:
+#           `{<name>: {order: N}}`, the ordered set of section headings the
+#           maps area's asset details modal groups fields into (distinct from
+#           the existing per-field `meta.category`, which is unrelated —
+#           that one only groups the handful of `meta.audit`-flagged fields
+#           for the room audit editor, under its own "Condition"/
+#           "Identification" values). New per-field `meta.importance: 1`
+#           marks a field for that modal — it shows every field so flagged,
+#           grouped under its `meta.detail_category` (must name a key in the
+#           table's `detail_categories`), and only categories that end up
+#           with at least one shown field. New per-field `meta.alias`: an
+#           optional display label override for that modal, for a field
+#           whose humanised column name doesn't read naturally (e.g.
+#           `purchase_order_no` -> "PO number", `working_life` -> "Working
+#           life (yr)") — a field with no alias just shows its humanised
+#           name. New per-field `meta.longtext`/`meta.date`, mirroring the
+#           existing `meta.currency` convention, so the modal's editor can
+#           pick a textarea / date input instead of guessing from the field
+#           name. Additive, non-destructive — no column or behaviour change
+#           for any existing consumer of these fields.
+#   1.7.0 - Adds assset criticality rating and also links the status
+#           to a new asset status table to build FK links with descriptions
+#   1.7.1 - Re-enable asset_status FK now that values have been added to the target
+#           table
+#   1.7.2 - Fix criticality_rating's json name (was wrongly aliased to
+#           condition_rating's, colliding the two fields' serialized keys).
+#           New per-field meta.map_filter: true on asset_category,
+#           condition_rating, department, make, manufacturer, model,
+#           asset_status, and criticality_rating — the Maps area's Filters
+#           panel is now schema-driven off this flag instead of a fixed,
+#           hardcoded field list.
+#   1.7.3 - Disposal behaviour. asset_status gets meta.stamps_date_field:
+#           disposal_date, reusing condition_rating's existing auto-stamp
+#           mechanism, but gated by a new meta.stamps_date_field_values:
+#           ["D"] (a plain list of values, optional on any field using
+#           stamps_date_field) so it only fires when the status is set to
+#           Disposed, not on every status change. New meta.triggers: {<value>:
+#           {label, fields: [...]}}: which fields the app should collect
+#           through a dedicated modal before committing that value — asset_status
+#           declares one for "D" listing disposal_date, condition_rating,
+#           condition_rating_date, and disposal_reason. New meta.date: true
+#           on disposal_date, matching condition_rating_date's convention.
+#           Additive, non-destructive — no column or behaviour change for any
+#           existing consumer of these fields or of condition_rating's own
+#           unconditional stamp.
+#   1.7.4 - New table-level meta.table_role: primary. Marks asset/data as the
+#           app's one memory-resident, live-synced table for the new
+#           multi-table ledger (every other catalogued table is "supporting"
+#           — loaded on demand, dropped when the user navigates away). Purely
+#           a UI/backend-caching hint Oh CRUD never reads; no column or
+#           behaviour change.
+#   1.7.5 - Remove 'found' field from diffs
+#   1.7.6 - New per-field meta.copy: true, set on asset_no. Like the history
+#           column, the app pins a "copy" button column right of the field;
+#           clicking it opens a new entry (for asset/data, the add-asset
+#           form) prefilled from that row with every field except the copy
+#           field itself. Meta only — no column or behaviour change for Oh
+#           CRUD.
+#   1.8.0 - Ledger Grid "Add row" form (generic across tables, built from the
+#           datamodel). New table-level meta.add_row: {title} — the form's
+#           heading. New per-field meta.add: {section, order, default}:
+#           section main|more|hidden places a field in the form (default:
+#           required-without-a-DB-default -> main, json -> hidden, else
+#           more), order sorts it within that section, default is its
+#           starting value ("today" for a date). Here: the old Add asset
+#           dialog's main column (asset no, location, category, description,
+#           department, condition rating, purchase date) is reproduced,
+#           domain is hidden (filled from the building pick), and status
+#           starts at "A". Meta only — no column or behaviour change for Oh
+#           CRUD.
 name: Asset Data
-version: 1.5.0
+version: 1.8.0
 table-name: asset_data
 end-point: asset/data
 track-history: true
 track-history-field: asset_no
 allow-diff: true
 diff-comparator: asset_no
+meta:
+  table_role: primary
+  add_row:
+    title: Add asset
+  detail_categories:
+    Identity: { order: 1 }
+    Location: { order: 2 }
+    Lifecycle: { order: 3 }
+    Details: { order: 4 }
+    Financial: { order: 5 }
 admin-roles:
   - admin_assets
 
@@ -110,6 +202,24 @@ foreign-keys:
       - location
     foreign-key-on-update: CASCADE
     foreign-key-on-delete: SET NULL
+  fk_assets_asset_status:
+    foreign-key-fields:
+      - asset_status
+    foreign-key-target-table: asset_status
+    foreign-key-target-fields:
+      - asset_status
+    foreign-key-target-field-description: status_description
+    foreign-key-on-update: CASCADE
+    foreign-key-on-delete: SET NULL
+  fk_assets_criticality_rating:
+    foreign-key-fields:
+      - criticality_rating
+    foreign-key-target-table: criticality_rating
+    foreign-key-target-fields:
+      - criticality_rating
+    foreign-key-target-field-description: criticality_description
+    foreign-key-on-update: CASCADE
+    foreign-key-on-delete: SET NULL
 
 unique-keys:
   uk_asset_asset_no:
@@ -145,6 +255,10 @@ fields:
     db-type: text
     default: ""
     include-in-diff: false
+    meta:
+      importance: 1
+      detail_category: Identity
+      longtext: true
   asset_category:
     type: string
     json: asset_category
@@ -152,18 +266,39 @@ fields:
     required-on-insert: true
     nullable: true
     include-in-diff: true
+    meta:
+      add: { section: main, order: 5 }
+      importance: 1
+      detail_category: Identity
+      alias: Category
+      map_filter: true
   asset_no:
     type: string
     json: asset_no
     db-type: character varying(40)
     required-on-insert: true
     include-in-diff: false
+    meta:
+      add: { section: main, order: 1 }
+      importance: 1
+      detail_category: Identity
+      alias: "Asset no."
+      copy: true
   asset_status:
     type: string
     json: asset_status
     db-type: char(1)
     default: "A"
     include-in-diff: true
+    meta:
+      add: { default: "A" }
+      map_filter: true
+      stamps_date_field: disposal_date
+      stamps_date_field_values: ["D"]
+      triggers:
+        D:
+          label: "Dispose asset"
+          fields: [disposal_date, condition_rating, condition_rating_date, disposal_reason]
   building:
     type: string
     json: building
@@ -171,6 +306,10 @@ fields:
     required-on-insert: true
     nullable: true
     include-in-diff: true
+    meta:
+      add: { section: main, order: 2 }
+      importance: 1
+      detail_category: Location
   condition_rating:
     type: int
     json: condition_rating
@@ -178,10 +317,13 @@ fields:
     nullable: true
     include-in-diff: true
     meta:
-      audit:
-        - ENGINEERING
+      add: { section: main, order: 8 }
+      audit: true
       category: Condition
       stamps_date_field: condition_rating_date
+      importance: 1
+      detail_category: Lifecycle
+      map_filter: true
   condition_rating_date:
     type: string
     json: condition_rating_date
@@ -190,6 +332,10 @@ fields:
     include-in-diff: true
     meta:
       category: Condition
+      importance: 1
+      detail_category: Lifecycle
+      alias: Condition rated
+      date: true
   contact_id:
     type: string
     json: contact_ID
@@ -198,6 +344,17 @@ fields:
     db-type: character varying(32)
     nullable: true
     include-in-diff: false
+  criticality_rating:
+    type: int
+    json: criticality_rating
+    db-type: smallint
+    nullable: true
+    include-in-diff: true
+    meta:
+      audit: true
+      importance: 1
+      detail_category: Identity
+      map_filter: true
   department:
     type: string
     json: department
@@ -205,6 +362,11 @@ fields:
     required-on-insert: true
     nullable: true
     include-in-diff: true
+    meta:
+      add: { section: main, order: 7 }
+      importance: 1
+      detail_category: Location
+      map_filter: true
   description:
     type: string
     json: description
@@ -212,6 +374,11 @@ fields:
     required-on-insert: true
     nullable: true
     include-in-diff: true
+    meta:
+      add: { section: main, order: 6 }
+      importance: 1
+      detail_category: Identity
+      longtext: true
   disposal_cost:
     type: float
     json: disposal_cost
@@ -226,6 +393,8 @@ fields:
     db-type: date
     nullable: true
     include-in-diff: true
+    meta:
+      date: true
   disposal_reason:
     type: string
     json: disposal_reason
@@ -239,6 +408,8 @@ fields:
     required-on-insert: true
     nullable: true
     include-in-diff: true
+    meta:
+      add: { section: hidden }
   finance_group_code:
     type: string
     json: finance_group_code
@@ -252,6 +423,10 @@ fields:
     nullable: true
     absolute-match: true
     include-in-diff: true
+    meta:
+      add: { section: main, order: 3 }
+      importance: 1
+      detail_category: Location
   gl_asset_reference:
     type: string
     json: GL_asset_reference
@@ -264,6 +439,10 @@ fields:
     db-type: date
     nullable: true
     include-in-diff: true
+    meta:
+      importance: 1
+      detail_category: Lifecycle
+      date: true
   installation_cost:
     type: float
     json: installation_cost
@@ -272,12 +451,18 @@ fields:
     include-in-diff: true
     meta:
       currency: true
+      importance: 1
+      detail_category: Financial
   invoice_no:
     type: string
     json: invoice_no
     db-type: character varying(20)
     nullable: true
     include-in-diff: true
+    meta:
+      importance: 1
+      detail_category: Financial
+      alias: Invoice number
   is_virtual_asset:
     type: bool
     json: is_virtual_asset
@@ -315,15 +500,19 @@ fields:
     nullable: true
     include-in-diff: true
     meta:
-      audit:
-        - ENGINEERING
+      audit: true
       category: Identification
+      importance: 1
+      detail_category: Details
+      map_filter: true
   manufacturer:
     type: string
     json: manufacturer
     db-type: character varying(40)
     nullable: true
     include-in-diff: false
+    meta:
+      map_filter: true
   mh_location:
     type: string
     json: mh_location
@@ -336,9 +525,11 @@ fields:
     nullable: true
     include-in-diff: true
     meta:
-      audit:
-        - ENGINEERING
+      audit: true
       category: Identification
+      importance: 1
+      detail_category: Details
+      map_filter: true
   owning_cost_center:
     type: string
     json: owning_cost_center
@@ -353,18 +544,29 @@ fields:
     include-in-diff: true
     meta:
       currency: true
+      importance: 1
+      detail_category: Financial
   purchase_date:
     type: string
     json: purchase_date
     db-type: date
     nullable: true
     include-in-diff: true
+    meta:
+      add: { section: main, order: 9 }
+      importance: 1
+      detail_category: Financial
+      date: true
   purchase_order_no:
     type: string
     json: purchase_order_no
     db-type: character varying(20)
     nullable: true
     include-in-diff: true
+    meta:
+      importance: 1
+      detail_category: Financial
+      alias: PO number
   purchasing_cost_center:
     type: string
     json: purchasing_cost_center
@@ -383,12 +585,19 @@ fields:
     db-type: character varying(15)
     nullable: true
     include-in-diff: true
+    meta:
+      add: { section: main, order: 4 }
+      importance: 1
+      detail_category: Location
   serial:
     type: string
     json: serial
     db-type: character varying(40)
     nullable: true
     include-in-diff: true
+    meta:
+      importance: 1
+      detail_category: Details
   service_agent:
     type: string
     json: service_agent
@@ -437,12 +646,20 @@ fields:
     db-type: smallint
     include-in-diff: true
     nullable: true
+    meta:
+      importance: 1
+      detail_category: Lifecycle
+      alias: Warranty (mo)
   working_life:
     type: int
     json: working_life
     db-type: smallint
     nullable: true
     include-in-diff: true
+    meta:
+      importance: 1
+      detail_category: Lifecycle
+      alias: Working life (yr)
   ownership_status:
     type: string
     json: ownership_status
@@ -462,25 +679,31 @@ fields:
     db-type: character varying(10)
     nullable: true
     include-in-diff: false
+    meta:
+      importance: 1
+      detail_category: Details
   refrigerant_grams:
     type: int
     json: refrigerant_quantity
     db-type: smallint
     nullable: true
     include-in-diff: false
+    meta:
+      importance: 1
+      detail_category: Details
+      alias: Refrigerant qty
   found:
     type: bool
     json: found
     db-type: boolean
     default: "false"
     nullable: true
-    include-in-diff: true
+    include-in-diff: false
     description: >-
       Confirmed as part of every room audit: was this asset physically
       present and located where the map/records say it is. Defaults to
       false for a newly added asset (not yet audited); set true or false
       each time the asset is checked off during a room audit.
     meta:
-      audit:
-        - ENGINEERING
+      audit: true
       category: Condition

@@ -29,13 +29,21 @@
 #           unit="department" channel (see audit-channel.yaml) — answered
 #           once for the whole department rather than per room/asset;
 #           room_categories/asset_categories are unused for that scope.
+#   1.2.0 — fk_audit_check_channel now cascades on delete: deleting an audit
+#           channel removes every check definition that belonged to it. Safe
+#           because nothing else FKs into this table.
+#   1.2.1 — new table-level meta.table_role: supporting (see the multi-table
+#           ledger's table picker — a whitelist, not every non-internal
+#           table by default).
 name: Audit Check Definition
-version: 1.1.0
+version: 1.2.1
 table-name: audit_check_definition
 end-point: audit/check-definition
 allow-diff: false
 admin-roles:
   - admin_assets
+meta:
+  table_role: supporting
 
 primary-key: check_id
 
@@ -48,6 +56,7 @@ foreign-keys:
       - channel_code
     foreign-key-target-field-description: label
     foreign-key-on-update: CASCADE
+    foreign-key-on-delete: CASCADE
 
 end-points-allowed:
   GET: []

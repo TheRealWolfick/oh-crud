@@ -14,6 +14,10 @@
 # what's persisted per checksum without pulling the payloads.
 #
 # Changelog:
+#   1.2.1 — new table-level meta.table_role: internal. This app's own
+#           bookkeeping table, excluded from the new multi-table ledger's
+#           table pickers (it isn't something a user should browse/edit as
+#           generic data). Purely a UI hint Oh CRUD never reads.
 #   1.2.0 — add `version` (int, default 0): the persisted rev of each row,
 #           mirrors payload.rev. Additive column, non-destructive.
 #   1.1.0 — `updated_at` no longer skip-insert: it is now `nullable`, `default`
@@ -25,10 +29,12 @@
 #           Schema delta: ALTER COLUMN updated_at DROP NOT NULL + SET DEFAULT
 #           now() — a constraint relaxation, no data loss, nothing dropped.
 name: App Diff State
-version: 1.2.0
+version: 1.2.1
 table-name: app_diff_state
 end-point: app/diffstate
 allow-diff: false
+meta:
+  table_role: internal
 
 primary-key: checksum
 

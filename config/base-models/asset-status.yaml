@@ -1,17 +1,17 @@
 ---
 # Changelog:
-#   1.2.2 — new table-level meta.table_role: supporting (see the multi-table
+#   1.0.1 — new table-level meta.table_role: supporting (see the multi-table
 #           ledger's table picker — a whitelist, not every non-internal
 #           table by default).
-name: Domain
-version: 1.2.2
-table-name: domains
-end-point: domain
+name: Asset Status
+version: 1.0.1
+table-name: asset_status
+end-point: asset/status
 allow-diff: false
 meta:
   table_role: supporting
 
-primary-key: domain_code
+primary-key: asset_status
 
 end-points-allowed:
   GET: []
@@ -24,15 +24,15 @@ end-points-allowed:
   DIFF: []
 
 fields:
-  domain_code:
+  asset_status:
     type: string
-    json: domain_code
-    db-type: character varying(3)
+    json: asset_status
+    db-type: char(1)
     required-on-insert: true
     rules:
       pattern: "[A-Z]*"
-  domain_description:
+  status_description:
     type: string
-    json: domain_description
-    db-type: text
-    default: ""
+    json: status_description
+    db-type: character varying(15)
+    nullable: true

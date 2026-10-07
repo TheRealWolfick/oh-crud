@@ -12,11 +12,16 @@
 #
 # Changelog:
 #   1.0.0 — new table (additive, non-destructive).
+#   1.0.1 — new table-level meta.table_role: supporting (see the multi-table
+#           ledger's table picker — a whitelist, not every non-internal
+#           table by default).
 name: Room Category
-version: 1.0.0
+version: 1.0.1
 table-name: room_categories
 end-point: room/category
 allow-diff: false
+meta:
+  table_role: supporting
 
 primary-key: category_code
 

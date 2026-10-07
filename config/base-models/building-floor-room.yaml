@@ -53,26 +53,35 @@
 #           top level; an asset-scoped custom check (one with no direct
 #           asset/data field to write into) nests under a per-asset_no key
 #           instead. Additive, non-destructive.
-#   1.9.0 — audit channels. `room_category`'s `meta.audit` changes from a
-#           bare `true` to a list of audit_channel codes (see asset-data.yaml
-#           1.5.0's changelog entry for the same shape change) — tagged
-#           `[ENGINEERING]` as a first pass, reassign if wrong before
-#           deploying. DROP COLUMN `date_audited`, DROP COLUMN `audited_by`:
-#           completion is now per-channel (audit_data.channels[code].
-#           date_audited/audited_by, plus the append-only room_audit_log),
-#           so one whole-room scalar date/by no longer means anything —
-#           there is no single "the room's audit," only each channel's own.
-#           Destructive: any existing date_audited/audited_by values are
-#           lost. `audit_data`'s shape also changes — everything nests under
-#           a per-channel key now (`audit_data.channels.<code>.{checks,
-#           asset_checks, in_progress, complete, date_audited, audited_by}`)
-#           instead of top-level `checks`/`asset_checks`/`in_progress` — see
-#           backend/app/room_audit.py.
+#   1.9.0 — audit channels. DROP COLUMN `date_audited`, DROP COLUMN
+#           `audited_by`: completion is now per-channel (audit_data.
+#           channels[code].date_audited/audited_by, plus the append-only
+#           room_audit_log), so one whole-room scalar date/by no longer
+#           means anything — there is no single "the room's audit," only
+#           each channel's own. Destructive: any existing date_audited/
+#           audited_by values are lost. `audit_data`'s shape also changes —
+#           everything nests under a per-channel key now (`audit_data.
+#           channels.<code>.{checks, asset_checks, in_progress, complete,
+#           date_audited, audited_by}`) instead of top-level `checks`/
+#           `asset_checks`/`in_progress` — see backend/app/room_audit.py.
+#   1.9.1 — `room_category`'s `meta.audit` stays a bare `true` (reverted a
+#           1.9.0-in-flight attempt to make it a channel-code list) — it's
+#           channel-agnostic, asked by every channel that audits rooms and
+#           reaches a matching room_category, exactly like a custom check
+#           with no field of its own; only a custom check's own
+#           `channel_code` binds it to one specific channel. No schema
+#           change, meta-value only.
+#   1.9.2 — new table-level meta.table_role: supporting. Adds `room` to the
+#           multi-table ledger's table picker (see asset-data.yaml 1.7.4/
+#           1.7.5) alongside its existing dedicated editor in the Maps area
+#           — a whitelist, not every non-internal table by default.
 name: Building Floor Room
-version: 1.9.0
+version: 1.9.2
 table-name: building_floor_room_combo
 end-point: room
 allow-diff: false
+meta:
+  table_role: supporting
 
 primary-key: bfroom_id
 
@@ -162,8 +171,7 @@ fields:
     db-type: character varying(30)
     nullable: true
     meta:
-      audit:
-        - ENGINEERING
+      audit: true
   audit_data:
     type: json
     json: audit_data

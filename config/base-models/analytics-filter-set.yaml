@@ -9,16 +9,21 @@
 #
 # Per-user: `owner` is the username. `sort_order` drives the drawer order and
 # is renumbered on a rearrange.
+#   1.1.1 — new table-level meta.table_role: internal. This app's own
+#           bookkeeping table, excluded from the new multi-table ledger's
+#           table pickers.
 #   1.1.0 — add `kind` (set | heading) and `collapsed`. A heading is an
 #           ordered row in the same list with a name and no filters; the drawer
 #           renders it as a collapsible group header (markdown-style: collapsing
 #           hides every set beneath it up to the next heading). Additive.
 name: Analytics Filter Set
-version: 1.1.0
+version: 1.1.1
 table-name: analytics_filter_sets
 end-point: analytics/filter-set
 allow-diff: false
 track-history: false
+meta:
+  table_role: internal
 
 primary-key: filter_set_id
 

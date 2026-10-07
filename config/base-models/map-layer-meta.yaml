@@ -1,0 +1,121 @@
+# Admin-editable rules metadata for a whole map LAYER within a floor, for
+# the Asset Maps area — `not_selectable` (this layer's polygons are never a
+# click target — e.g. a "gardens" overlay that combines with the plan for
+# display but shouldn't be selectable) and `height` (a placeholder for a
+# future 3D stacked-floor view; applies uniformly to every polygon the layer
+# contains — e.g. the whole "rooms" layer sharing one ceiling height).
+# Deliberately layer-scoped, not per-polygon: a rule targets the file/layer
+# an admin picks in the map file manager, never one individual room or
+# feature. Layered on top of the static floor-plan geojson the same way
+# map-room-override / map-floor-alignment are: never baked into the served
+# geometry. `extra` is an open-ended JSON-as-text column so a new rule can be
+# added later without a schema change.
+#
+# `kind` is "rooms" | "plan" | "layer" — the same three kinds the map file
+# manager (backend/app/maps/staging.py) uploads under; `layer_name` is only
+# meaningful for kind="layer" (the folder name under layers/, e.g.
+# "gardens") and is blank for "rooms"/"plan", which are singular per floor.
+#
+# Identity is the (building, floor, kind, layer_name) quadruple (unique
+# key); a serial `layer_meta_id` is the primary key so the row can be
+# addressed directly. Mirrors map-room-override's shape.
+#
+# Changelog:
+#   1.0.0 — new table (additive, non-destructive). Replaces the earlier
+#           map-floor-meta / map-feature-meta tables (per-floor and
+#           per-polygon-feature rules), which this supersedes — those tables
+#           can be dropped once this one is in place.
+#   1.0.1 — new table-level meta.table_role: internal. This app's own
+#           bookkeeping table, excluded from the new multi-table ledger's
+#           table pickers.
+name: Map Layer Meta
+version: 1.0.1
+table-name: map_layer_meta
+end-point: map/layer-meta
+allow-diff: false
+meta:
+  table_role: internal
+
+primary-key: layer_meta_id
+
+foreign-keys:
+  fk_map_layer_meta_bfloor:
+    foreign-key-fields:
+      - building
+      - floor
+    foreign-key-target-table: building_floor_combo
+    foreign-key-target-fields:
+      - building
+      - floor
+    foreign-key-on-update: CASCADE
+
+unique-keys:
+  uk_map_layer_meta_key:
+    unique-key-fields:
+      - building
+      - floor
+      - kind
+      - layer_name
+
+end-points-allowed:
+  GET: []
+  PUT: []
+  POST: []
+  DELETE: []
+  PUT-GROUP: []
+  POST-GROUP: []
+  DELETE-GROUP: []
+  DIFF: []
+
+fields:
+  layer_meta_id:
+    type: int
+    json: layer_meta_id
+    db-type: serial
+    skip-insert: true
+  building:
+    type: string
+    json: building
+    db-type: character varying(15)
+    required-on-insert: true
+  floor:
+    type: string
+    json: floor
+    db-type: character varying(4)
+    required-on-insert: true
+    absolute-match: true
+  kind:
+    type: string
+    json: kind
+    db-type: character varying(10)
+    required-on-insert: true
+  layer_name:
+    type: string
+    json: layer_name
+    db-type: character varying(60)
+    nullable: true
+  not_selectable:
+    type: bool
+    json: not_selectable
+    db-type: boolean
+    nullable: true
+  height:
+    type: float
+    json: height
+    db-type: double precision
+    nullable: true
+  extra:
+    type: string
+    json: extra
+    db-type: text
+    nullable: true
+  created_by:
+    type: string
+    json: created_by
+    db-type: character varying(50)
+    nullable: true
+  updated_at:
+    type: string
+    json: updated_at
+    db-type: timestamptz
+    nullable: true

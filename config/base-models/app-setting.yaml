@@ -10,12 +10,17 @@
 # fail with 'null value in column "updated_at" ... violates not-null constraint'.
 #
 # Changelog:
+#   1.0.1 — new table-level meta.table_role: internal. This app's own
+#           bookkeeping table, excluded from the new multi-table ledger's
+#           table pickers.
 #   1.0.0 — new table (additive, non-destructive).
 name: App Setting
-version: 1.0.0
+version: 1.0.1
 table-name: app_setting
 end-point: app/setting
 allow-diff: false
+meta:
+  table_role: internal
 
 primary-key: key
 

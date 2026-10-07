@@ -1,0 +1,40 @@
+---
+# Changelog:
+#   1.0.2 — new table-level meta.table_role: supporting (see the multi-table
+#           ledger's table picker — a whitelist, not every non-internal
+#           table by default).
+name: Criticality Rating
+version: 1.0.2
+table-name: criticality_rating
+end-point: criticality
+allow-diff: false
+meta:
+  table_role: supporting
+
+primary-key: criticality_rating
+
+end-points-allowed:
+  GET: []
+  PUT: []
+  POST: []
+  DELETE: []
+  PUT-GROUP: []
+  POST-GROUP: []
+  DELETE-GROUP: []
+  DIFF: []
+
+fields:
+  criticality_rating:
+    type: int
+    json: criticality_rating
+    json-alias:
+      - criticality
+    db-type: smallint
+    required-on-insert: true
+    rules:
+      max: 6
+  criticality_description:
+    type: string
+    json: criticality_description
+    db-type: character varying(80)
+    nullable: true

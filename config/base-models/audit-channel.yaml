@@ -34,13 +34,18 @@
 #           audits_assets/room_categories/asset_categories are unused.
 #           Department-unit channels are driven entirely by
 #           audit_check_definition rows with scope="department".
+#   1.0.1 — new table-level meta.table_role: supporting (see the multi-table
+#           ledger's table picker — a whitelist, not every non-internal
+#           table by default).
 name: Audit Channel
-version: 1.0.0
+version: 1.0.1
 table-name: audit_channel
 end-point: audit/channel
 allow-diff: false
 admin-roles:
   - admin_assets
+meta:
+  table_role: supporting
 
 primary-key: channel_code
 

@@ -7,11 +7,16 @@
 #           building_floor_combo / building_floor_room_combo resolve their
 #           `floor` label here. Schema delta: ADD COLUMN floor_description
 #           character varying(120) — additive, no data loss.
+#   1.3.1 — new table-level meta.table_role: supporting (see the multi-table
+#           ledger's table picker — a whitelist, not every non-internal
+#           table by default).
 name: Floor
-version: 1.3.0
+version: 1.3.1
 table-name: floors
 end-point: floor
 allow-diff: false
+meta:
+  table_role: supporting
 
 primary-key: floor_id
 

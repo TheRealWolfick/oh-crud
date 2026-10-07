@@ -1,0 +1,66 @@
+---
+# The Diff Manager's "Transform" tab: the editable, per-table step list that
+# shapes an Oracle Fusion export into Oh CRUD's stored asset format (and
+# back, for the Fusion bulk-upload export) before/after Oh CRUD's own
+# asset/data/diff comparison. One row per table this app diffs against
+# Fusion (today: just asset/data).
+#
+# `payload` is JSONB — {"steps": [{id, field, direction, kind, params,
+# enabled, note}...], "rev": <int>, "saved_at": <epoch>} — the same document
+# approach as app_diff_state.payload / app_import_workflow.payload. See
+# backend/app/ohcrud/fusion_workflow.py for the step catalogue and the
+# engine that runs them.
+#
+# Changelog:
+#   1.0.1 — new table-level meta.table_role: internal. This app's own
+#           bookkeeping table, excluded from the new multi-table ledger's
+#           table pickers.
+#   1.0.0 — new table (additive, non-destructive).
+name: App Diff Transform Workflow
+version: 1.0.1
+table-name: app_diff_transform_workflow
+end-point: app/diff-transform-workflow
+allow-diff: false
+meta:
+  table_role: internal
+
+primary-key: table_name
+
+end-points-allowed:
+  GET: []
+  PUT: []
+  POST: []
+  DELETE: []
+  PUT-GROUP: []
+  POST-GROUP: []
+  DELETE-GROUP: []
+  DIFF: []
+
+fields:
+  table_name:
+    type: string
+    json: table_name
+    db-type: character varying(64)
+    required-on-insert: true
+  payload:
+    type: json
+    json: payload
+    db-type: jsonb
+    nullable: true
+  version:
+    type: int
+    json: version
+    db-type: integer
+    default: 0
+    nullable: true
+  updated_by:
+    type: string
+    json: updated_by
+    db-type: character varying(50)
+    nullable: true
+  updated_at:
+    type: string
+    json: updated_at
+    db-type: timestamptz
+    default: now()
+    nullable: true

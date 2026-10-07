@@ -11,8 +11,13 @@
 #           completion (there's no field-linked mode for department-scope
 #           checks, so nothing is omitted the way room_audit_log omits
 #           built-in/field-linked values).
+#   1.1.0 — fk_department_audit_log_channel now cascades on delete: deleting
+#           the channel itself removes its whole register (still never
+#           updated or deleted row-by-row while the channel exists — this is
+#           only the channel's own end-of-life). Safe because nothing else
+#           FKs into this table.
 name: Department Audit Log
-version: 1.0.0
+version: 1.1.0
 table-name: department_audit_log
 end-point: audit/department-log
 allow-diff: false
@@ -38,6 +43,7 @@ foreign-keys:
       - channel_code
     foreign-key-target-field-description: label
     foreign-key-on-update: CASCADE
+    foreign-key-on-delete: CASCADE
 
 end-points-allowed:
   GET: []

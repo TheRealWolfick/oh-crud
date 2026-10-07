@@ -3,8 +3,12 @@
 # Floor plans are digitised from separate DXF layers / separate exports that
 # don't always share an origin; an alignment row shifts one floor — or one
 # layer within a floor — by (dx, dy) *source coordinate units* so it lines up
-# with the rest of the building. It is applied at render time by the maps
-# frontend; the geometry endpoint still serves un-nudged coordinates.
+# with the rest of the building, and `scale` multiplies the building-wide
+# projection (every floor of a building is fitted to the union of all of
+# them) for just that floor / layer — for a CAD file drawn at a different
+# scale, or none. Scaling pivots on the floor's room-bounds centre. It is
+# applied at render time by the maps frontend; the geometry endpoint still
+# serves un-nudged coordinates.
 #
 # Identity is the (building, floor, layer) triple (unique key). `layer` is:
 #   "all"    — the whole floor (rooms + every overlay move together)
@@ -15,12 +19,19 @@
 # directly. Mirrors map-room-override's shape.
 #
 # Changelog:
+#   1.1.0 — new `scale` column (double precision, default 1). Additive,
+#           non-destructive: existing rows read as scale 1.
+#   1.0.1 — new table-level meta.table_role: internal. This app's own
+#           bookkeeping table, excluded from the new multi-table ledger's
+#           table pickers.
 #   1.0.0 — new table (additive, non-destructive).
 name: Map Floor Alignment
-version: 1.0.0
+version: 1.1.0
 table-name: map_floor_alignment
 end-point: map/floor-alignment
 allow-diff: false
+meta:
+  table_role: internal
 
 primary-key: alignment_id
 
@@ -85,6 +96,11 @@ fields:
     json: dy
     db-type: double precision
     default: 0
+  scale:
+    type: float
+    json: scale
+    db-type: double precision
+    default: 1
   note:
     type: string
     json: note

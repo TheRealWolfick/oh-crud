@@ -11,12 +11,17 @@
 # skip-insert).
 #
 # Changelog:
+#   1.0.1 — new table-level meta.table_role: internal. This app's own
+#           bookkeeping table, excluded from the new multi-table ledger's
+#           table pickers.
 #   1.0.0 — new table (additive, non-destructive).
 name: Map Room Override
-version: 1.0.0
+version: 1.0.1
 table-name: map_room_override
 end-point: map/room-override
 allow-diff: false
+meta:
+  table_role: internal
 
 primary-key: override_id
 

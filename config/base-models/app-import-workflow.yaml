@@ -13,12 +13,17 @@
 # top-level `version` column mirrors payload.rev for cheap boot reconciliation.
 #
 # Changelog:
+#   1.0.1 — new table-level meta.table_role: internal. This app's own
+#           bookkeeping table, excluded from the new multi-table ledger's
+#           table pickers.
 #   1.0.0 — new table (additive, non-destructive).
 name: App Import Workflow
-version: 1.0.0
+version: 1.0.1
 table-name: app_import_workflow
 end-point: app/import-workflow
 allow-diff: false
+meta:
+  table_role: internal
 
 primary-key: workflow_id
 

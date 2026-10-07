@@ -17,8 +17,13 @@
 #           values — those already live on asset/data (which carries
 #           track-history: true, keyed by asset_no) or the room row itself,
 #           so this table is never a second source of truth for them.
+#   1.1.0 — fk_room_audit_log_channel now cascades on delete: deleting the
+#           channel itself removes its whole register (still never updated
+#           or deleted row-by-row while the channel exists — this is only
+#           the channel's own end-of-life). Safe because nothing else FKs
+#           into this table.
 name: Room Audit Log
-version: 1.0.0
+version: 1.1.0
 table-name: room_audit_log
 end-point: audit/room-log
 allow-diff: false
@@ -48,6 +53,7 @@ foreign-keys:
       - channel_code
     foreign-key-target-field-description: label
     foreign-key-on-update: CASCADE
+    foreign-key-on-delete: CASCADE
 
 end-points-allowed:
   GET: []

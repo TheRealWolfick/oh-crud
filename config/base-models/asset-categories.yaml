@@ -1,9 +1,17 @@
 ---
+# Changelog:
+#   1.2.4 — new table-level meta.table_role: supporting. Marks this as one
+#           of the multi-table ledger's user-facing "supporting" tables
+#           (see asset-data.yaml 1.7.4/1.7.5 and the ledger's table
+#           picker) — a whitelist, not every non-internal table by
+#           default. Purely a UI hint Oh CRUD never reads.
 name: Asset Categories
-version: 1.2.3
+version: 1.2.4
 table-name: asset_categories
 end-point: asset/category
 allow-diff: false
+meta:
+  table_role: supporting
 
 primary-key: cat_code
 

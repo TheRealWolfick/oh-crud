@@ -15,12 +15,29 @@
 # Oh CRUD, reconciled at boot by a monotonic rev inside `payload`... actually
 # this table stores the columns directly (not a JSONB blob) so the metadata
 # and counts are queryable for the library's search/sort.
+#
+#   1.1.1 — new table-level meta.table_role: internal. This app's own
+#           bookkeeping table, excluded from the new multi-table ledger's
+#           table pickers.
+#   1.2.0 — commit_history: a snapshot per commit (recipe + open sheets +
+#           the rows already locked before it), so a committed file can be
+#           reopened read-only "as committed" for review. Additive.
+#   1.3.0 — merged files. merged_from (jsonb): on a merged file, the files it
+#           was built from and which of their sheets became which of its
+#           sheets — [{file_id, filename, sheets: [{source, sheet}]}].
+#           merged_into (varchar 24): on a member file, the merged file that
+#           currently holds it (hidden from the library until unmerged).
+#           Additive, both nullable. last_status gains the value "merging"
+#           (a merge placeholder whose workbook is still being built — no
+#           column change).
 name: Import File
-version: 1.1.0
+version: 1.3.0
 table-name: app_import_files
 end-point: app/import-file
 allow-diff: false
 track-history: false
+meta:
+  table_role: internal
 
 primary-key: file_id
 
@@ -120,6 +137,21 @@ fields:
     json: imported_row_keys
     db-type: jsonb
     nullable: true          # [__i, ...] rows Oh CRUD has accepted
+  commit_history:
+    type: json
+    json: commit_history
+    db-type: jsonb
+    nullable: true          # [{committed_at, recipe_log, loaded_sheets, locked_before, ...}]
+  merged_from:
+    type: json
+    json: merged_from
+    db-type: jsonb
+    nullable: true          # [{file_id, filename, sheets: [{source, sheet}]}]
+  merged_into:
+    type: string
+    json: merged_into
+    db-type: character varying(24)
+    nullable: true          # file_id of the merged file holding this one
   last_workflow_id:
     type: string
     json: last_workflow_id
@@ -129,7 +161,7 @@ fields:
     type: string
     json: last_status
     db-type: character varying(16)
-    default: "new"          # new | in_progress | committed
+    default: "new"          # new | in_progress | committed | merging
   rev:
     type: int
     json: rev

@@ -2,14 +2,19 @@
 # Changelog:
 #   1.3.11 — record `foreign-key-target-field-description: domain_description`
 #            on fk_buildings_domain for the FK-constrained editor's subheading.
+#   1.3.12 — new table-level meta.table_role: supporting (see the multi-table
+#            ledger's table picker — a whitelist, not every non-internal
+#            table by default).
 name: Building
-version: 1.3.11
+version: 1.3.12
 table-name: buildings
 end-point: building
 allow-diff: false
 soft-delete: true
 track-history: true
 track-history-field: building
+meta:
+  table_role: supporting
 
 primary-key: building_id
 

@@ -1,9 +1,15 @@
 ---
+# Changelog:
+#   1.2.2 — new table-level meta.table_role: supporting (see the multi-table
+#           ledger's table picker — a whitelist, not every non-internal
+#           table by default).
 
 name: mh-locations
-version: 1.2.1
+version: 1.2.2
 table-name: mh_locations
 end-point: locations
+meta:
+  table_role: supporting
 primary-key: location
 end-points-allowed:
   GET: []

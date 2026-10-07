@@ -30,12 +30,17 @@
 #           `double precision` diff here would never apply. numeric(16,4)
 #           matches the live column and holds any portfolio-level sum with
 #           cents to spare.
+#   1.2.1 — new table-level meta.table_role: internal. This app's own
+#           bookkeeping table, excluded from the new multi-table ledger's
+#           table pickers.
 name: Analytics Snapshot
-version: 1.2.0
+version: 1.2.1
 table-name: analytics_snapshots
 end-point: analytics/snapshot
 allow-diff: false
 track-history: false
+meta:
+  table_role: internal
 
 primary-key: snapshot_id
 
