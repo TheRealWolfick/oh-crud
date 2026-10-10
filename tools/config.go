@@ -604,6 +604,7 @@ func ValidateDataModel(m models.DataModel) error {
 		"timestamptz": true, "text": true, "numeric": true, "timestamp without time zone": true,
 		"timestamp with time zone": true, "date": true, "varchar": true, "character varying": true,
 		"char": true, "character": true, "decimal": true, "serial": true, "smallserial": true,
+		"bytea": true,
 	}
 	validMigrations := map[string]bool{
 		"alter": true, "skip": true, "recreate": true,

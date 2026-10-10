@@ -506,6 +506,8 @@ func hclType(dbType string) string {
 		return `sql("real")`
 	case lower == "float8" || lower == "double precision":
 		return `sql("double precision")`
+	case lower == "bytea":
+		return `sql("bytea")`
 	default:
 		// character varying(n), numeric(p,s), etc. — pass raw
 		return fmt.Sprintf("sql(%q)", dbType)

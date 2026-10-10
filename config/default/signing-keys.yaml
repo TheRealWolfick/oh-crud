@@ -1,0 +1,28 @@
+# A table where encrypted credentials are stored. The encryption secret
+# is to be stored securely on the production server
+#
+#
+
+name: signing_keys
+version: 1.0.0
+table-name: signing_keys
+end-point: ""
+primary-key: kid
+
+fields:
+  kid:
+    type: string
+    db-type: text
+    json: kid
+  public_key:
+    type: byte
+    db-type: bytea
+    json: public_key
+  private_key:
+    type: byte
+    db-type: bytea
+    json: public_key
+  status:
+    type: string
+    db-type: text
+    json: status
