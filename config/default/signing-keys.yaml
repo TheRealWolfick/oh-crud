@@ -1,0 +1,28 @@
+name: signing-keys
+version: 1.0.0
+table-name: signing_keys
+end-point: ""
+primary-key: 
+fields:
+  kid:
+    type: 
+    db-type:
+  public_key:
+    type: 
+    db-type:
+  private_key:
+    type: 
+    db-type:
+  status:
+    type: 
+    db-type:
+  created_at:
+    type: 
+    db-type:
+  activated_at:
+    type: 
+    db-type:
+  retired_at:
+    type: 
+    db-type: 
+  
