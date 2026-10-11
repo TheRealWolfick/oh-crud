@@ -333,13 +333,17 @@ func DecodeAndCoerceFromDB(raw map[string]any, cfg *models.DataModel, comparator
 }
 
 // CoerceType converts a raw value to the named Go type.
-// Supports: "int", "float", "string", "bool", "json", "time", "uuid"
+// Supports: "int", "float", "string", "bool", "json", "time", "uuid", "byte(size)"
 func CoerceType(raw any, type_name string) (any, error) {
 	if raw == nil {
 		return nil, nil
 	}
 
-	switch type_name {
+	// Remove any modifiers (supports multiple byte sizes)
+	type_name_clean, type_size, err := extractTypeAndSize(type_name)
+	if err != nil { return nil, err }
+
+	switch type_name_clean {
 
 	case "int":
 		switch v := raw.(type) {
@@ -517,7 +521,34 @@ case [16]byte:
 	v[0:4], v[4:6], v[6:8], v[8:10], v[10:16],
 ), nil
 		}
+
+case "byte":
+	switch v := raw.(type) {
+	case string:
+		if v == "" { return nil, nil }
+		if type_size > 0 {
+			// Validate that the data is of the correct size
+			// Early exit on something being blatantly too large
+			if len(v) > type_size { return nil, fmt.Errorf("Data too large for byte size") }
+
+			// Data should fit, make and return it
+			buffer := make([]byte, type_size)
+			return copy(buffer, []byte(v)), nil
+		} else if type_size == -1 {
+			return []byte(v), nil
+		}
+	case pgtype.UndecodedBytes:
+		if type_size > 0 {
+		if len(v) > type_size { return nil, fmt.Errorf("Byte of type UndecodedBytes was too large, could not convert") }
+		buffer := make([]byte, type_size)
+		return copy(buffer, []byte(v)), nil
+	} else if type_size == -1 {
+		return v, nil
 	}
+		
+	}
+	}
+
 
 	return nil, fmt.Errorf("could not convert %v (%T) into type %s", raw, raw, type_name)
 }

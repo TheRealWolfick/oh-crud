@@ -12,17 +12,34 @@ primary-key: kid
 fields:
   kid:
     type: string
-    db-type: text
+    db-type: character varying(32)
     json: kid
   public_key:
-    type: byte
+    type: byte(32)
     db-type: bytea
     json: public_key
   private_key:
-    type: byte
+    type: byte(32)
     db-type: bytea
     json: public_key
   status:
     type: string
-    db-type: text
+    db-type: character varying(15)
     json: status
+  created_at:
+    type: time
+    db-type: timestamptz
+    json: created_at
+    default: now()
+  activated_at:
+    type: time
+    db-type: timestamptz
+    json: activated_at
+    nullable: true
+  retired_at:
+    type: time
+    db-type: timestamptz
+    json: retired_at
+    nullable: true
+
+

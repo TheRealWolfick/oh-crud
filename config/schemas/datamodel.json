@@ -150,7 +150,7 @@
         "properties": {
           "type": {
             "type": "string",
-            "enum": ["int", "float", "string", "bool", "json", "time", "uuid"]
+            "enum": ["int", "float", "string", "bool", "json", "time", "uuid", "byte(8)", "byte(16)", "byte(32)", "byte(64)"]
           },
           "json": { "type": "string" },
           "json-alias": {

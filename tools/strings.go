@@ -128,3 +128,24 @@ func convertString(s string, t reflect.Type) (any, error) {
 		return nil, fmt.Errorf("unsupported kind: %s", t.Kind())
 	}
 }
+
+// Extract the tyoe and type size from a string under the assumption that it is
+// of format `type(size)`. If there is no size, then it returns the type and -1 as 
+// the size. If the size is not an int, it returns 0 as the size and an error.
+// Maximum int size is Int32
+func extractTypeAndSize(s string) (string, int, error) {
+	if s == "" || !strings.ContainsAny(s, "()") { return s, -1, nil }
+
+  // Remove the trailing `)` and split it into type and size as strings
+	spliced := strings.Split(strings.Replace(s, ")", "", 1), "(")
+	if len(spliced) != 2 { return "", 0, fmt.Errorf("Type was an invalid format of `type(size)`. Splitting failed") }
+
+	// Convert length
+	_, err := strconv.ParseInt(s, 10, 32)
+	if err != nil {
+		return "", 0, err
+	}
+
+	// Can be successfully converted now
+	return spliced[0], ConvertToInt(spliced[1]), nil
+}
