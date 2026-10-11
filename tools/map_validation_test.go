@@ -1,6 +1,8 @@
 package tools
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"lotusforge.au/api-server/models"
@@ -62,6 +64,18 @@ func mapTestModel() *models.DataModel {
 					Max_length: ptr(5),
 				},
 			},
+			"byte_data": {
+				Type:     ptr("byte(32)"),
+				JSON:     ptr("byte_data"),
+				DB_type:  ptr("bytea"),
+				Nullable: ptr(true),
+			},
+			"byte_unconstrained": {
+				Type:     ptr("byte"),
+				JSON:     ptr("byte_unconstrained"),
+				DB_type:  ptr("bytea"),
+				Nullable: ptr(true),
+			},
 		},
 	}
 }
@@ -115,7 +129,7 @@ func TestValidate_SliceOfMaps_AgainstConfig(t *testing.T) {
 			t.Errorf("expected empty results, got %d valid %d invalid", len(valid), len(invalid))
 		}
 	})
-
+	
 	t.Run("insert mode — valid rows coerced and separated from invalid", func(t *testing.T) {
 		rows := []map[string]any{
 			{"code": "A1", "label": "Alpha", "score": 1.5},   // valid
@@ -155,6 +169,58 @@ func TestValidate_SliceOfMaps_AgainstConfig(t *testing.T) {
 		if len(valid) != 2 {
 			t.Errorf("expected 2 valid (no checks), got %d invalid: %v", len(invalid), invalid)
 		}
+	})
+
+	t.Run("byte coercion - rows are coerced to the correct size", func(t *testing.T) {
+		rows := []map[string]any{
+			{"label": fmt.Sprint(len("abcdef5_abdef55a")), "byte_data": "abcdef5_abdef55a"},
+			{"label": fmt.Sprint(len("114hgppophsshebdassierbigsegdvG")), "byte_data": "114hgppophsshebdassierbigsegdvG"},
+			{"label": fmt.Sprint(len("asdas114hgppophsshebdassierbigsegdvG")), "byte_data": "asdas114hgppophsshebdassierbigsegdvG"},
+			{"label": "number", "byte_data": 525},
+			{"label": "number2", "byte_data": 25594928534554},
+		}
+
+		valid, invalid := Validate_SliceOfMaps_AgainstConfig(cfg, rows, false, false)
+
+		if len(valid) != 4 {
+			t.Errorf("Expected four values to be valid. Valid: %s\nInvalid: %s", DereferencedString(valid), DereferencedString(invalid))
+		}
+
+		if len(invalid) != 1 {
+			t.Errorf("Expected one values to be invalid. Valid: %v\nInvalid: %v", valid, invalid)
+		}
+		if !strings.Contains(invalid[0]["reasons"].(string), "Data too large for byte size") {
+			t.Errorf("Expected invalid data error to be 'Too large for byte size'. Invalid: %s", DereferencedString(invalid))
+		}
+
+		for _, m := range valid {
+			if len(m["byte_data"].([]byte)) != 32 {
+				t.Errorf("Array item {%s} was supposed to be 32 bytes, it was {%d} bytes, value {%v}", m["byte_data"], len(m["byte_data"].([]byte)), m["byte_data"])
+			}
+		}
+	})
+
+	t.Run("byte coercion - unconstrained byte rows", func(t *testing.T) {
+		rows := []map[string]any{
+			{"label": fmt.Sprint(len("abcdef5_abdef55a")), "byte_unconstrained": "abcdef5_abdef55a"},
+			{"label": fmt.Sprint(len("114hgppophsshebdassierbigsegdvG")), "byte_unconstrained": "114hgppophsshebdassierbigsegdvG"},
+			{"label": fmt.Sprint(len("asdas114hgppophsshebdassierbigsegdvG")), "byte_unconstrained": "asdas114hgppophsshebdassierbigsegdvG"},
+			{"label": "-1", "byte_unconstrained": 525},
+			{"label": "-1", "byte_unconstrained": 25594928534554},
+		}
+
+		valid, _ := Validate_SliceOfMaps_AgainstConfig(cfg, rows, false, false)
+
+		if len(valid) != 5 {
+			t.Errorf("Expected all values to be valid. Valid: %v\n", DereferencedString(valid))
+		}
+
+		for _, m := range valid {
+			if len(m["byte_unconstrained"].([]byte)) != ConvertToInt(m["label"].(string)) && m["label"] != "-1" {
+				t.Errorf("Array item {%s} was supposed to be {%s} bytes, it was {%d} bytes, value {%v}", m["byte_unconstrained"], m["label"], len(m["byte_unconstrained"].([]byte)), m["byte_unconstrained"])
+			}
+		}
+
 	})
 
 	t.Run("coercion failure causes row to be invalid", func(t *testing.T) {
@@ -204,8 +270,8 @@ func TestValidate_SliceOfMaps_AgainstConfig(t *testing.T) {
 			{"id": 1, "code": "C1"},            // valid: has PK + required field
 			{"id": 2},                          // invalid: missing required code
 			{"code": "C2"},                     // invalid: has required field but unique key only — PK check needed?
-											   // Note: GetUpdateKeyOptions returns PK option + UQ option.
-											   // code IS the unique key so this should pass key check.
+			// Note: GetUpdateKeyOptions returns PK option + UQ option.
+			// code IS the unique key so this should pass key check.
 		}
 		valid, invalid := Validate_SliceOfMaps_AgainstConfig(cfg, rows, true, true)
 		// row 0: has id (PK) and code (required) → valid

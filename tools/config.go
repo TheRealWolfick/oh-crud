@@ -1,9 +1,11 @@
 package tools
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"os"
 	"path/filepath"
 	"slices"
@@ -533,24 +535,42 @@ case "byte":
 
 			// Data should fit, make and return it
 			buffer := make([]byte, type_size)
-			return copy(buffer, []byte(v)), nil
+			copy(buffer, []byte(v))
+			return buffer, nil
+
 		} else if type_size == -1 {
+			// Undefined size, return as is
 			return []byte(v), nil
 		}
+
 	case pgtype.UndecodedBytes:
 		if type_size > 0 {
-		if len(v) > type_size { return nil, fmt.Errorf("Byte of type UndecodedBytes was too large, could not convert") }
-		buffer := make([]byte, type_size)
-		return copy(buffer, []byte(v)), nil
-	} else if type_size == -1 {
-		return v, nil
+			if len(v) > type_size { return nil, fmt.Errorf("Byte of type UndecodedBytes was too large, could not convert") }
+
+			// Make and return the data
+			buffer := make([]byte, type_size)
+			copy(buffer, []byte(v))
+			return buffer, nil
+
+		} else if type_size == -1 {
+			// Undefined size, return as is
+			return v, nil
+		}
+
+	case int:
+		if type_size > 0 {
+			buffer := make([]byte, type_size)
+			binary.BigEndian.PutUint64(buffer, uint64(v))
+			return buffer, nil
+		} else if type_size == -1 {
+			return new(big.Int).SetInt64(int64(v)).Bytes(), nil
+		}
+
 	}
-		
-	}
-	}
+}
 
 
-	return nil, fmt.Errorf("could not convert %v (%T) into type %s", raw, raw, type_name)
+return nil, fmt.Errorf("could not convert %v (%T) into type %s", raw, raw, type_name)
 }
 
 // ── Version management ────────────────────────────────────────────────────────
