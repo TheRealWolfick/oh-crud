@@ -18,20 +18,27 @@ import (
 )
 
 func main() {
-	// Directories
-	default_models_dir := "./config/default"
-	models_dir := "./config/base-models"
-	// special_models_dir := "./config/special-models"
-	functions_dir := "./config/functions"
+	// ---------------------------------------------------------------
+	//                Directories
+	// ---------------------------------------------------------------
+	default_models_dir := "./config/default"  // Server tables
+	models_dir := "./config/base-models"      // User defined tables
+	functions_dir := "./config/functions"     // Declared functions
 
-	// Load the logger
+
+	// ---------------------------------------------------------------
+	//                Logger
+	// ---------------------------------------------------------------
 	logger := tools.LoadLogger()
 
-	// Connect to database
+
+	// ---------------------------------------------------------------
+	//                Database connection
+	// ---------------------------------------------------------------
 	pool, err := pgxpool.New(context.Background(), fmt.Sprintf("postgres://%s:%s@%s", os.Getenv("DATABASE_USER"), os.Getenv("DATABASE_PWD"), os.Getenv("DATABASE_URL")))
 	if err != nil {
 		if os.Getenv("DATABASE_URL") == "" {
-			logger.Error("Database connection failed", "error", "Database variable not found")
+			logger.Error("Database connection failed", "error", "DATABASE_URL environment variable missing")
 		} else {
 			logger.Error("Database connection failed", "database", os.Getenv("DATABASE_URL"), "error", err)
 		}
@@ -39,96 +46,129 @@ func main() {
 	}
 	logger.Info("Database connection made")
 
-	// Create the events handler
+
+	// ---------------------------------------------------------------
+	//                Event Handler
+	// ---------------------------------------------------------------
 	evh := tools.NewEventManager(27, 10, pool)
 
-	// Create the queue for handling jobs
+
+	// ---------------------------------------------------------------
+	//                Queue Manager
+	// ---------------------------------------------------------------
 	qm := tools.NewQueue(pool, 5, logger, evh)
 
-	// Load the server config
+
+	// ---------------------------------------------------------------
+	//                Server Config Loading
+	// ---------------------------------------------------------------
 	intial_server_conf, err := tools.LoadYAMLIntoModel[models.ServerConfig]("./config/server/server.yaml")
-	if err != nil {
-		logger.Error("Failed to load server configuration")
-		os.Exit(1)
-	}
+	if err != nil { logger.Error("Failed to load server configuration"); os.Exit(1) }
+	// Load the server config into a swappable handler
 	server_conf := models.NewSwappableServerConfig(intial_server_conf)
 	logger.Debug(tools.DereferencedString(server_conf.Get()))
 
 
-	// Load default models from default, base-model, and special-models dir
-	default_models := loadModelsFromDir(default_models_dir, logger)
-	base_models := loadModelsFromDir(models_dir, logger)
+	// ---------------------------------------------------------------
+	//                Data Models
+	// ---------------------------------------------------------------
+	default_models := loadModelsFromDir(default_models_dir, logger)   // Server models
+	base_models := loadModelsFromDir(models_dir, logger) 							// User models
 	all_models := append(default_models, base_models...)
-	// all_models = append(all_models, loadModelsFromDir(special_models_dir, logger)...)
 
 	// Sync database schema for all loaded models.
 	// Destructive changes are recorded in the gate and blocked until manually approved.
 	gate := schematools.NewPendingApprovalGate()
 	schematools.BootstrapModels(context.Background(), pool, all_models, logger, gate)
 
-	// Make the handlers
+
+	// ---------------------------------------------------------------
+	//                Middleware
+	// ---------------------------------------------------------------
 	authMiddleware := middleware.RequireAuth(pool)
 
-	// Setup the server
-	mux := http.NewServeMux()
 
+	// ---------------------------------------------------------------
+	//                Server - Setup
+	// ---------------------------------------------------------------
+	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("OK")) })
 
-	// Register config-driven routes
-	handlerRegister := tools.NewHandlerRegistry(mux)
-	modelRegister := tools.NewModelRegistry()
+	// Create all the registers
+	handlerRegister := tools.NewHandlerRegistry(mux)  // End points
+	modelRegister := tools.NewModelRegistry()         // Data models
+	functionRegister := tools.NewFunctionRegistry()   // Declared Functions
 
-	// Process the default models first, then base models. This is to ensure the diffs model has been loaded
-	// before any diff references are created
+
+	// ---------------------------------------------------------------
+	//                Server - System tables
+	// ---------------------------------------------------------------
 	for _, dm := range default_models {
 		modelRegister.Register(&dm)
-		if dm.End_point == nil || *dm.End_point == "" {
-			logger.Debug(fmt.Sprintf("Skipping end point for: %s", *dm.Name))
-			continue
-		}
+		if dm.End_point == nil || *dm.End_point == "" { logger.Debug(fmt.Sprintf("Skipping end point for: %s", *dm.Name)); continue }
+		
 		handlers.RegisterRoutes(&dm, nil, handlerRegister, authMiddleware, qm, server_conf, evh, gate, modelRegister)
 	}
-	diff_model, found := modelRegister.ByTableName("diffs")
-	if (!found) { logger.Error("Diffs table was not loaded") }
+
+	// Check to ensure the required tables are available. Exit if any are false
+	for _, table := range []string{"diffs", "events", "batch_numbers", "signing_keys"} {
+		_, found := modelRegister.ByTableName(table)
+		if !found { logger.Error("missing required table", "table", table); os.Exit(1) }
+	}
+
+	
+	// ---------------------------------------------------------------
+	//                Server - User tables
+	// ---------------------------------------------------------------
+	diff_model, _ := modelRegister.ByTableName("diffs")
 	for _, dm := range base_models {
 		modelRegister.Register(&dm)
-		if dm.End_point == nil || *dm.End_point == "" {
-			logger.Debug(fmt.Sprintf("Skipping end point for: %s", *dm.Name))
-			continue
-		}
-		if (found) {
+		if dm.End_point == nil || *dm.End_point == "" { logger.Debug(fmt.Sprintf("Skipping end point for: %s", *dm.Name)); continue }
 		handlers.RegisterRoutes(&dm, diff_model, handlerRegister, authMiddleware, qm, server_conf, evh, gate, modelRegister)
-		} else { handlers.RegisterRoutes(&dm, nil, handlerRegister, authMiddleware, qm, server_conf, evh, gate, modelRegister) }
 	}
 
 
-	// Load and register declarative functions. Must happen after models are
-	// registered because each function validates against its bound model.
-	functionRegister := tools.NewFunctionRegistry()
+	// ---------------------------------------------------------------
+	//                Server - Declared Functions
+	// ---------------------------------------------------------------
+	// Must happen after the models are registered as each function validates against its declared tables
 	for _, fn := range tools.LoadFunctionsFromDir(functions_dir, modelRegister, logger) {
 		functionRegister.Register(fn)
 		handlers.RegisterFunctionRoutes(fn, modelRegister, handlerRegister, authMiddleware, qm, server_conf, evh)
 	}
 
-	// OpenAPI spec endpoint
+
+	// ---------------------------------------------------------------
+	//                System End Points
+	// ---------------------------------------------------------------
 	mux.Handle("GET /openapi.json", handlers.NewOpenAPIHandler(modelRegister, functionRegister))
 
-	// Load the file watchers
+
+	// ---------------------------------------------------------------
+	//                File Watchers (asycronous)
+	// ---------------------------------------------------------------
 	go monitors.ModelsMonitor(handlerRegister, modelRegister, authMiddleware, qm, gate, server_conf, evh)
 	go monitors.FunctionsMonitor(handlerRegister, modelRegister, functionRegister, authMiddleware, qm, server_conf, evh)
 	go monitors.ServerConfigMonitor(server_conf, logger)
 
-	// Load fixed sql functions -- !! Future Improvement: Make them Declaritive and with a watcher !! --
+
+	// ---------------------------------------------------------------
+	//                Custom SQL Functions
+	// ---------------------------------------------------------------
+	// !! Future Improvement: Make them Declaritive and with a watcher !!
+	
+	// Batch number generator
 	batch_num_func, err := os.ReadFile("./config/server/generate-batch-numbers.sql")
-	if err != nil {
-		logger.Error("Failed to load function file to generate batch numbers")
-	} else {
+	if err != nil { logger.Error("Failed to load function file to generate batch numbers") } else {
 		if _, err := qm.Db.Exec(context.Background(), string(batch_num_func)); err != nil {
 			logger.Error("Failed to execute function file to generate batch numbers")
 		}
 	}
 
-	// Launch the server
+
+	// ---------------------------------------------------------------
+	//                Server Launch
+	// ---------------------------------------------------------------
 	srv := &http.Server{
 		Addr:        ":8080",
 		Handler:     mux,
@@ -138,7 +178,9 @@ func main() {
 	}
 	srv.ListenAndServe()
 
-	// Close database connection
+	// ---------------------------------------------------------------
+	//                Cleanup
+	// ---------------------------------------------------------------
 	defer pool.Close()
 }
 
