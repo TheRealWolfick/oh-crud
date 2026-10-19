@@ -48,7 +48,7 @@ func main() {
 
 
 	// ---------------------------------------------------------------
-	//                Event Handler
+	//                Event Manager
 	// ---------------------------------------------------------------
 	evh := tools.NewEventManager(27, 10, pool)
 
@@ -57,6 +57,13 @@ func main() {
 	//                Queue Manager
 	// ---------------------------------------------------------------
 	qm := tools.NewQueue(pool, 5, logger, evh)
+
+
+	// ---------------------------------------------------------------
+	//                JWKS Store
+	// ---------------------------------------------------------------
+	ks := middleware.NewKeyStore("https://ohcrud.internal", "oh-crud", pool)            // Create the keystore
+	if err := ks.RefreshKeys(); err != nil { logger.Error(err.Error()); os.Exit(1) }    // Load the keys
 
 
 	// ---------------------------------------------------------------
@@ -92,7 +99,6 @@ func main() {
 	//                Server - Setup
 	// ---------------------------------------------------------------
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("OK")) })
 
 	// Create all the registers
 	handlerRegister := tools.NewHandlerRegistry(mux)  // End points
@@ -141,6 +147,7 @@ func main() {
 	// ---------------------------------------------------------------
 	//                System End Points
 	// ---------------------------------------------------------------
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("OK")) })
 	mux.Handle("GET /openapi.json", handlers.NewOpenAPIHandler(modelRegister, functionRegister))
 
 

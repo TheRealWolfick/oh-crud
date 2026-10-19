@@ -9,7 +9,7 @@ import (
 
 // This function is used to encrypt data. It must be used on every key or otherwise sensitive
 // information saved in the database[
-func encrypt(master_key []byte, plain_text []byte, auth_key []byte) ([]byte, error) {
+func Encrypt(master_key []byte, plain_text []byte, auth_key []byte) ([]byte, error) {
 	// Create a new cipher based on the master key
 	block, err := aes.NewCipher(master_key)
 	if err != nil { return nil, err }
@@ -27,7 +27,7 @@ func encrypt(master_key []byte, plain_text []byte, auth_key []byte) ([]byte, err
 
 
 // This function is used to decrypt data. It must be used on all public ad private keys being read from the database.
-func decrypt(master_key []byte, encrypted []byte, auth_key []byte) ([]byte, error) {
+func Decrypt(master_key []byte, encrypted []byte, auth_key []byte) ([]byte, error) {
 	// Create a new block with the master key
 	block, err := aes.NewCipher(master_key)
 	if err != nil { return nil, err }

@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/base64"
@@ -11,6 +12,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"lotusforge.au/api-server/models"
+	"lotusforge.au/api-server/tools"
 )
 
 type SigningKey struct {
@@ -26,6 +28,7 @@ type KeyStore struct {
 	all      map[string]*SigningKey
 	issuer   string
 	audience string
+	db       models.DBExecQuery
 }
 
 
@@ -42,12 +45,13 @@ func NewSigningKey() (*SigningKey, error) {
 }
 
 // Create a new keystore
-func NewKeyStore(issuer string, audience string) *KeyStore {
+func NewKeyStore(issuer string, audience string, db models.DBExecQuery) *KeyStore {
 	return &KeyStore{
 		active: nil,
 		all: map[string]*SigningKey{},
 		issuer: issuer,
 		audience: audience,
+		db: db,
 	}
 }
 
@@ -177,4 +181,34 @@ func (ks *KeyStore) Verify(raw string) (*models.Claims, error) {
 
 	// Everything all good, return the claims
 	return c, nil
+}
+
+
+// Load all the keys in the database where the key is active, next, or retiring.
+// Intended for a once off use during setup
+func (ks *KeyStore) RefreshKeys() error {
+	// Clear the current keys
+	if len(ks.all) > 0 { for k := range ks.all { delete(ks.all, k) } }
+
+	// Load keys from the database into register
+	keys := []SigningKey{}
+	qry := "SELECT KID, Public, Private FROM signing_keys WHERE "
+
+	// Read the rows
+	rows, err := ks.db.Query(context.Background(), qry)
+	if err != nil { return err }
+
+	// Scan the rows
+	err = rows.Scan(keys)
+	if err != nil { return err }
+
+	// Add the rows into the register
+	for _, k := range keys { 
+		ks.all[k.KID] = &SigningKey{
+			KID: k.KID,
+			Private: tools.Decr,
+		}  
+	}
+
+	return nil
 }
