@@ -6,12 +6,15 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"lotusforge.au/api-server/models"
+	"lotusforge.au/api-server/secrets"
 )
 
 type SigningKey struct {
@@ -28,6 +31,7 @@ type KeyStore struct {
 	issuer   string
 	audience string
 	db       models.DBExecQuery
+	master   []byte
 }
 
 
@@ -44,13 +48,14 @@ func NewSigningKey() (*SigningKey, error) {
 }
 
 // Create a new keystore
-func NewKeyStore(issuer string, audience string, db models.DBExecQuery) *KeyStore {
+func NewKeyStore(issuer string, audience string, db models.DBExecQuery, master []byte) *KeyStore {
 	return &KeyStore{
 		active: nil,
 		all: map[string]*SigningKey{},
 		issuer: issuer,
 		audience: audience,
 		db: db,
+		master: master,
 	}
 }
 
@@ -183,30 +188,57 @@ func (ks *KeyStore) Verify(raw string) (*models.Claims, error) {
 }
 
 
-// Load all the keys in the database where the key is active, next, or retiring.
-// Intended for a once off use during setup
-func (ks *KeyStore) RefreshKeys() error {
-	// Clear the current keys
-	if len(ks.all) > 0 { for k := range ks.all { delete(ks.all, k) } }
+// RefreshKeys loads every usable key from the database and swaps them in.
+// Safe to call at startup and on a timer. On any error the current keys are kept.
+func (ks *KeyStore) RefreshKeys(ctx context.Context) error {
+	rows, err := ks.db.Query(ctx, `
+		SELECT kid, public_key, private_key, status
+		FROM signing_keys
+		WHERE status IN ('next', 'active', 'retiring')`)
+	if err != nil {
+		return fmt.Errorf("query signing keys: %w", err)
+	}
+	defer rows.Close()
 
-	// Load keys from the database into register
-	keys := []SigningKey{}
-	qry := "SELECT KID, Public, Private FROM signing_keys WHERE "
+	all := make(map[string]*SigningKey)
+	var active *SigningKey
 
-	// Read the rows
-	rows, err := ks.db.Query(context.Background(), qry)
-	if err != nil { return err }
+	for rows.Next() {
+		var kid, status string
+		var pub, encrypted []byte
+		if err := rows.Scan(&kid, &pub, &encrypted, &status); err != nil {
+			return fmt.Errorf("scan signing key: %w", err)
+		}
 
-	// Scan the rows
-	err = rows.Scan(keys)
-	if err != nil { return err }
+		priv, err := secrets.Decrypt(ks.master, encrypted, []byte(kid))
+		if err != nil {
+			return fmt.Errorf("decrypt signing key %s (wrong master key or tampered row): %w", kid, err)
+		}
+		if len(pub) != ed25519.PublicKeySize || len(priv) != ed25519.PrivateKeySize {
+			return fmt.Errorf("signing key %s has the wrong size", kid)
+		}
+		k := &SigningKey{KID: kid, Public: ed25519.PublicKey(pub), Private: ed25519.PrivateKey(priv)}
+		if !k.Private.Public().(ed25519.PublicKey).Equal(k.Public) {
+			return fmt.Errorf("signing key %s: private and public halves don't match", kid)
+		}
 
-	// Add the rows into the register
-	for _, k := range keys { 
-		ks.all[k.KID] = &SigningKey{
-			KID: k.KID,
-		}  
+		all[kid] = k
+		if status == "active" {
+			if active != nil {
+				return errors.New("more than one active signing key")
+			}
+			active = k
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("read signing keys: %w", err)
+	}
+	if active == nil {
+		return errors.New("no active key")
 	}
 
+	ks.mu.Lock()
+	ks.all, ks.active = all, active
+	ks.mu.Unlock()
 	return nil
 }

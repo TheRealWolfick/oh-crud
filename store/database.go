@@ -18,15 +18,6 @@ import (
 	"lotusforge.au/api-server/tools"
 )
 
-type failed_row struct {
-	item any
-	error any
-}
-
-type database_result struct {
-	failed_rows  []any
-}
-
 // SingleInsert queues a single-row insert using the config-driven schema.
 func SingleInsert(
 	ctx context.Context,
