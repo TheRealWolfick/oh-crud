@@ -10,11 +10,11 @@ import (
 	"lotusforge.au/api-server/httpx"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/queue"
-	"lotusforge.au/api-server/reflectx"
 	"lotusforge.au/api-server/registry"
 	"lotusforge.au/api-server/reqctx"
 	"lotusforge.au/api-server/schematools"
 	"lotusforge.au/api-server/secrets"
+	"lotusforge.au/api-server/tools"
 )
 
 // adminAuthorised runs the shared admin preamble: builds a request logger, checks the
@@ -119,7 +119,7 @@ func handleApproveChange(
 
 		response := map[string]any{"task_type": "Approve Pending Table Changes", "table": table}
 
-		if reflectx.BoolDeref(approveRaw) {
+		if tools.BoolDeref(approveRaw) {
 			// Approve, then attempt to commit the whole approved set.
 			gate.SetApproved(table)
 			pool, okPool := qm.Db.(*pgxpool.Pool)

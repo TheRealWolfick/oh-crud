@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"lotusforge.au/api-server/auth"
 	"lotusforge.au/api-server/datamodel"
 	"lotusforge.au/api-server/events"
 	"lotusforge.au/api-server/handlers"
@@ -66,7 +67,7 @@ func main() {
 	// ---------------------------------------------------------------
 	//                JWKS Store
 	// ---------------------------------------------------------------
-	ks := middleware.NewKeyStore("https://ohcrud.internal", "oh-crud", pool)            // Create the keystore
+	ks := auth.NewKeyStore("https://ohcrud.internal", "oh-crud", pool)            // Create the keystore
 	if err := ks.RefreshKeys(); err != nil { logger.Error(err.Error()); os.Exit(1) }    // Load the keys
 
 

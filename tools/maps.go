@@ -2,8 +2,6 @@ package tools
 
 import (
 	"reflect"
-
-	"lotusforge.au/api-server/reflectx"
 )
 
 // Turns a slice of keys and a slice of values of equivalent sizes into a map
@@ -16,8 +14,8 @@ func BuildMapFromSlices(k []string, v []any) map[string]any {
 
 // Take a map and parse it into the supplied struct
 func BuildStructFromMap[T any](m map[string]any, s *T) {
-    val := reflectx.Deref(reflect.ValueOf(s))
-    typ := reflectx.DerefType(reflect.TypeOf(s))
+    val := Deref(reflect.ValueOf(s))
+    typ := DerefType(reflect.TypeOf(s))
 
     // Check to ensure it is a valid struct to work on
     if typ.Kind() != reflect.Struct { return }
@@ -34,7 +32,7 @@ func BuildStructFromMap[T any](m map[string]any, s *T) {
             if !ok { continue }
 
             // Get the value and type of the field itself
-            field_val := reflectx.Deref(val.Field(i))
+            field_val := Deref(val.Field(i))
             if ValidateValue(field_val.Kind(), value) {
                 field_val.Set(reflect.ValueOf(value))
             }

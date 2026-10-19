@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"lotusforge.au/api-server/middleware"
+	"lotusforge.au/api-server/auth"
 )
 
-func JWKSHandler(ks *middleware.KeyStore) http.HandlerFunc {
+func JWKSHandler(ks *auth.KeyStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
     // Load the keys
 		keys := ks.JWKS()

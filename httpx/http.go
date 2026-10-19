@@ -6,7 +6,6 @@ import (
 	"reflect"
 	"strings"
 
-	"lotusforge.au/api-server/reflectx"
 	"lotusforge.au/api-server/tools"
 )
 
@@ -33,7 +32,7 @@ func GetChecksum(r *http.Request) string {
 // Convert url.Values into a map[string]any, coercing each field
 // to match the target struct field's type where possible.
 func UrlValuesToMap[T any](values url.Values, s *T) map[string]any {
-	typ := reflectx.DerefType(reflect.TypeOf(s))
+	typ := tools.DerefType(reflect.TypeOf(s))
 	m := make(map[string]any)
 
 	if typ.Kind() != reflect.Struct {
@@ -55,7 +54,7 @@ func UrlValuesToMap[T any](values url.Values, s *T) map[string]any {
 			continue
 		}
 
-		fieldType := reflectx.DerefType(typ.Field(i).Type)
+		fieldType := tools.DerefType(typ.Field(i).Type)
 
 		// Slice field: keep all values, converted to the slice's element type
 		if fieldType.Kind() == reflect.Slice {
