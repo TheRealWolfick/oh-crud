@@ -12,8 +12,9 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"lotusforge.au/api-server/middleware"
+	"lotusforge.au/api-server/logging"
 	"lotusforge.au/api-server/models"
+	"lotusforge.au/api-server/reqctx"
 )
 
 // -----------------------------------------------------------------
@@ -112,7 +113,7 @@ func (h *EventManager) RegisterFunction(table string, topic string, hooks *model
   table_topic := fmt.Sprintf("table:%s", table)
 	_, valid := h.validTopics[table_topic]
 	if !valid {
-		GetBasicDebugLogger().Error(fmt.Sprintf(`Attempted to register the function topic {%s} against
+		logging.BasicDebug().Error(fmt.Sprintf(`Attempted to register the function topic {%s} against
 		table {%s}, but the table is an invalid topic`, topic, table))
 		return
 	}
@@ -485,7 +486,7 @@ func (c *Client) writeLoop() {
 		select {
 		case msg, ok := <- c.send:
 			if !ok { err = fmt.Errorf("Error reading from the send buffer") }
-			GetBasicDebugLogger().Debug("Sending message to websocket", "msg", msg)
+			logging.BasicDebug().Debug("Sending message to websocket", "msg", msg)
 			c.conn.SetWriteDeadline(time.Now().Add(time.Duration(c.timeout_write_sec) * time.Second))
 			err = c.conn.WriteMessage(websocket.TextMessage, msg)
 			if err != nil { err = fmt.Errorf("Error writing to the client: %s", err.Error()) }
@@ -505,7 +506,7 @@ func (h *EventManager) readLoop(c *Client) {
 	for {
 		c.conn.SetReadDeadline(time.Now().Add(time.Duration(c.timeout_read_sec) * time.Second))
 		_, msg, err := c.conn.ReadMessage()
-		if err != nil { GetBasicDebugLogger().Debug(err.Error()); break }
+		if err != nil { logging.BasicDebug().Debug(err.Error()); break }
 
 		// Unmarshal the message
 		cm := models.ClientMessage{
@@ -525,7 +526,7 @@ func (h *EventManager) readLoop(c *Client) {
 		}
 
 		// msg actions currently unimplemented
-		GetBasicDebugLogger().Debug("Received message from client", "msg", cm)
+		logging.BasicDebug().Debug("Received message from client", "msg", cm)
 	}
 	close(c.done)
 }
@@ -581,7 +582,7 @@ func (h *EventManager) PublishNoTimestamp(ctx context.Context, action string, st
 func (h *EventManager) Publish(ctx context.Context, action string, status string, timestamp time.Time, topic string, payload map[string]any, success_count int) error {
 	// Extract and prep data
 	pl, err := json.Marshal(payload)
-	GetBasicDebugLogger().Debug("Received message",
+	logging.BasicDebug().Debug("Received message",
 	"action", action,
 	"status", status,
 	"topic", topic,
@@ -602,13 +603,13 @@ func (h *EventManager) publish(ctx context.Context, action string, status string
 	// Validate the event status
 	if !ok {return fmt.Errorf("Invalid topic {%s} for an event", topic)}
 	if !slices.Contains(ValidStatuses, status) {return fmt.Errorf("Invalid status {%s} called for event", status)}
-	user, found := middleware.GetUser(ctx)
+	user, found := reqctx.GetUser(ctx)
 	if !found { return fmt.Errorf("Publish called from a non user!") }
 
 	// Publish to the database
 	if instructions.persist_to_db && action != "get" {
 		_, err := h.db.Exec(ctx, `INSERT INTO events(action, status, topic, log, time, "user") VALUES ($1, $2, $3, $4, $5, $6)`, action, status, topic, payload, timestamp, user.Username)
-		if err != nil { GetBasicLogger().Error("Failed to log event to db", "error", err) }
+		if err != nil { logging.Basic().Error("Failed to log event to db", "error", err) }
 	}
 
 	// Publish to webhooks
@@ -639,7 +640,7 @@ func (h *EventManager) publish(ctx context.Context, action string, status string
 			}
 			pl, err := json.Marshal(update_message)
 
-			if err != nil {GetBasicDebugLogger().Error(fmt.Sprintf("Error parsing update_message for function {%s}\nError: {%s}", func_topic, err.Error()))}
+			if err != nil {logging.BasicDebug().Error(fmt.Sprintf("Error parsing update_message for function {%s}\nError: {%s}", func_topic, err.Error()))}
 			// Publish this data
 			go h.publish(ctx, action, status, timestamp, func_topic, pl, success_count)
 		}

@@ -1,14 +1,6 @@
-package tools
+package reflectx
 
-import (
-	"encoding/json"
-	"reflect"
-)
-
-func DereferencedString[T any](model T) string {
-	data, _ := json.MarshalIndent(model, "", "  ")
-	return string(data)
-}
+import "reflect"
 
 // Deref dereferences a reflect.Value pointer, returning the zero value of the pointed-to type
 // if the pointer is nil.

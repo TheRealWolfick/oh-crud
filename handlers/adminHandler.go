@@ -7,9 +7,12 @@ import (
 	"net/http"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"lotusforge.au/api-server/middleware"
+	"lotusforge.au/api-server/httpx"
 	"lotusforge.au/api-server/models"
+	"lotusforge.au/api-server/reflectx"
+	"lotusforge.au/api-server/reqctx"
 	"lotusforge.au/api-server/schematools"
+	"lotusforge.au/api-server/secrets"
 	"lotusforge.au/api-server/tools"
 )
 
@@ -25,17 +28,16 @@ func adminAuthorised(
 	task_type string,
 	function string,
 ) (context.Context, bool) {
-	user_key := middleware.Contextkey("user")
-	req_ip := tools.GetIP(r)
-	req_id, _ := tools.Generate32CharString()
-	req_username := r.Context().Value(user_key).(*models.User).Username
+	req_ip := httpx.GetIP(r)
+	req_id, _ := secrets.RandomString(32)
+	req_username := reqctx.Username(r.Context())
 	log := qm.Logger.With("user", req_username, "IP", req_ip, "function", function, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
-	ctx := middleware.SetLogger(r.Context(), log)
+	ctx := reqctx.SetLogger(r.Context(), log)
 
 	log.Info("REQUEST_RECEIVED")
 	w.Header().Set("Content-Type", "application/json")
 
-	if !middleware.CheckUserHasAllowedRole(ctx, cfg.Admin_roles, svr_cfg.Get()) {
+	if !reqctx.CheckUserHasAllowedRole(ctx, cfg.Admin_roles, svr_cfg.Get()) {
 		log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to administrate this end point")
 		http.Error(w, "User role does not have access to administrate this end point", http.StatusUnauthorized)
 		return ctx, false
@@ -116,7 +118,7 @@ func handleApproveChange(
 
 		response := map[string]any{"task_type": "Approve Pending Table Changes", "table": table}
 
-		if tools.BoolDeref(approveRaw) {
+		if reflectx.BoolDeref(approveRaw) {
 			// Approve, then attempt to commit the whole approved set.
 			gate.SetApproved(table)
 			pool, okPool := qm.Db.(*pgxpool.Pool)

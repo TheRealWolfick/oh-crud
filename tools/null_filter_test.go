@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"lotusforge.au/api-server/logging"
 	"lotusforge.au/api-server/models"
 )
 
@@ -68,7 +69,7 @@ func TestSetWhere_NullSigil_AcrossFieldTypes(t *testing.T) {
 	types := []FieldKind{FieldInt, FieldFloat, FieldBool, FieldTime, FieldUUID, FieldString}
 	for _, ft := range types {
 		t.Run(string(ft)+"/#NULL", func(t *testing.T) {
-			qb := NewQueryBuilder(GetBasicLogger())
+			qb := NewQueryBuilder(logging.Basic())
 			qb.SetWhere("f", "#NULL", ft)
 			where := qb.buildWhereClause()
 			if where != " WHERE f IS NULL" {
@@ -76,7 +77,7 @@ func TestSetWhere_NullSigil_AcrossFieldTypes(t *testing.T) {
 			}
 		})
 		t.Run(string(ft)+"/#NOTNULL", func(t *testing.T) {
-			qb := NewQueryBuilder(GetBasicLogger())
+			qb := NewQueryBuilder(logging.Basic())
 			qb.SetWhere("f", "#NOTNULL", ft)
 			where := qb.buildWhereClause()
 			if where != " WHERE f IS NOT NULL" {
@@ -91,14 +92,14 @@ func TestSetWhere_NullSigil_AcrossFieldTypes(t *testing.T) {
 // float, etc. anyway) but still treated as free text for string fields.
 func TestSetWhere_HashPrefix_NonSigil(t *testing.T) {
 	t.Run("non-string field: dropped", func(t *testing.T) {
-		qb := NewQueryBuilder(GetBasicLogger())
+		qb := NewQueryBuilder(logging.Basic())
 		qb.SetWhere("f", "#5", FieldInt)
 		if where := qb.buildWhereClause(); where != "" {
 			t.Errorf("expected no clause, got %q", where)
 		}
 	})
 	t.Run("string field: falls through to free-text search", func(t *testing.T) {
-		qb := NewQueryBuilder(GetBasicLogger())
+		qb := NewQueryBuilder(logging.Basic())
 		qb.SetWhere("tag", "#urgent", FieldString)
 		where := qb.buildWhereClause()
 		if where != " WHERE tag ~* $1" {
@@ -118,7 +119,7 @@ func TestProcessWhereFromConfig_NullFilters(t *testing.T) {
 	cfg := nullFilterTestModel()
 
 	t.Run("standard field: #NULL", func(t *testing.T) {
-		qb := NewQueryBuilder(GetBasicLogger())
+		qb := NewQueryBuilder(logging.Basic())
 		req := httptest.NewRequest("GET", "/widgets?retired_at=%23NULL", nil) // "#NULL"
 		if err := qb.ProcessURLParamsNoFunc(req, cfg); err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -130,7 +131,7 @@ func TestProcessWhereFromConfig_NullFilters(t *testing.T) {
 	})
 
 	t.Run("standard field: #NOTNULL", func(t *testing.T) {
-		qb := NewQueryBuilder(GetBasicLogger())
+		qb := NewQueryBuilder(logging.Basic())
 		req := httptest.NewRequest("GET", "/widgets?retired_at=%23NOTNULL", nil) // "#NOTNULL"
 		if err := qb.ProcessURLParamsNoFunc(req, cfg); err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -142,7 +143,7 @@ func TestProcessWhereFromConfig_NullFilters(t *testing.T) {
 	})
 
 	t.Run("absolute-match field: #NULL", func(t *testing.T) {
-		qb := NewQueryBuilder(GetBasicLogger())
+		qb := NewQueryBuilder(logging.Basic())
 		req := httptest.NewRequest("GET", "/widgets?owner_ref=%23NULL", nil) // "#NULL"
 		if err := qb.ProcessURLParamsNoFunc(req, cfg); err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -154,7 +155,7 @@ func TestProcessWhereFromConfig_NullFilters(t *testing.T) {
 	})
 
 	t.Run("absolute-match field: real data literally \"NULL\" still equality-matches", func(t *testing.T) {
-		qb := NewQueryBuilder(GetBasicLogger())
+		qb := NewQueryBuilder(logging.Basic())
 		req := httptest.NewRequest("GET", "/widgets?owner_ref=NULL", nil) // no sigil
 		if err := qb.ProcessURLParamsNoFunc(req, cfg); err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -169,7 +170,7 @@ func TestProcessWhereFromConfig_NullFilters(t *testing.T) {
 	})
 
 	t.Run("single lone NULL filter does not panic (buildWhereClause off-by-one regression)", func(t *testing.T) {
-		qb := NewQueryBuilder(GetBasicLogger())
+		qb := NewQueryBuilder(logging.Basic())
 		req := httptest.NewRequest("GET", "/widgets?retired_at=%23NULL", nil)
 		if err := qb.ProcessURLParamsNoFunc(req, cfg); err != nil {
 			t.Fatalf("unexpected error: %v", err)

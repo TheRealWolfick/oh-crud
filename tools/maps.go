@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"lotusforge.au/api-server/models"
+	"lotusforge.au/api-server/reflectx"
 )
 
 // Validate_Map_AgainstConfig is a single-row wrapper around Validate_SliceOfMaps_AgainstConfig.
@@ -174,8 +175,8 @@ func BuildMapFromSlices(k []string, v []any) map[string]any {
 
 // Take a map and parse it into the supplied struct
 func BuildStructFromMap[T any](m map[string]any, s *T) {
-    val := Deref(reflect.ValueOf(s))
-    typ := DerefType(reflect.TypeOf(s))
+    val := reflectx.Deref(reflect.ValueOf(s))
+    typ := reflectx.DerefType(reflect.TypeOf(s))
 
     // Check to ensure it is a valid struct to work on
     if typ.Kind() != reflect.Struct { return }
@@ -192,7 +193,7 @@ func BuildStructFromMap[T any](m map[string]any, s *T) {
             if !ok { continue }
 
             // Get the value and type of the field itself
-            field_val := Deref(val.Field(i))
+            field_val := reflectx.Deref(val.Field(i))
             if ValidateValue(field_val.Kind(), value) {
                 field_val.Set(reflect.ValueOf(value))
             }

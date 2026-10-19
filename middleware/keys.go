@@ -12,7 +12,6 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"lotusforge.au/api-server/models"
-	"lotusforge.au/api-server/tools"
 )
 
 type SigningKey struct {

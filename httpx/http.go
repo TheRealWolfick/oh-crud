@@ -1,10 +1,14 @@
-package tools
+package httpx
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"reflect"
+	"strconv"
 	"strings"
+
+	"lotusforge.au/api-server/reflectx"
 )
 
 func GetIP(r *http.Request) string {
@@ -30,7 +34,7 @@ func GetChecksum(r *http.Request) string {
 // Convert url.Values into a map[string]any, coercing each field
 // to match the target struct field's type where possible.
 func UrlValuesToMap[T any](values url.Values, s *T) map[string]any {
-	typ := DerefType(reflect.TypeOf(s))
+	typ := reflectx.DerefType(reflect.TypeOf(s))
 	m := make(map[string]any)
 
 	if typ.Kind() != reflect.Struct {
@@ -52,7 +56,7 @@ func UrlValuesToMap[T any](values url.Values, s *T) map[string]any {
 			continue
 		}
 
-		fieldType := DerefType(typ.Field(i).Type)
+		fieldType := reflectx.DerefType(typ.Field(i).Type)
 
 		// Slice field: keep all values, converted to the slice's element type
 		if fieldType.Kind() == reflect.Slice {
@@ -78,4 +82,34 @@ func UrlValuesToMap[T any](values url.Values, s *T) map[string]any {
 	}
 
 	return m
+}
+
+// convertString converts a raw form string into the requested kind.
+func convertString(s string, t reflect.Type) (any, error) {
+	switch t.Kind() {
+	case reflect.String:
+		return s, nil
+	case reflect.Bool:
+		return strconv.ParseBool(s)
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		v, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			return nil, err
+		}
+		return reflect.ValueOf(v).Convert(t).Interface(), nil
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		v, err := strconv.ParseUint(s, 10, 64)
+		if err != nil {
+			return nil, err
+		}
+		return reflect.ValueOf(v).Convert(t).Interface(), nil
+	case reflect.Float32, reflect.Float64:
+		v, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			return nil, err
+		}
+		return reflect.ValueOf(v).Convert(t).Interface(), nil
+	default:
+		return nil, fmt.Errorf("unsupported kind: %s", t.Kind())
+	}
 }

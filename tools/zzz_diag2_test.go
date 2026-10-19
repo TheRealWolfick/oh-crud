@@ -7,8 +7,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"lotusforge.au/api-server/middleware"
 	"lotusforge.au/api-server/models"
+	"lotusforge.au/api-server/reqctx"
 )
 
 type diag2Rows struct {
@@ -95,8 +95,8 @@ func TestDiag2BuildingRecordField(t *testing.T) {
 	}
 
 	db := &diag2DB{}
-	ctx := middleware.SetLogger(context.Background(), slog.Default())
-	ctx = middleware.SetUser(ctx, &models.User{})
+	ctx := reqctx.SetLogger(context.Background(), slog.Default())
+	ctx = reqctx.SetUser(ctx, &models.User{})
 
 	// Exactly the user's reported group-update payload shape: identify by "building",
 	// update "building_suburb", building value unchanged (== current DB value).

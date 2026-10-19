@@ -1,4 +1,4 @@
-package middleware
+package reqctx
 
 import (
 	"context"
@@ -6,9 +6,11 @@ import (
 	"slices"
 
 	"lotusforge.au/api-server/models"
+	"lotusforge.au/api-server/secrets"
 )
 
-type Contextkey string
+// Unexported so values can only be set and read through this package's accessors
+type ctxKey struct{ name string }
 
 type TaskContext struct {
 	Id string
@@ -16,10 +18,12 @@ type TaskContext struct {
 	Cfg *models.DataModel
 }
 
-const userContextKey Contextkey = "user"
-const taskContextKey Contextkey = "task"
-const loggerContextKey Contextkey = "logger"
-const userRolesKey Contextkey = "roles"
+var (
+	userContextKey   = ctxKey{"user"}
+	taskContextKey   = ctxKey{"task"}
+	loggerContextKey = ctxKey{"logger"}
+	userRolesKey     = ctxKey{"roles"}
+)
 
 func SetUser(ctx context.Context, user *models.User) context.Context {
 	return context.WithValue(ctx, userContextKey, user)
@@ -30,8 +34,15 @@ func GetUser(ctx context.Context) (*models.User, bool) {
 	return user, ok
 }
 
+// Username returns the username of the user in the context, or "" if there is none
+func Username(ctx context.Context) string {
+	user, ok := GetUser(ctx)
+	if !ok || user == nil { return "" }
+	return user.Username
+}
+
 func StartTask(ctx context.Context, task_type string, cfg *models.DataModel) context.Context {
-	id, _ := generateRandomString(32)
+	id, _ := secrets.RandomString(32)
 	task := TaskContext{Id: id, Type: task_type, Cfg: cfg}
 	return context.WithValue(ctx, taskContextKey, task)
 }
@@ -56,8 +67,8 @@ func SetLogger(ctx context.Context, logger *slog.Logger) context.Context {
 } 
 
 func GetLogger(ctx context.Context) (*slog.Logger, bool) {
-	user, ok := ctx.Value(loggerContextKey).(*slog.Logger)
-	return user, ok
+	logger, ok := ctx.Value(loggerContextKey).(*slog.Logger)
+	return logger, ok
 }
 
 func SetRoles(ctx context.Context, user_roles []string) context.Context {

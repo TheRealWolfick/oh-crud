@@ -9,8 +9,10 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/sync/errgroup"
-	"lotusforge.au/api-server/middleware"
+	"lotusforge.au/api-server/httpx"
 	"lotusforge.au/api-server/models"
+	"lotusforge.au/api-server/reqctx"
+	"lotusforge.au/api-server/secrets"
 	"lotusforge.au/api-server/tools"
 )
 
@@ -60,12 +62,11 @@ func getFunctionResource(
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Get Function"
-		user_key := middleware.Contextkey("user")
-		req_ip := tools.GetIP(r)
-		req_id, _ := tools.Generate32CharString()
-		req_username := r.Context().Value(user_key).(*models.User).Username
+		req_ip := httpx.GetIP(r)
+		req_id, _ := secrets.RandomString(32)
+		req_username := reqctx.Username(r.Context())
 		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", *fn.Name, "end_point", *fn.Bound_to, "request_id", req_id)
-		ctx := middleware.SetLogger(r.Context(), log)
+		ctx := reqctx.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
 		w.Header().Set("Content-Type", "application/json")
@@ -90,7 +91,7 @@ func getFunctionResource(
 			}
 			allowed = cfg.End_points_allowed.GET
 		}
-		if !middleware.CheckUserHasAllowedRole(ctx, allowed, server_conf.Get()) {
+		if !reqctx.CheckUserHasAllowedRole(ctx, allowed, server_conf.Get()) {
 			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission")
 			http.Error(w, "User role does not have access to this function", http.StatusUnauthorized)
 			return

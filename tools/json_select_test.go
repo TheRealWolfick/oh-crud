@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"lotusforge.au/api-server/logging"
 	"lotusforge.au/api-server/models"
 )
 
@@ -92,7 +93,7 @@ func TestConvertFieldJsonSelect(t *testing.T) {
 
 func TestBuildSchema_DescribesJsonSelectOverride(t *testing.T) {
 	cfg := jsonSelectTestModel()
-	qb := NewQueryBuilder(GetBasicLogger())
+	qb := NewQueryBuilder(logging.Basic())
 	schema := qb.BuildSchema(cfg)
 
 	overridden := schema.Fields["missing_from_supplied"]
@@ -114,7 +115,7 @@ func TestBuildSchema_CopiesTrackHistory(t *testing.T) {
 	cfg.Track_history = ptr(true)
 	cfg.Track_history_field = ptr("history")
 
-	qb := NewQueryBuilder(GetBasicLogger())
+	qb := NewQueryBuilder(logging.Basic())
 	schema := qb.BuildSchema(cfg)
 
 	if !schema.Track_history {
@@ -135,7 +136,7 @@ func TestBuildSchema_CopiesDescriptionAndMeta(t *testing.T) {
 	field.Meta = map[string]any{"widget": "select"}
 	cfg.Fields["diff_type"] = field
 
-	qb := NewQueryBuilder(GetBasicLogger())
+	qb := NewQueryBuilder(logging.Basic())
 	schema := qb.BuildSchema(cfg)
 
 	if schema.Description != "Row-level diffs awaiting review." {
@@ -185,7 +186,7 @@ func TestProcessWhereFromConfig_JsonSelect(t *testing.T) {
 	cfg := jsonSelectTestModel()
 
 	t.Run("abstracted jsonb field filters on jsonb_array_length", func(t *testing.T) {
-		qb := NewQueryBuilder(GetBasicLogger())
+		qb := NewQueryBuilder(logging.Basic())
 		req := httptest.NewRequest("GET", "/diffs?missing_from_supplied=3", nil)
 		if err := qb.ProcessURLParamsNoFunc(req, cfg); err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -200,7 +201,7 @@ func TestProcessWhereFromConfig_JsonSelect(t *testing.T) {
 	})
 
 	t.Run("abstracted jsonb field honors range operators", func(t *testing.T) {
-		qb := NewQueryBuilder(GetBasicLogger())
+		qb := NewQueryBuilder(logging.Basic())
 		req := httptest.NewRequest("GET", "/diffs?missing_from_supplied=%3E5", nil) // ">5"
 		if err := qb.ProcessURLParamsNoFunc(req, cfg); err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -212,7 +213,7 @@ func TestProcessWhereFromConfig_JsonSelect(t *testing.T) {
 	})
 
 	t.Run("plain field is filtered on its own column, unabstracted", func(t *testing.T) {
-		qb := NewQueryBuilder(GetBasicLogger())
+		qb := NewQueryBuilder(logging.Basic())
 		req := httptest.NewRequest("GET", "/diffs?diff_type=assets", nil)
 		if err := qb.ProcessURLParamsNoFunc(req, cfg); err != nil {
 			t.Fatalf("unexpected error: %v", err)

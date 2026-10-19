@@ -1,6 +1,10 @@
 package tools
 
-import "testing"
+import (
+	"testing"
+
+	"lotusforge.au/api-server/logging"
+)
 
 // TestSetWhereAbsolute_ReSetUpdatesOwnArgSlot is a regression test for a bug where
 // re-setting an already-bound WHERE field (SetWhereAbsolute called twice for the same
@@ -17,7 +21,7 @@ import "testing"
 // this test exercises. Before the fix, a caller-supplied ?diff_type=... could survive
 // instead of being overridden by the server's own scoping value.
 func TestSetWhereAbsolute_ReSetUpdatesOwnArgSlot(t *testing.T) {
-	qb := NewQueryBuilder(GetBasicLogger())
+	qb := NewQueryBuilder(logging.Basic())
 	qb.SetWhereAbsolute("other_field", "first")         // binds $1 / args[0]
 	qb.SetWhere("diff_type", "malicious", FieldString)  // binds $2 / args[1] via ~*
 	qb.SetWhereAbsolute("diff_type", "assets")          // must overwrite args[1], not args[0]
@@ -37,7 +41,7 @@ func TestSetWhereAbsolute_ReSetUpdatesOwnArgSlot(t *testing.T) {
 // TestSetWhere_ReSetUpdatesOwnArgSlot covers the same bug on the non-absolute
 // (innerSetWhere) path.
 func TestSetWhere_ReSetUpdatesOwnArgSlot(t *testing.T) {
-	qb := NewQueryBuilder(GetBasicLogger())
+	qb := NewQueryBuilder(logging.Basic())
 	qb.SetWhereAbsolute("other_field", "first") // binds $1 / args[0]
 	qb.SetWhere("amount", 5, FieldInt)          // binds $2 / args[1]
 	qb.SetWhere("amount", 9, FieldInt)          // re-set: must overwrite args[1], not args[0]

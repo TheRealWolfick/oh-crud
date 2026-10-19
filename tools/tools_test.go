@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"reflect"
 	"testing"
+
+	"lotusforge.au/api-server/logging"
 )
 
 
@@ -45,7 +47,7 @@ func TestGettingFieldsFromStructs(t *testing.T) {
 
 
 func TestQueryBuilder(t *testing.T) {
-	qb := NewQueryBuilder(GetBasicLogger())
+	qb := NewQueryBuilder(logging.Basic())
 	insertStruct := &testingStruct{}
 	insertData := `{"value": 50, "something": "some text"}`
 	json.Unmarshal([]byte(insertData), &insertStruct)
@@ -77,7 +79,7 @@ func TestQueryBuilder(t *testing.T) {
 	var new1 testingStruct
 	var newInvalidGroup []testingStruct
 	var newValidGroup []testingStruct
-	qb_singleValid := NewQueryBuilder(GetBasicLogger())
+	qb_singleValid := NewQueryBuilder(logging.Basic())
 	// Read the data into the variables
 	json.Unmarshal([]byte(new1json), &new1)
 	json.Unmarshal([]byte(newgroupinvalidjson), &newInvalidGroup)
@@ -217,8 +219,8 @@ func TestDiffs(t *testing.T) {
               }
             }`
 		diffs := DiffStruct(struct1, struct2, "Word")
-		if DereferencedString(diffs) != expected {
-			//t.Errorf("Returned: %v", DereferencedString(diffs))
+		if logging.PrettyJSON(diffs) != expected {
+			//t.Errorf("Returned: %v", logging.PrettyJSON(diffs))
 		}
 	})
 
@@ -233,8 +235,8 @@ func TestDiffs(t *testing.T) {
               }
             }`
 		diffs := DiffStruct(struct1, struct3, "Word")
-		if DereferencedString(diffs) != expected {
-			//t.Errorf("Returned: %v", DereferencedString(diffs))
+		if logging.PrettyJSON(diffs) != expected {
+			//t.Errorf("Returned: %v", logging.PrettyJSON(diffs))
 		}
 	})
 }

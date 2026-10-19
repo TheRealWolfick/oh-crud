@@ -1,13 +1,14 @@
-package tools
+package logging
 
 import (
+	"encoding/json"
 	"io"
 	"log/slog"
 	"os"
 	"strings"
 )
 
-func LoadLogger() *slog.Logger {
+func Load() *slog.Logger {
 	logType := os.Getenv("LOG_TYPE")
 	level := parseLogLevel(os.Getenv("LOG_LEVEL"))
 
@@ -45,11 +46,17 @@ func parseLogLevel(s string) slog.Level {
 	}
 }
 
-// GetBasicLogger returns a default logger that writes to stdout.
-func GetBasicLogger() *slog.Logger {
+// Basic returns a default logger that writes to stdout.
+func Basic() *slog.Logger {
 	return slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 }
 
-func GetBasicDebugLogger() *slog.Logger {
+func BasicDebug() *slog.Logger {
 	return slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+}
+
+// PrettyJSON returns v as indented JSON, for debug logging.
+func PrettyJSON[T any](v T) string {
+	data, _ := json.MarshalIndent(v, "", "  ")
+	return string(data)
 }

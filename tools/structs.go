@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"lotusforge.au/api-server/models"
+	"lotusforge.au/api-server/reflectx"
 )
 
 // This function accepts a model and returns all fields with a `tag` matching
@@ -70,11 +71,11 @@ func GetStructAsDict[T any](model T) map[string]any {
 	fieldnames := GetAllFieldNames(model)
 	return_dict := make(map[string]any)
 	val := reflect.ValueOf(model)
-	val = Deref(val)
+	val = reflectx.Deref(val)
 
 	for _, field := range fieldnames {
 		value := val.FieldByName(field)
-		return_dict[field] = Deref(value).Interface()
+		return_dict[field] = reflectx.Deref(value).Interface()
 	}
 	return return_dict
 }

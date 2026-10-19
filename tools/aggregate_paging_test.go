@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"lotusforge.au/api-server/logging"
 	"lotusforge.au/api-server/models"
 )
 
@@ -41,7 +42,7 @@ func aggregateReqCfg(cfg *models.DataModel, query string) (qb *QueryBuilder, q s
 	table := *cfg.Table_name
 	req := httptest.NewRequest("GET", "/"+*cfg.End_point+"/fn/aggregate"+query, nil)
 	req.SetPathValue("function", "aggregate")
-	qb = NewQueryBuilder(GetBasicLogger())
+	qb = NewQueryBuilder(logging.Basic())
 	if err := qb.SetDefaults(cfg, req); err != nil {
 		panic(err)
 	}
@@ -306,7 +307,7 @@ func TestPlainQueryCount_Unchanged(t *testing.T) {
 	cfg := aggregateTestModel()
 	req := httptest.NewRequest("GET", "/assets?building=A", nil)
 	req.SetPathValue("function", "")
-	qb := NewQueryBuilder(GetBasicLogger())
+	qb := NewQueryBuilder(logging.Basic())
 	if err := qb.ProcessURLParams(req, cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -320,7 +321,7 @@ func TestPlainQueryCount_Unchanged(t *testing.T) {
 // no params means no limit, but an explicit page_size is still honoured.
 func TestApplyPaginationUnbounded(t *testing.T) {
 	t.Run("no params -> unbounded", func(t *testing.T) {
-		qb := NewQueryBuilder(GetBasicLogger())
+		qb := NewQueryBuilder(logging.Basic())
 		qb.ApplyPaginationUnbounded(httptest.NewRequest("GET", "/assets/fn/by-building", nil))
 		if q := qb.BuildSelect("assets", []string{"*"}); strings.Contains(q, "LIMIT") {
 			t.Errorf("declarative function should be unbounded by default, got: %s", q)
@@ -331,7 +332,7 @@ func TestApplyPaginationUnbounded(t *testing.T) {
 	})
 
 	t.Run("explicit page_size honoured", func(t *testing.T) {
-		qb := NewQueryBuilder(GetBasicLogger())
+		qb := NewQueryBuilder(logging.Basic())
 		qb.ApplyPaginationUnbounded(httptest.NewRequest("GET", "/assets/fn/by-building?page=2&page_size=50", nil))
 		q := qb.BuildSelect("assets", []string{"*"})
 		if !strings.Contains(q, "LIMIT 50") || !strings.Contains(q, "OFFSET 50") {
@@ -343,7 +344,7 @@ func TestApplyPaginationUnbounded(t *testing.T) {
 // TestApplyPagination_DefaultUnchanged guards the standard 25-row default that
 // the plain GET / diff / history endpoints rely on.
 func TestApplyPagination_DefaultUnchanged(t *testing.T) {
-	qb := NewQueryBuilder(GetBasicLogger())
+	qb := NewQueryBuilder(logging.Basic())
 	qb.ApplyPagination(httptest.NewRequest("GET", "/assets", nil))
 	if qb.GetPageSize() != 25 {
 		t.Errorf("standard pagination default should stay 25, got %d", qb.GetPageSize())

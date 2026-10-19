@@ -9,8 +9,10 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"lotusforge.au/api-server/middleware"
+	"lotusforge.au/api-server/logging"
 	"lotusforge.au/api-server/models"
+	"lotusforge.au/api-server/reqctx"
+	"lotusforge.au/api-server/secrets"
 )
 
 type failed_row struct {
@@ -52,9 +54,9 @@ func createDiff(
 	supplied []map[string]any,
 	note string,
 ) (string, map[string]any, error) {
-	log, ok := middleware.GetLogger(ctx)
+	log, ok := reqctx.GetLogger(ctx)
 	if !ok {
-		log = GetBasicLogger()
+		log = logging.Basic()
 	}
 
 	comparatorKey := GetDiffComparatorKey(cfg)
@@ -115,16 +117,16 @@ func createDiff(
 	}
 
 	h := md5.New()
-	user, userOk := middleware.GetUser(ctx)
+	user, userOk := reqctx.GetUser(ctx)
 	if !userOk {
 		user = &models.User{}
 	}
-	task, _ := middleware.GetTask(ctx)
+	task, _ := reqctx.GetTask(ctx)
 	if len(task.Id) != 32 {
-		task.Id, _ = Generate32CharString()
+		task.Id, _ = secrets.RandomString(32)
 	}
 
-	tempjson := DereferencedString(diff_struct)
+	tempjson := logging.PrettyJSON(diff_struct)
 	h.Write([]byte(tempjson))
 	checksum := fmt.Sprintf("%x", h.Sum(nil))
 	tableName := *cfg.Table_name
@@ -231,9 +233,9 @@ func recursiveBatchInsertProcess(
 		return result
 	}
 
-	log, ok := middleware.GetLogger(ctx)
+	log, ok := reqctx.GetLogger(ctx)
 	if !ok {
-		log = GetBasicLogger()
+		log = logging.Basic()
 	}
 
 	qb := NewQueryBuilder(log)
@@ -249,7 +251,7 @@ func recursiveBatchInsertProcess(
 		// If this table tracks changes via a history, insert into the history table
 		if cfg.Track_history != nil && *cfg.Track_history {
 			qb_history := NewQueryBuilder(log)                                                // Use a new querybuilder
-			user, _ := middleware.GetUser(ctx) 																								// Get the user
+			user, _ := reqctx.GetUser(ctx) 																								// Get the user
 			query_history := qb_history.BuildMultiInsertHistory(cfg, items, user.Username)		// Build the insert
 			_, err := db.Exec(ctx, query_history, qb_history.GetArgs()...)										// Execute the insert
 			if err != nil {
@@ -303,9 +305,9 @@ func multiUpdate(
 		"table_name":    cfg.Table_name,
 	}
 
-	log, ok := middleware.GetLogger(ctx)
+	log, ok := reqctx.GetLogger(ctx)
 	if !ok {
-		log = GetBasicLogger()
+		log = logging.Basic()
 	}
 
 	log_history := false
@@ -375,7 +377,7 @@ func multiUpdate(
 			// If this has history tacking, also save the changed values to the history table
 			if log_history {
 				qb_history := NewQueryBuilder(log)                                                                  // Use a new querybuilder
-				user, _ := middleware.GetUser(ctx) 																								                  // Get the user
+				user, _ := reqctx.GetUser(ctx) 																								                  // Get the user
 				query_history := qb_history.BuildUpdateHistory(cfg, existing_data, row, user.Username)	            // Build the insert
 				if query_history != "" {
 					_, err := db.Exec(ctx, query_history, qb_history.GetArgs()...)												              // Execute the insert
@@ -415,9 +417,9 @@ func multiDelete(
 		"table_name":    cfg.Table_name,
 	}
 
-	log, ok := middleware.GetLogger(ctx)
+	log, ok := reqctx.GetLogger(ctx)
 	if !ok {
-		log = GetBasicLogger()
+		log = logging.Basic()
 	}
 
 	log_history := false
@@ -480,7 +482,7 @@ func multiDelete(
 
 			if log_history && soft_delete { 
 				qb_history := NewQueryBuilder(log)                                                                  // Use a new querybuilder
-				user, _ := middleware.GetUser(ctx) 																								                  // Get the user
+				user, _ := reqctx.GetUser(ctx) 																								                  // Get the user
 				query_history := qb_history.BuildUpdateHistory(cfg, existing_data, map[string]any{"deleted_flag": true}, user.Username)	            // Build the insert
 				if query_history != "" {
 					_, err := db.Exec(ctx, query_history, qb_history.GetArgs()...)												              // Execute the insert

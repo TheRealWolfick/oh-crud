@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"lotusforge.au/api-server/models"
+	"lotusforge.au/api-server/reflectx"
 )
 
 type QueryBuilder struct {
@@ -732,16 +733,16 @@ func (qb *QueryBuilder) BuildSchema(cfg *models.DataModel) *models.DataModelPubl
 	}
 
 	schema := &models.DataModelPublicSchema{
-		Name: StringDeref(cfg.Name),
-		Version: StringDeref(cfg.Version),
-		Table_name: StringDeref(cfg.Table_name),
-		Primary_key: StringDeref(cfg.Primary_key),
+		Name: reflectx.StringDeref(cfg.Name),
+		Version: reflectx.StringDeref(cfg.Version),
+		Table_name: reflectx.StringDeref(cfg.Table_name),
+		Primary_key: reflectx.StringDeref(cfg.Primary_key),
 		Foreign_keys: foreign_keys,
 		Unique_keys: unique_keys,
 		Fields: map[string]models.DataModelFieldPublicSchema{},
-		Track_history: BoolDeref(cfg.Track_history),
-		Track_history_field: StringDeref(cfg.Track_history_field),
-		Description: StringDeref(cfg.Description),
+		Track_history: reflectx.BoolDeref(cfg.Track_history),
+		Track_history_field: reflectx.StringDeref(cfg.Track_history_field),
+		Description: reflectx.StringDeref(cfg.Description),
 		Meta: cfg.Meta,
 	}
 
@@ -749,15 +750,15 @@ func (qb *QueryBuilder) BuildSchema(cfg *models.DataModel) *models.DataModelPubl
 	for k, v := range cfg.Fields {
 		if v.Private == nil || *v.Private == false {
 			field_schema := models.DataModelFieldPublicSchema{
-				Type: StringDeref(v.Type),
-				JSON: StringDeref(v.JSON),
-				Required: BoolDeref(v.Required_on_insert),
-				Skip_insert: BoolDeref(v.Skip_insert),
-				DB_type: StringDeref(v.DB_type),
-				Nullable: BoolDeref(v.Nullable),
-				Default: StringDeref(v.Default),
+				Type: reflectx.StringDeref(v.Type),
+				JSON: reflectx.StringDeref(v.JSON),
+				Required: reflectx.BoolDeref(v.Required_on_insert),
+				Skip_insert: reflectx.BoolDeref(v.Skip_insert),
+				DB_type: reflectx.StringDeref(v.DB_type),
+				Nullable: reflectx.BoolDeref(v.Nullable),
+				Default: reflectx.StringDeref(v.Default),
 				Rules: v.Rules,
-				Description: StringDeref(v.Description),
+				Description: reflectx.StringDeref(v.Description),
 				Meta: v.Meta,
 			}
 			// Describe any json-select abstraction: GET responses for this field select
@@ -951,7 +952,7 @@ func (qb *QueryBuilder) processWhereFromConfig(r *http.Request, cfg *models.Data
 
 		// Also skip if there is no valid field type
 		if field_cfg.Type == nil { continue }
-		dereferenced := ValueDeref(field_cfg.Type)
+		dereferenced := reflectx.ValueDeref(field_cfg.Type)
 		if !dereferenced.IsValid() {
 			return fmt.Errorf("invalid data type found in config %q", *cfg.Name)
 		}

@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"lotusforge.au/api-server/models"
+	"lotusforge.au/api-server/reqctx"
 )
 
 func validateAPIKey(ctx context.Context, db *pgxpool.Pool, api_key string) (result *models.User, err error) {
@@ -52,7 +53,7 @@ func RequireAuth(db *pgxpool.Pool) func(http.Handler) http.Handler {
 			}
 
 			// Add user context
-			ctx := SetUser(SetRoles(r.Context(), strings.Split(user.Roles, ",")), user)
+			ctx := reqctx.SetUser(reqctx.SetRoles(r.Context(), strings.Split(user.Roles, ",")), user)
 
 			// Call the next function
 			next.ServeHTTP(w, r.WithContext(ctx))

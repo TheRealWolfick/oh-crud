@@ -2,6 +2,8 @@ package tools
 
 import (
 	"testing"
+
+	"lotusforge.au/api-server/logging"
 )
 
 type testBinaryStruct struct {
@@ -50,13 +52,13 @@ func TestBinarySearch(t *testing.T) {
 	t.Run("Test Binary Search", func(t *testing.T) {
 		pos, found := BinarySearch("opening", left, "Word")
 		if found == false || pos != 5 {
-			t.Errorf("Values:%s\nPosition of 'opening': %v\nWas found: %v", DereferencedString(left), pos, found)
+			t.Errorf("Values:%s\nPosition of 'opening': %v\nWas found: %v", logging.PrettyJSON(left), pos, found)
 		}
 	})
 
 	// Function not currently used.
 	t.Run("Test merge function", func(t *testing.T) {
 		//diffs := DiffStructSlices(left, right)
-		//t.Errorf("Diffs:\n%s", DereferencedString(diffs))
+		//t.Errorf("Diffs:\n%s", logging.PrettyJSON(diffs))
 	})
 }

@@ -8,8 +8,9 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
-	"lotusforge.au/api-server/middleware"
+	"lotusforge.au/api-server/logging"
 	"lotusforge.au/api-server/models"
+	"lotusforge.au/api-server/reqctx"
 	"lotusforge.au/api-server/tools"
 )
 
@@ -55,15 +56,15 @@ func diffModelCfg() *models.DataModel {
 }
 
 func newTestQueueManager(db *fakeDB) *tools.QueueManager {
-	return tools.NewQueue(db, 1, tools.GetBasicLogger(), nil)
+	return tools.NewQueue(db, 1, logging.Basic(), nil)
 }
 
 // requestWithRoles builds a GET request carrying the user/roles context the diff
-// handlers read via middleware.GetUser / CheckUserHasAllowedRole.
+// handlers read via reqctx.GetUser / CheckUserHasAllowedRole.
 func requestWithRoles(target string, roles []string) *http.Request {
 	req := httptest.NewRequest(http.MethodGet, target, nil)
-	ctx := middleware.SetUser(req.Context(), &models.User{UserInfoResponse: models.UserInfoResponse{Username: "tester"}})
-	ctx = middleware.SetRoles(ctx, roles)
+	ctx := reqctx.SetUser(req.Context(), &models.User{UserInfoResponse: models.UserInfoResponse{Username: "tester"}})
+	ctx = reqctx.SetRoles(ctx, roles)
 	return req.WithContext(ctx)
 }
 

@@ -9,8 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"lotusforge.au/api-server/middleware"
+	"lotusforge.au/api-server/logging"
 	"lotusforge.au/api-server/models"
+	"lotusforge.au/api-server/reqctx"
 )
 
 // -----------------------------------------------------------------
@@ -83,7 +84,7 @@ func (qm *QueueManager) ReturnTargets() map[string]*Instructions {
 
 // This creates a task to execute a sql command asyncronously.
 func (qm *QueueManager) createTask(ctx context.Context, sql string, note string, args ...any) (*Task, error) {
-	task, ok := middleware.GetTask(ctx)
+	task, ok := reqctx.GetTask(ctx)
 	if !ok {
 		return nil, fmt.Errorf("Task information was not saved into the context")
 	}
@@ -106,7 +107,7 @@ func (qm *QueueManager) createTask(ctx context.Context, sql string, note string,
 // This creates a task to execute an arbitrary function asyncronously.
 // The scheduled function must return a payload of data in the form of a map as well as an error status
 func (qm *QueueManager) createFunctionTask(ctx context.Context, function func(context.Context, ...any) (string, map[string]any, error), note string, args ...any) (*Task, error) {
-	task, ok := middleware.GetTask(ctx)
+	task, ok := reqctx.GetTask(ctx)
 	if !ok {
 		return nil, fmt.Errorf("Task information was not saved into the context")
 	}
@@ -123,7 +124,7 @@ func (qm *QueueManager) createFunctionTask(ctx context.Context, function func(co
 		Cfg:       *task.Cfg,
 		Topic:     fmt.Sprintf("table:%s", *task.Cfg.End_point),
 	}
-  qm.Logger.Debug("Function task created", "details", DereferencedString(t))
+  qm.Logger.Debug("Function task created", "details", logging.PrettyJSON(t))
 	return t, nil
 }
 

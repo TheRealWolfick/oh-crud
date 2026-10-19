@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"lotusforge.au/api-server/logging"
 	"lotusforge.au/api-server/models"
 )
 
@@ -183,14 +184,14 @@ func TestValidate_SliceOfMaps_AgainstConfig(t *testing.T) {
 		valid, invalid := Validate_SliceOfMaps_AgainstConfig(cfg, rows, false, false)
 
 		if len(valid) != 4 {
-			t.Errorf("Expected four values to be valid. Valid: %s\nInvalid: %s", DereferencedString(valid), DereferencedString(invalid))
+			t.Errorf("Expected four values to be valid. Valid: %s\nInvalid: %s", logging.PrettyJSON(valid), logging.PrettyJSON(invalid))
 		}
 
 		if len(invalid) != 1 {
 			t.Errorf("Expected one values to be invalid. Valid: %v\nInvalid: %v", valid, invalid)
 		}
 		if !strings.Contains(invalid[0]["reasons"].(string), "Data too large for byte size") {
-			t.Errorf("Expected invalid data error to be 'Too large for byte size'. Invalid: %s", DereferencedString(invalid))
+			t.Errorf("Expected invalid data error to be 'Too large for byte size'. Invalid: %s", logging.PrettyJSON(invalid))
 		}
 
 		for _, m := range valid {
@@ -212,7 +213,7 @@ func TestValidate_SliceOfMaps_AgainstConfig(t *testing.T) {
 		valid, _ := Validate_SliceOfMaps_AgainstConfig(cfg, rows, false, false)
 
 		if len(valid) != 5 {
-			t.Errorf("Expected all values to be valid. Valid: %v\n", DereferencedString(valid))
+			t.Errorf("Expected all values to be valid. Valid: %v\n", logging.PrettyJSON(valid))
 		}
 
 		for _, m := range valid {
@@ -290,7 +291,7 @@ func TestValidate_SliceOfMaps_AgainstConfig(t *testing.T) {
 
 func TestSetValueAndWhereFromMap(t *testing.T) {
 	t.Run("where_fields go to SetWhereAbsolute, others go to SetValue", func(t *testing.T) {
-		log := GetBasicLogger()
+		log := logging.Basic()
 		qb := NewQueryBuilder(log)
 		m := map[string]any{
 			"id":    42,
@@ -317,7 +318,7 @@ func TestSetValueAndWhereFromMap(t *testing.T) {
 	})
 
 	t.Run("all fields as where — nothing in SET", func(t *testing.T) {
-		log := GetBasicLogger()
+		log := logging.Basic()
 		qb := NewQueryBuilder(log)
 		m := map[string]any{"id": 1}
 		SetValueAndWhereFromMap(qb, m, []string{"id"})
@@ -328,7 +329,7 @@ func TestSetValueAndWhereFromMap(t *testing.T) {
 	})
 
 	t.Run("empty where_fields — all go to SetValue", func(t *testing.T) {
-		log := GetBasicLogger()
+		log := logging.Basic()
 		qb := NewQueryBuilder(log)
 		m := map[string]any{"label": "test", "score": 1.0}
 		SetValueAndWhereFromMap(qb, m, []string{})

@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"lotusforge.au/api-server/handlers"
+	"lotusforge.au/api-server/logging"
 	"lotusforge.au/api-server/middleware"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/monitors"
@@ -29,7 +30,7 @@ func main() {
 	// ---------------------------------------------------------------
 	//                Logger
 	// ---------------------------------------------------------------
-	logger := tools.LoadLogger()
+	logger := logging.Load()
 
 
 	// ---------------------------------------------------------------
@@ -73,7 +74,7 @@ func main() {
 	if err != nil { logger.Error("Failed to load server configuration"); os.Exit(1) }
 	// Load the server config into a swappable handler
 	server_conf := models.NewSwappableServerConfig(intial_server_conf)
-	logger.Debug(tools.DereferencedString(server_conf.Get()))
+	logger.Debug(logging.PrettyJSON(server_conf.Get()))
 
 
 	// ---------------------------------------------------------------
