@@ -1,9 +1,10 @@
-package tools
+package registry
 
 import (
 	"net/http"
 	"sync"
 
+	"lotusforge.au/api-server/datamodel"
 	"lotusforge.au/api-server/models"
 )
 
@@ -39,7 +40,7 @@ func (r *HandlerRegistry) Register(route string, handler http.Handler, version s
 
 	cur, exists := r.Handlers[route]
 	if exists {
-		updated, err := CheckVersionIncrease(cur.version, version)
+		updated, err := datamodel.CheckVersionIncrease(cur.version, version)
 		if updated {
 			cur.Swap(handler)
 			cur.version = version

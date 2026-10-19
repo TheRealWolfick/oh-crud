@@ -12,26 +12,32 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/sync/errgroup"
+	"lotusforge.au/api-server/datamodel"
+	"lotusforge.au/api-server/events"
 	"lotusforge.au/api-server/httpx"
 	"lotusforge.au/api-server/logging"
 	"lotusforge.au/api-server/middleware"
 	"lotusforge.au/api-server/models"
+	"lotusforge.au/api-server/querybuilder"
+	"lotusforge.au/api-server/queue"
+	"lotusforge.au/api-server/registry"
 	"lotusforge.au/api-server/reqctx"
 	"lotusforge.au/api-server/schematools"
 	"lotusforge.au/api-server/secrets"
+	"lotusforge.au/api-server/store"
 	"lotusforge.au/api-server/tools"
 )
 
 func RegisterRoutes(
 	cfg *models.DataModel,
 	diff_cfg *models.DataModel,
-	handlerRegistry *tools.HandlerRegistry,
+	handlerRegistry *registry.HandlerRegistry,
 	auth func(http.Handler) http.Handler,
-	qm *tools.QueueManager,
+	qm *queue.QueueManager,
 	server_conf *models.SwappableServerConfig,
-	evh *tools.EventManager,
+	evh *events.EventManager,
 	gate *schematools.PendingApprovalGate,
-	modelRegistry *tools.ModelRegistry,
+	modelRegistry *registry.ModelRegistry,
 ) {
 	var err error
 	qm.Logger.Debug("Dynamic end point generating", "data-model", *cfg.Name)
@@ -94,70 +100,70 @@ func RegisterRoutes(
 	handlerRegistry.Register(fmt.Sprintf("GET /ws/%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleWebsocket(cfg, qm, server_conf, fmt.Sprintf("table:%s", *cfg.End_point), evh))), *cfg.Version)
 }
 
-func handleGet(cfg *models.DataModel, qm *tools.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
+func handleGet(cfg *models.DataModel, qm *queue.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
 	if cfg.End_points_allowed != nil && cfg.End_points_allowed.GET != nil {
 		return getResource(qm, cfg, svr_cfg.Get())
 	}
 	return notAllowed(cfg.End_points_allowed)
 }
 
-func handleGetDiff(cfg *models.DataModel, diff_cfg *models.DataModel, qm *tools.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
+func handleGetDiff(cfg *models.DataModel, diff_cfg *models.DataModel, qm *queue.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
 	if cfg.End_points_allowed != nil && cfg.End_points_allowed.DIFF != nil {
 		return getDiff(qm, cfg, diff_cfg, svr_cfg.Get())
 	}
 	return notAllowed(cfg.End_points_allowed)
 }
 
-func handleGetHistory(cfg *models.DataModel, qm *tools.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
+func handleGetHistory(cfg *models.DataModel, qm *queue.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
 	if cfg.End_points_allowed != nil && cfg.End_points_allowed.GET != nil {
 		return getResourceHistory(qm, cfg, svr_cfg.Get())
 	}
 	return notAllowed(cfg.End_points_allowed)
 }
 
-func handleAddNew(cfg *models.DataModel, qm *tools.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
+func handleAddNew(cfg *models.DataModel, qm *queue.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
 	if cfg.End_points_allowed != nil && cfg.End_points_allowed.POST != nil {
 		return addNewResource(qm, cfg, svr_cfg.Get())
 	}
 	return notAllowed(cfg.End_points_allowed)
 }
 
-func handleAddNew_Group(cfg *models.DataModel, qm *tools.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
+func handleAddNew_Group(cfg *models.DataModel, qm *queue.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
 	if cfg.End_points_allowed != nil && cfg.End_points_allowed.POST_GROUP != nil {
 		return addNewResources_Group(qm, cfg, svr_cfg.Get())
 	}
 	return notAllowed(cfg.End_points_allowed)
 }
 
-func handleUpdate(cfg *models.DataModel, qm *tools.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
+func handleUpdate(cfg *models.DataModel, qm *queue.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
 	if cfg.End_points_allowed != nil && cfg.End_points_allowed.PUT != nil {
 		return updateResource(qm, cfg, svr_cfg.Get())
 	}
 	return notAllowed(cfg.End_points_allowed)
 }
 
-func handleUpdate_Group(cfg *models.DataModel, qm *tools.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
+func handleUpdate_Group(cfg *models.DataModel, qm *queue.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
 	if cfg.End_points_allowed != nil && cfg.End_points_allowed.PUT_GROUP != nil {
 		return updateResource_Group(qm, cfg, svr_cfg.Get())
 	}
 	return notAllowed(cfg.End_points_allowed)
 }
 
-func handleDelete(cfg *models.DataModel, qm *tools.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
+func handleDelete(cfg *models.DataModel, qm *queue.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
 	if cfg.End_points_allowed != nil && cfg.End_points_allowed.DELETE != nil {
 		return deleteResource(qm, cfg, svr_cfg.Get())
 	}
 	return notAllowed(cfg.End_points_allowed)
 }
 
-func handleDelete_Group(cfg *models.DataModel, qm *tools.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
+func handleDelete_Group(cfg *models.DataModel, qm *queue.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
 	if cfg.End_points_allowed != nil && cfg.End_points_allowed.DELETE_GROUP != nil {
 		return deleteResource_Group(qm, cfg, svr_cfg.Get())
 	}
 	return notAllowed(cfg.End_points_allowed)
 }
 
-func handleWebsocket(cfg *models.DataModel, qm *tools.QueueManager, svr_cfg *models.SwappableServerConfig, topic string, evh *tools.EventManager) http.HandlerFunc {
+func handleWebsocket(cfg *models.DataModel, qm *queue.QueueManager, svr_cfg *models.SwappableServerConfig, topic string, evh *events.EventManager) http.HandlerFunc {
 	if cfg.End_points_allowed != nil && cfg.End_points_allowed.GET != nil {
 		return websocketRegister(topic, cfg, svr_cfg.Get(), qm.Logger, evh)
 	}
@@ -166,7 +172,7 @@ func handleWebsocket(cfg *models.DataModel, qm *tools.QueueManager, svr_cfg *mod
 
 
 func addNewResource(
-	qm *tools.QueueManager,
+	qm *queue.QueueManager,
 	cfg *models.DataModel,
 	svr_cfg *models.ServerConfig,
 ) http.HandlerFunc {
@@ -209,7 +215,7 @@ func addNewResource(
 		}
 
 		log.Debug("Decoding and coercing raw data", "data", fmt.Sprint(raw))
-		valid_resources, invalid_resources := tools.Validate_Map_AgainstConfig(cfg, raw, false, true)
+		valid_resources, invalid_resources := datamodel.Validate_Map_AgainstConfig(cfg, raw, false, true)
 		if len(valid_resources) < 1 {
 			log.Warn("Request with no valid resources")
 			response["successful_submission"] = false
@@ -225,7 +231,7 @@ func addNewResource(
 
 		// Extract context and queue action
 		ctx_preserve := context.WithoutCancel(reqctx.StartTask(ctx, function, cfg))
-		task_id, err := qm.QueueFunction(ctx_preserve, tools.SingleInsert(ctx_preserve, qm.Db, cfg, valid_resources[0]), note)
+		task_id, err := qm.QueueFunction(ctx_preserve, store.SingleInsert(ctx_preserve, qm.Db, cfg, valid_resources[0]), note)
 
 		if err != nil {
 			log.Error("TASK_ERROR", "error", "could not create task", "resource", raw, "error", err)
@@ -242,7 +248,7 @@ func addNewResource(
 
 // Add multiple resources via the default path
 func addNewResources_Group(
-	qm *tools.QueueManager,
+	qm *queue.QueueManager,
 	cfg *models.DataModel,
 	svr_cfg *models.ServerConfig,
 ) http.HandlerFunc {
@@ -280,7 +286,7 @@ func addNewResources_Group(
 		}
 
 		log.Debug("Decoding and coercing raw data", "data", fmt.Sprint(raw))
-		valid_resources, invalid_resources := tools.Validate_SliceOfMaps_AgainstConfig(cfg, raw, false, true)
+		valid_resources, invalid_resources := datamodel.Validate_SliceOfMaps_AgainstConfig(cfg, raw, false, true)
 		if len(valid_resources) < 1 {
 			log.Warn("Request with no valid resources")
 			response["successful_submission"] = false
@@ -295,7 +301,7 @@ func addNewResources_Group(
 		}
 
 		ctx_preserve := context.WithoutCancel(reqctx.StartTask(ctx, function, cfg))
-		task_id, err := qm.QueueFunction(ctx_preserve, tools.RecursiveBatchInsert(ctx_preserve, qm.Db, cfg, valid_resources), note)
+		task_id, err := qm.QueueFunction(ctx_preserve, store.RecursiveBatchInsert(ctx_preserve, qm.Db, cfg, valid_resources), note)
 		if err != nil {
 			qm.Logger.Error("TASK_ERROR", "error", err)
 			http.Error(w, fmt.Sprintf("Error creating bulk create task\nError: %v", err), http.StatusInternalServerError)
@@ -316,7 +322,7 @@ func addNewResources_Group(
 
 // Get resources via the standard api
 func getResource(
-	qm *tools.QueueManager,
+	qm *queue.QueueManager,
 	cfg *models.DataModel,
 	svr_cfg *models.ServerConfig,
 ) http.HandlerFunc {
@@ -343,7 +349,7 @@ func getResource(
 		}
 
 		// Create new query builder and save it into the context of the request
-		qb := tools.NewQueryBuilder(log)
+		qb := querybuilder.NewQueryBuilder(log)
 	  qb.SetDefaults(cfg, r)
 
 		if err := qb.ProcessURLParams(r, cfg); err != nil {
@@ -362,7 +368,7 @@ func getResource(
 		if qb.HasFields() {
 			query = qb.BuildSelect(*cfg.Table_name, qb.GetFields())
 		} else {
-			query = qb.BuildSelect(*cfg.Table_name, tools.DynamicGetDatabaseColumns(cfg, false, false))
+			query = qb.BuildSelect(*cfg.Table_name, datamodel.DynamicGetDatabaseColumns(cfg, false, false))
 		}
 		// Save the page data into the response
 		response["page"] = qb.GetPage()
@@ -413,7 +419,7 @@ func getResource(
 
 // Get resources via the standard api
 func getDiff(
-	qm *tools.QueueManager,
+	qm *queue.QueueManager,
 	cfg *models.DataModel,
 	diff_cfg *models.DataModel,
 	svr_cfg *models.ServerConfig,
@@ -443,7 +449,7 @@ func getDiff(
 		// Create new query builder and save it into the context of the request. Defaults
 		// (e.g. soft-delete) and URL param matching must use the diffs model, since that's
 		// the table this handler actually queries — not the resource model.
-		qb := tools.NewQueryBuilder(log)
+		qb := querybuilder.NewQueryBuilder(log)
 	  qb.SetDefaults(diff_cfg, r)
 
 		if err := qb.ProcessURLParamsNoFunc(r, diff_cfg); err != nil {
@@ -459,7 +465,7 @@ func getDiff(
 		if qb.HasFields() {
 			query = qb.BuildSelect(*diff_cfg.Table_name, qb.GetFields())
 		} else {
-			query = qb.BuildSelect(*diff_cfg.Table_name, tools.DynamicGetDatabaseColumns(diff_cfg, false, false))
+			query = qb.BuildSelect(*diff_cfg.Table_name, datamodel.DynamicGetDatabaseColumns(diff_cfg, false, false))
 		}
 		// Save the page data into the response
 		response["page"] = qb.GetPage()
@@ -509,7 +515,7 @@ func getDiff(
 
 
 func getResourceHistory(
-	qm *tools.QueueManager,
+	qm *queue.QueueManager,
 	cfg *models.DataModel,
 	svr_cfg *models.ServerConfig,
 ) http.HandlerFunc {
@@ -545,7 +551,7 @@ func getResourceHistory(
 			return
 		}
 
-		qb := tools.NewQueryBuilder(log)
+		qb := querybuilder.NewQueryBuilder(log)
 		qb.SetWhereAbsolute("record", key)
 
 		if err := qb.ProcessHistoryURLParams(r); err != nil {
@@ -555,7 +561,7 @@ func getResourceHistory(
 		}
 
 		// Column list: explicit selection if provided, otherwise the full history schema.
-		cols := tools.HistoryColumns
+		cols := querybuilder.HistoryColumns
 		if qb.HasFields() {
 			cols = qb.GetFields()
 		}
@@ -639,7 +645,7 @@ func decodeHistoryJSONB(rows []map[string]any) {
 
 // Update resource via the standard api
 func updateResource(
-	qm *tools.QueueManager,
+	qm *queue.QueueManager,
 	cfg *models.DataModel,
 	svr_cfg *models.ServerConfig,
 ) http.HandlerFunc {
@@ -676,7 +682,7 @@ func updateResource(
 		}
 
 		// Coerce data into map — enforce key presence (PK or unique key), not required-on-insert
-		valid_resources, invalid_resources := tools.Validate_Map_AgainstConfig(cfg, raw, true, false)
+		valid_resources, invalid_resources := datamodel.Validate_Map_AgainstConfig(cfg, raw, true, false)
 		if len(invalid_resources) > 0 {
 			log.Warn("Request with no valid resources")
 			response["successful_submission"] = false
@@ -692,7 +698,7 @@ func updateResource(
 
 		// Queue the query
 		ctx_preserve := context.WithoutCancel(reqctx.StartTask(ctx, function, cfg))
-		task_id, err := qm.QueueFunction(ctx_preserve, tools.MultiUpdate(ctx_preserve, qm.Db, cfg, valid_resources), note)
+		task_id, err := qm.QueueFunction(ctx_preserve, store.MultiUpdate(ctx_preserve, qm.Db, cfg, valid_resources), note)
 		if err != nil {
 			qm.Logger.Error("TASK_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", err)
 			http.Error(w, fmt.Sprintf("Error creating update task\nError: %v", err), http.StatusInternalServerError)
@@ -713,7 +719,7 @@ func updateResource(
 }
 
 func updateResource_Group(
-	qm *tools.QueueManager,
+	qm *queue.QueueManager,
 	cfg *models.DataModel,
 	svr_cfg *models.ServerConfig,
 ) http.HandlerFunc {
@@ -742,7 +748,7 @@ func updateResource_Group(
 
 		var raw []map[string]any
 		err = json.NewDecoder(r.Body).Decode(&raw)
-		valid_resources, invalid_resources := tools.Validate_SliceOfMaps_AgainstConfig(cfg, raw, true, false)
+		valid_resources, invalid_resources := datamodel.Validate_SliceOfMaps_AgainstConfig(cfg, raw, true, false)
 
 		if len(valid_resources) < 1 {
 			log.Warn("Request with no valid resources")
@@ -765,7 +771,7 @@ func updateResource_Group(
 
 		// Queue the query
 		ctx_preserve := context.WithoutCancel(reqctx.StartTask(ctx, function, cfg))
-		task_id, err := qm.QueueFunction(ctx_preserve, tools.MultiUpdate(ctx_preserve, qm.Db, cfg, valid_resources), note)
+		task_id, err := qm.QueueFunction(ctx_preserve, store.MultiUpdate(ctx_preserve, qm.Db, cfg, valid_resources), note)
 		if err != nil {
 			log.Error("TASK_ERROR", "error", err)
 			http.Error(w, fmt.Sprintf("Error creating update task\nError: %v", err), http.StatusInternalServerError)
@@ -788,7 +794,7 @@ func updateResource_Group(
 // POST /{endpoint}/diff — create a diff between supplied data and stored data
 func dynamicCreateDiff(
 	cfg *models.DataModel,
-	qm *tools.QueueManager,
+	qm *queue.QueueManager,
 	svr_cfg *models.ServerConfig,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -825,7 +831,7 @@ func dynamicCreateDiff(
 		}
 
 		// Coerce all supplied rows against the config
-		valid_resources, invalid_resources := tools.Validate_SliceOfMaps_AgainstConfig(cfg, raw, true, false)
+		valid_resources, invalid_resources := datamodel.Validate_SliceOfMaps_AgainstConfig(cfg, raw, true, false)
 		if len(valid_resources) < 1 {
 			log.Warn("Request with no valid resources")
 			response["successful_submission"] = false
@@ -840,7 +846,7 @@ func dynamicCreateDiff(
 		}
 
 		ctx_preserve := context.WithoutCancel(reqctx.StartTask(ctx, function, cfg))
-		task_id, err := qm.QueueFunction(ctx_preserve, tools.CreateDiff(ctx_preserve, qm.Db, cfg, valid_resources, note), note)
+		task_id, err := qm.QueueFunction(ctx_preserve, store.CreateDiff(ctx_preserve, qm.Db, cfg, valid_resources, note), note)
 		if err != nil {
 			log.Error("TASK_ERROR", "error", err)
 			http.Error(w, fmt.Sprintf("Error creating diff task: %v", err), http.StatusInternalServerError)
@@ -859,7 +865,7 @@ func dynamicCreateDiff(
 // PUT /{endpoint}/diff — action a stored diff (return sync instructions)
 func dynamicActionDiff(
 	cfg *models.DataModel,
-	qm *tools.QueueManager,
+	qm *queue.QueueManager,
 	svr_cfg *models.ServerConfig,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -980,7 +986,7 @@ func dynamicActionDiff(
 
 // Delete a single resource identified by its primary key in the request body
 func deleteResource(
-	qm *tools.QueueManager,
+	qm *queue.QueueManager,
 	cfg *models.DataModel,
 	svr_cfg *models.ServerConfig,
 ) http.HandlerFunc {
@@ -1016,7 +1022,7 @@ func deleteResource(
 		}
 
 		// Enforce that at least one key (PK or unique key) is present; other fields are ignored
-		valid_resources, invalid_resources := tools.Validate_Map_AgainstConfig(cfg, raw, true, false)
+		valid_resources, invalid_resources := datamodel.Validate_Map_AgainstConfig(cfg, raw, true, false)
 		log.Debug("validated", "valid resources", fmt.Sprint(valid_resources))
 		if len(valid_resources) < 1 {
 			log.Warn("Request with no valid resources")
@@ -1032,7 +1038,7 @@ func deleteResource(
 		}
 
 		ctx_preserve := context.WithoutCancel(reqctx.StartTask(ctx, function, cfg))
-		task_id, err := qm.QueueFunction(ctx_preserve, tools.MultiDelete(ctx_preserve, qm.Db, cfg, valid_resources), note)
+		task_id, err := qm.QueueFunction(ctx_preserve, store.MultiDelete(ctx_preserve, qm.Db, cfg, valid_resources), note)
 		if err != nil {
 			log.Error("TASK_ERROR", "error", err)
 			http.Error(w, fmt.Sprintf("Error creating bulk delete task\nError: %v", err), http.StatusInternalServerError)
@@ -1052,7 +1058,7 @@ func deleteResource(
 
 // Delete multiple resources, each identified by its primary key
 func deleteResource_Group(
-	qm *tools.QueueManager,
+	qm *queue.QueueManager,
 	cfg *models.DataModel,
 	svr_cfg *models.ServerConfig,
 ) http.HandlerFunc {
@@ -1087,7 +1093,7 @@ func deleteResource_Group(
 		}
 
 		// Only enforce that each row has the PK; other fields are ignored for delete
-		valid_resources, invalid_resources := tools.Validate_SliceOfMaps_AgainstConfig(cfg, raw, true, false)
+		valid_resources, invalid_resources := datamodel.Validate_SliceOfMaps_AgainstConfig(cfg, raw, true, false)
 		if len(valid_resources) < 1 {
 			log.Warn("Request with no valid resources")
 			response["successful_submission"] = false
@@ -1102,7 +1108,7 @@ func deleteResource_Group(
 		}
 
 		ctx_preserve := context.WithoutCancel(reqctx.StartTask(ctx, function, cfg))
-		task_id, err := qm.QueueFunction(ctx_preserve, tools.MultiDelete(ctx_preserve, qm.Db, cfg, valid_resources), note)
+		task_id, err := qm.QueueFunction(ctx_preserve, store.MultiDelete(ctx_preserve, qm.Db, cfg, valid_resources), note)
 		if err != nil {
 			log.Error("TASK_ERROR", "error", err)
 			http.Error(w, fmt.Sprintf("Error creating bulk delete task\nError: %v", err), http.StatusInternalServerError)
@@ -1157,7 +1163,7 @@ func websocketRegister(
 	cfg *models.DataModel,
 	svr_cfg *models.ServerConfig,
 	logger *slog.Logger,
-	evh *tools.EventManager,
+	evh *events.EventManager,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Open Websocket"

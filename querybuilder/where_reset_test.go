@@ -1,8 +1,9 @@
-package tools
+package querybuilder
 
 import (
 	"testing"
 
+	"lotusforge.au/api-server/datamodel"
 	"lotusforge.au/api-server/logging"
 )
 
@@ -23,7 +24,7 @@ import (
 func TestSetWhereAbsolute_ReSetUpdatesOwnArgSlot(t *testing.T) {
 	qb := NewQueryBuilder(logging.Basic())
 	qb.SetWhereAbsolute("other_field", "first")         // binds $1 / args[0]
-	qb.SetWhere("diff_type", "malicious", FieldString)  // binds $2 / args[1] via ~*
+	qb.SetWhere("diff_type", "malicious", datamodel.FieldString)  // binds $2 / args[1] via ~*
 	qb.SetWhereAbsolute("diff_type", "assets")          // must overwrite args[1], not args[0]
 
 	args := qb.GetArgs()
@@ -43,8 +44,8 @@ func TestSetWhereAbsolute_ReSetUpdatesOwnArgSlot(t *testing.T) {
 func TestSetWhere_ReSetUpdatesOwnArgSlot(t *testing.T) {
 	qb := NewQueryBuilder(logging.Basic())
 	qb.SetWhereAbsolute("other_field", "first") // binds $1 / args[0]
-	qb.SetWhere("amount", 5, FieldInt)          // binds $2 / args[1]
-	qb.SetWhere("amount", 9, FieldInt)          // re-set: must overwrite args[1], not args[0]
+	qb.SetWhere("amount", 5, datamodel.FieldInt)          // binds $2 / args[1]
+	qb.SetWhere("amount", 9, datamodel.FieldInt)          // re-set: must overwrite args[1], not args[0]
 
 	args := qb.GetArgs()
 	if len(args) != 2 {

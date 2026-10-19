@@ -1,4 +1,4 @@
-package tools
+package querybuilder
 
 import (
 	"net/http/httptest"

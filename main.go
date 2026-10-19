@@ -9,13 +9,16 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"lotusforge.au/api-server/datamodel"
+	"lotusforge.au/api-server/events"
 	"lotusforge.au/api-server/handlers"
 	"lotusforge.au/api-server/logging"
 	"lotusforge.au/api-server/middleware"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/monitors"
+	"lotusforge.au/api-server/queue"
+	"lotusforge.au/api-server/registry"
 	"lotusforge.au/api-server/schematools"
-	"lotusforge.au/api-server/tools"
 )
 
 func main() {
@@ -51,13 +54,13 @@ func main() {
 	// ---------------------------------------------------------------
 	//                Event Manager
 	// ---------------------------------------------------------------
-	evh := tools.NewEventManager(27, 10, pool)
+	evh := events.NewEventManager(27, 10, pool)
 
 
 	// ---------------------------------------------------------------
 	//                Queue Manager
 	// ---------------------------------------------------------------
-	qm := tools.NewQueue(pool, 5, logger, evh)
+	qm := queue.NewQueue(pool, 5, logger, evh)
 
 
 	// ---------------------------------------------------------------
@@ -70,7 +73,7 @@ func main() {
 	// ---------------------------------------------------------------
 	//                Server Config Loading
 	// ---------------------------------------------------------------
-	intial_server_conf, err := tools.LoadYAMLIntoModel[models.ServerConfig]("./config/server/server.yaml")
+	intial_server_conf, err := datamodel.LoadYAMLIntoModel[models.ServerConfig]("./config/server/server.yaml")
 	if err != nil { logger.Error("Failed to load server configuration"); os.Exit(1) }
 	// Load the server config into a swappable handler
 	server_conf := models.NewSwappableServerConfig(intial_server_conf)
@@ -102,9 +105,9 @@ func main() {
 	mux := http.NewServeMux()
 
 	// Create all the registers
-	handlerRegister := tools.NewHandlerRegistry(mux)  // End points
-	modelRegister := tools.NewModelRegistry()         // Data models
-	functionRegister := tools.NewFunctionRegistry()   // Declared Functions
+	handlerRegister := registry.NewHandlerRegistry(mux)  // End points
+	modelRegister := registry.NewModelRegistry()         // Data models
+	functionRegister := registry.NewFunctionRegistry()   // Declared Functions
 
 
 	// ---------------------------------------------------------------
@@ -139,7 +142,7 @@ func main() {
 	//                Server - Declared Functions
 	// ---------------------------------------------------------------
 	// Must happen after the models are registered as each function validates against its declared tables
-	for _, fn := range tools.LoadFunctionsFromDir(functions_dir, modelRegister, logger) {
+	for _, fn := range registry.LoadFunctionsFromDir(functions_dir, modelRegister, logger) {
 		functionRegister.Register(fn)
 		handlers.RegisterFunctionRoutes(fn, modelRegister, handlerRegister, authMiddleware, qm, server_conf, evh)
 	}
@@ -211,18 +214,18 @@ func loadModelsFromDir(dir string, logger interface{ Warn(string, ...any); Error
 			continue
 		}
 		fp := fmt.Sprintf("%s/%s", dir, info.Name())
-		data, err := tools.LoadYAMLIntoModel[models.DataModel](fp)
+		data, err := datamodel.LoadYAMLIntoModel[models.DataModel](fp)
 		if err != nil {
 			logger.Warn(fmt.Sprintf("Failed to load config file: %s", info.Name()), "error", err)
 			continue
 		}
 		data.Filepath = &fp
 		result = append(result, *data)
-		if err := tools.ValidateDataModel(*data); err != nil {
+		if err := datamodel.ValidateDataModel(*data); err != nil {
 			logger.Warn(fmt.Sprintf("Config file failed validation: %s", info.Name()), "error", err)
 			continue
 		}
-		tools.ProcessModelAdditionalFields(data)
+		datamodel.ProcessModelAdditionalFields(data)
 	}
 
 	return result

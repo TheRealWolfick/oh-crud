@@ -1,4 +1,4 @@
-package tools
+package registry
 
 import (
 	"fmt"
@@ -9,7 +9,9 @@ import (
 	"strings"
 	"sync"
 
+	"lotusforge.au/api-server/datamodel"
 	"lotusforge.au/api-server/models"
+	"lotusforge.au/api-server/querybuilder"
 )
 
 // reservedFunctionNames lists function `name:` values that conflict with built-in
@@ -106,7 +108,7 @@ func LoadFunctionsFromDir(
 		}
 
 		path := fmt.Sprintf("%s/%s", dir, info.Name())
-		fn, err := LoadYAMLIntoModel[models.FunctionDef](path)
+		fn, err := datamodel.LoadYAMLIntoModel[models.FunctionDef](path)
 		if err != nil {
 			logger.Warn("Failed to load function file", "file", info.Name(), "error", err)
 			continue
@@ -171,7 +173,7 @@ func ValidateFunction(fn *models.FunctionDef, model_reg *ModelRegistry) []error 
 
 	// where: every key must resolve to a non-private model field.
 	for k := range fn.Where {
-		if _, ok := CheckFieldGetValid(k, cfg); !ok {
+		if _, ok := datamodel.CheckFieldGetValid(k, cfg); !ok {
 			errs = append(errs, fmt.Errorf("function %q: where field %q is unknown or private",
 				deref(fn.Name), k))
 		}
@@ -194,7 +196,7 @@ func ValidateFunction(fn *models.FunctionDef, model_reg *ModelRegistry) []error 
 				deref(fn.Name), *p.Name))
 			continue
 		}
-		if _, ok := CheckFieldGetValid(*p.Field, cfg); !ok {
+		if _, ok := datamodel.CheckFieldGetValid(*p.Field, cfg); !ok {
 			errs = append(errs, fmt.Errorf("function %q: parameter %q references unknown or private field %q",
 				deref(fn.Name), *p.Name, *p.Field))
 		}
@@ -211,7 +213,7 @@ func ValidateFunction(fn *models.FunctionDef, model_reg *ModelRegistry) []error 
 			errs = append(errs, fmt.Errorf("function %q: fields[%d] is empty", deref(fn.Name), i))
 			continue
 		}
-		if _, ok := CheckFieldGetValid(f.Field, cfg); !ok {
+		if _, ok := datamodel.CheckFieldGetValid(f.Field, cfg); !ok {
 			errs = append(errs, fmt.Errorf("function %q: fields[%d] references unknown or private field %q",
 				deref(fn.Name), i, f.Field))
 		}
@@ -219,7 +221,7 @@ func ValidateFunction(fn *models.FunctionDef, model_reg *ModelRegistry) []error 
 
 	// group-by tokens.
 	for _, g := range fn.Group_by {
-		if _, ok := CheckFieldGetValid(g, cfg); !ok {
+		if _, ok := datamodel.CheckFieldGetValid(g, cfg); !ok {
 			errs = append(errs, fmt.Errorf("function %q: group-by %q is unknown or private",
 				deref(fn.Name), g))
 		}
@@ -227,9 +229,9 @@ func ValidateFunction(fn *models.FunctionDef, model_reg *ModelRegistry) []error 
 
 	// aggregate tokens — must parse via ParseAggregateFuncString.
 	// We use a throwaway QueryBuilder for the parse; it doesn't mutate cfg.
-	scratch := NewQueryBuilder(slog.Default())
+	scratch := querybuilder.NewQueryBuilder(slog.Default())
 	for _, a := range fn.Aggregate {
-		if _, ok, _, _ := ParseAggregateFuncString(a, scratch, cfg); !ok {
+		if _, ok, _, _ := querybuilder.ParseAggregateFuncString(a, scratch, cfg); !ok {
 			errs = append(errs, fmt.Errorf("function %q: aggregate token %q is invalid (expected count, sum:f, avg:f, min:f, max:f, distinct:f~f..)",
 				deref(fn.Name), a))
 		}
@@ -243,19 +245,19 @@ func ValidateFunction(fn *models.FunctionDef, model_reg *ModelRegistry) []error 
 		declaredFields[f.Field] = true
 	}
 	for _, g := range fn.Group_by {
-		if f, ok := CheckFieldGetValid(g, cfg); ok {
+		if f, ok := datamodel.CheckFieldGetValid(g, cfg); ok {
 			declaredFields[f] = true
 		}
 	}
 	for _, s := range fn.Sort_by {
 		token := strings.TrimSpace(strings.Split(s, "~")[0])
-		if _, ok, _, _ := ParseAggregateFuncString(token, scratch, cfg); ok {
+		if _, ok, _, _ := querybuilder.ParseAggregateFuncString(token, scratch, cfg); ok {
 			continue
 		}
 		if declaredFields[token] {
 			continue
 		}
-		if _, ok := CheckFieldGetValid(token, cfg); ok && !slices.Contains(fn.Sort_by, token) {
+		if _, ok := datamodel.CheckFieldGetValid(token, cfg); ok && !slices.Contains(fn.Sort_by, token) {
 			// Allow plain field references for non-aggregating functions even when
 			// they're not in `fields:` — the runtime executor will skip unknown
 			// sort tokens defensively, matching the URL aggregate path's leniency.

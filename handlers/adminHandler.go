@@ -9,11 +9,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"lotusforge.au/api-server/httpx"
 	"lotusforge.au/api-server/models"
+	"lotusforge.au/api-server/queue"
 	"lotusforge.au/api-server/reflectx"
+	"lotusforge.au/api-server/registry"
 	"lotusforge.au/api-server/reqctx"
 	"lotusforge.au/api-server/schematools"
 	"lotusforge.au/api-server/secrets"
-	"lotusforge.au/api-server/tools"
 )
 
 // adminAuthorised runs the shared admin preamble: builds a request logger, checks the
@@ -22,7 +23,7 @@ import (
 func adminAuthorised(
 	w http.ResponseWriter,
 	r *http.Request,
-	qm *tools.QueueManager,
+	qm *queue.QueueManager,
 	cfg *models.DataModel,
 	svr_cfg *models.SwappableServerConfig,
 	task_type string,
@@ -49,7 +50,7 @@ func adminAuthorised(
 // plus the set of all tables currently awaiting approval.
 func handlePendingChanges(
 	gate *schematools.PendingApprovalGate,
-	qm *tools.QueueManager,
+	qm *queue.QueueManager,
 	cfg *models.DataModel,
 	svr_cfg *models.SwappableServerConfig,
 ) http.HandlerFunc {
@@ -86,10 +87,10 @@ func handlePendingChanges(
 //	{"approve": false} → discard the change and revert the config file to last-good.
 func handleApproveChange(
 	gate *schematools.PendingApprovalGate,
-	qm *tools.QueueManager,
+	qm *queue.QueueManager,
 	cfg *models.DataModel,
 	svr_cfg *models.SwappableServerConfig,
-	modelRegistry *tools.ModelRegistry,
+	modelRegistry *registry.ModelRegistry,
 	onApplied func(*models.DataModel),
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

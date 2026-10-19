@@ -7,17 +7,18 @@ import (
 	"sort"
 	"strings"
 
+	"lotusforge.au/api-server/datamodel"
 	"lotusforge.au/api-server/models"
-	"lotusforge.au/api-server/tools"
+	"lotusforge.au/api-server/registry"
 )
 
 // OpenAPIHandler serves a dynamically generated OpenAPI 3.0.3 spec at GET /openapi.json.
 type OpenAPIHandler struct {
-	registry         *tools.ModelRegistry
-	functionRegistry *tools.FunctionRegistry
+	registry         *registry.ModelRegistry
+	functionRegistry *registry.FunctionRegistry
 }
 
-func NewOpenAPIHandler(registry *tools.ModelRegistry, functionRegistry *tools.FunctionRegistry) *OpenAPIHandler {
+func NewOpenAPIHandler(registry *registry.ModelRegistry, functionRegistry *registry.FunctionRegistry) *OpenAPIHandler {
 	return &OpenAPIHandler{registry: registry, functionRegistry: functionRegistry}
 }
 
@@ -349,7 +350,7 @@ func buildModelSchema(m models.DataModel) oaSchema {
 		// (e.g. an integer count) without changing what a write should send (the raw
 		// JSON value this schema still describes) — call that out rather than silently
 		// misdescribing the read shape.
-		if expr, ok := tools.DescribeJsonSelect(&field); ok {
+		if expr, ok := datamodel.JsonSelectExpr(&field); ok {
 			treatAs := ""
 			if field.JSON_select != nil && field.JSON_select.TreatAs != nil {
 				treatAs = *field.JSON_select.TreatAs

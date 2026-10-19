@@ -10,8 +10,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"lotusforge.au/api-server/logging"
 	"lotusforge.au/api-server/models"
+	"lotusforge.au/api-server/queue"
 	"lotusforge.au/api-server/reqctx"
-	"lotusforge.au/api-server/tools"
 )
 
 func ptr[T any](v T) *T { return &v }
@@ -55,8 +55,8 @@ func diffModelCfg() *models.DataModel {
 	}
 }
 
-func newTestQueueManager(db *fakeDB) *tools.QueueManager {
-	return tools.NewQueue(db, 1, logging.Basic(), nil)
+func newTestQueueManager(db *fakeDB) *queue.QueueManager {
+	return queue.NewQueue(db, 1, logging.Basic(), nil)
 }
 
 // requestWithRoles builds a GET request carrying the user/roles context the diff

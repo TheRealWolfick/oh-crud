@@ -5,9 +5,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"lotusforge.au/api-server/events"
 	"lotusforge.au/api-server/models"
+	"lotusforge.au/api-server/registry"
 	"lotusforge.au/api-server/schematools"
-	"lotusforge.au/api-server/tools"
 )
 
 func noopAuth(h http.Handler) http.Handler { return h }
@@ -21,10 +22,10 @@ func TestRegisterRoutes_NilDiffCfg_NoPanic(t *testing.T) {
 	qm := newTestQueueManager(db)
 	cfg := diffResourceCfg() // Allow_diff: true, but we pass no diffs model below
 	mux := http.NewServeMux()
-	hr := tools.NewHandlerRegistry(mux)
-	evh := tools.NewEventManager(0, 0, db)
+	hr := registry.NewHandlerRegistry(mux)
+	evh := events.NewEventManager(0, 0, db)
 	gate := schematools.NewPendingApprovalGate()
-	modelRegistry := tools.NewModelRegistry()
+	modelRegistry := registry.NewModelRegistry()
 	svr := models.NewSwappableServerConfig(&models.ServerConfig{})
 
 	defer func() {
@@ -54,10 +55,10 @@ func TestRegisterRoutes_WithDiffCfg_RegistersDiffRoutes(t *testing.T) {
 	cfg := diffResourceCfg()
 	diffCfg := diffModelCfg()
 	mux := http.NewServeMux()
-	hr := tools.NewHandlerRegistry(mux)
-	evh := tools.NewEventManager(0, 0, db)
+	hr := registry.NewHandlerRegistry(mux)
+	evh := events.NewEventManager(0, 0, db)
 	gate := schematools.NewPendingApprovalGate()
-	modelRegistry := tools.NewModelRegistry()
+	modelRegistry := registry.NewModelRegistry()
 	svr := models.NewSwappableServerConfig(&models.ServerConfig{})
 
 	RegisterRoutes(cfg, diffCfg, hr, noopAuth, qm, svr, evh, gate, modelRegistry)

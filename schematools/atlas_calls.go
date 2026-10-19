@@ -11,8 +11,8 @@ import (
 	"sync"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"lotusforge.au/api-server/datamodel"
 	"lotusforge.au/api-server/models"
-	"lotusforge.au/api-server/tools"
 )
 
 // hclDir is where generated HCL files (and their .version sidecars) are written.
@@ -82,7 +82,7 @@ func needsSync(model *models.DataModel, hclPath string) bool {
 		return false
 	}
 
-	increased, err := tools.CheckVersionIncrease(storedVersion, currentVersion)
+	increased, err := datamodel.CheckVersionIncrease(storedVersion, currentVersion)
 	if increased {
 		return true
 	}
@@ -386,16 +386,16 @@ func SyncModelIfNeeded(ctx context.Context, pool *pgxpool.Pool, model *models.Da
 // pending review
 func loadDataModel(filepath string) (*models.DataModel, error) {
 	// Load the model
-	data, err := tools.LoadYAMLIntoModel[models.DataModel](filepath)
+	data, err := datamodel.LoadYAMLIntoModel[models.DataModel](filepath)
 	if err != nil {
 		return nil, err
 	}
 	fp := filepath
 	data.Filepath = &fp
-	if err := tools.ValidateDataModel(*data); err != nil {
+	if err := datamodel.ValidateDataModel(*data); err != nil {
 		return nil, err
 	}
-	tools.ProcessModelAdditionalFields(data)
+	datamodel.ProcessModelAdditionalFields(data)
 
 	// Return the updated pointer
 	return data, nil

@@ -9,11 +9,15 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/sync/errgroup"
+	"lotusforge.au/api-server/datamodel"
+	"lotusforge.au/api-server/events"
 	"lotusforge.au/api-server/httpx"
 	"lotusforge.au/api-server/models"
+	"lotusforge.au/api-server/querybuilder"
+	"lotusforge.au/api-server/queue"
+	"lotusforge.au/api-server/registry"
 	"lotusforge.au/api-server/reqctx"
 	"lotusforge.au/api-server/secrets"
-	"lotusforge.au/api-server/tools"
 )
 
 // RegisterFunctionRoutes registers GET /{end_point}/fn/{function_name} for a
@@ -22,12 +26,12 @@ import (
 // re-registering the function.
 func RegisterFunctionRoutes(
 	fn *models.FunctionDef,
-	model_reg *tools.ModelRegistry,
-	handler_reg *tools.HandlerRegistry,
+	model_reg *registry.ModelRegistry,
+	handler_reg *registry.HandlerRegistry,
 	auth func(http.Handler) http.Handler,
-	qm *tools.QueueManager,
+	qm *queue.QueueManager,
 	server_conf *models.SwappableServerConfig,
-	evh *tools.EventManager,
+	evh *events.EventManager,
 ) {
 	if fn.Bound_to == nil || fn.Name == nil || fn.Version == nil {
 		qm.Logger.Warn("Skipping function with missing required fields", "function", fn.Name)
@@ -56,8 +60,8 @@ func RegisterFunctionRoutes(
 // runs the same rows+count errgroup pattern as getResource.
 func getFunctionResource(
 	fn *models.FunctionDef,
-	model_reg *tools.ModelRegistry,
-	qm *tools.QueueManager,
+	model_reg *registry.ModelRegistry,
+	qm *queue.QueueManager,
 	server_conf *models.SwappableServerConfig,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -103,7 +107,7 @@ func getFunctionResource(
 			return
 		}
 
-		qb := tools.NewQueryBuilder(log)
+		qb := querybuilder.NewQueryBuilder(log)
 
 		// Apply default wheres from the function
 		for k, v := range fn.Where {
@@ -135,7 +139,7 @@ func getFunctionResource(
 		if qb.HasFields() {
 			query = qb.BuildSelect(*cfg.Table_name, qb.GetFields())
 		} else {
-			query = qb.BuildSelect(*cfg.Table_name, tools.DynamicGetDatabaseColumns(cfg, false, false))
+			query = qb.BuildSelect(*cfg.Table_name, datamodel.DynamicGetDatabaseColumns(cfg, false, false))
 		}
 		count_query := qb.BuildCountWithWhere(*cfg.Table_name)
 
@@ -185,7 +189,7 @@ func getFunctionResource(
 // applyParameters reads each declared parameter from r.FormValue and applies
 // the corresponding WHERE clause via the appropriate QueryBuilder setter.
 func applyParameters(
-	qb *tools.QueryBuilder,
+	qb *querybuilder.QueryBuilder,
 	params []models.Parameter,
 	cfg *models.DataModel,
 	r *http.Request,
@@ -199,7 +203,7 @@ func applyParameters(
 			continue
 		}
 
-		field_name, ok := tools.CheckFieldGetValid(*p.Field, cfg)
+		field_name, ok := datamodel.CheckFieldGetValid(*p.Field, cfg)
 		if !ok {
 			return fmt.Errorf("parameter %q references invalid field", *p.Name)
 		}
@@ -207,7 +211,7 @@ func applyParameters(
 		if field_cfg.Type == nil {
 			return fmt.Errorf("field %q has no type", field_name)
 		}
-		field_type, err := tools.DecodeFieldType(*field_cfg.Type)
+		field_type, err := datamodel.DecodeFieldType(*field_cfg.Type)
 		if err != nil {
 			return err
 		}
@@ -221,7 +225,7 @@ func applyParameters(
 		// Equality — use absolute-match path when the field is configured for it.
 		if (field_cfg.Absolute_match != nil && *field_cfg.Absolute_match) ||
 			(p.Op != nil && *p.Op == "=") {
-			if !tools.ValidateFieldValue(field_type, raw) {
+			if !datamodel.ValidateFieldValue(field_type, raw) {
 				continue
 			}
 			qb.SetWhereAbsolute(field_name, raw)
@@ -235,7 +239,7 @@ func applyParameters(
 
 // buildSpecFromFunction merges the function YAML's aggregate-shape declarations
 // with the user's URL sort_by (appended as secondary sort).
-func buildSpecFromFunction(fn *models.FunctionDef, r *http.Request) tools.AggregateSpec {
+func buildSpecFromFunction(fn *models.FunctionDef, r *http.Request) querybuilder.AggregateSpec {
 	plain_fields := make([]string, 0, len(fn.Fields))
 	for _, f := range fn.Fields {
 		// Calculated fields are rejected at validation time; defensive skip here.
@@ -255,7 +259,7 @@ func buildSpecFromFunction(fn *models.FunctionDef, r *http.Request) tools.Aggreg
 		}
 	}
 
-	return tools.AggregateSpec{
+	return querybuilder.AggregateSpec{
 		Fields:    plain_fields,
 		GroupBy:   fn.Group_by,
 		Aggregate: fn.Aggregate,

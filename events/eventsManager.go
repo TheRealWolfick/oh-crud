@@ -1,4 +1,4 @@
-package tools
+package events
 
 import (
 	"bytes"
@@ -15,6 +15,7 @@ import (
 	"lotusforge.au/api-server/logging"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/reqctx"
+	"lotusforge.au/api-server/tools"
 )
 
 // -----------------------------------------------------------------
@@ -155,7 +156,7 @@ func (h *EventManager) EnableTopic(topic string, hooks *models.EventAction, pers
 
 	// Helper func for mapping status from config to eventhub
 	fn := func(action string, hooks *models.EventStatus) {
-		for k, v := range GetStructAsDict(hooks) {
+		for k, v := range tools.GetStructAsDict(hooks) {
 			i.webhook_url[action][strings.ToLower(k)] = v.([]string)
 		}
 	}

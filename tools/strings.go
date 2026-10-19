@@ -5,8 +5,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-
-	"lotusforge.au/api-server/models"
+	"time"
 )
 
 func IsInt(val string) bool {
@@ -21,59 +20,6 @@ func IsInt(val string) bool {
 func ConvertToInt(val string) int {
 	i, _ := strconv.Atoi(val)
 	return i
-}
-
-func ASCorDESC(s string) string {
-	switch s {
-	case "":
-		return "ASC"
-	case "desc", "DESC", "d", "D", "descending", "DESCENDING":
-		return "DESC"
-	}
-	return "ASC"
-}
-
-// Process an aggregate function string. This effectively transforms the function and ensures it
-// is in a valid format and the columns selected are valid.
-func ParseAggregateFuncString(field string, qb *QueryBuilder, cfg *models.DataModel) (string, bool, bool, []string ) {
-	if field == "count" {
-		return "count(*)", true, false, nil
-	}
-
-	// Skip if not a valid field
-	if !strings.Contains(field, ":") { return "", false, false, nil }
-
-	// Process functions
-	s := strings.Split(field, ":"); if len(s) != 2 { return "", false, false, nil }
-	fnc, sub_field := s[0], s[1]
-
-	switch fnc {
-	case "distinct":
-		if strings.Contains(sub_field, "~") {
-			sub_sub_fields := strings.Split(sub_field, "~")
-			allowed_sub_fields := []string{}
-			for _, ssf := range sub_sub_fields {
-				f, allowed := CheckFieldGetValid(ssf, cfg)
-				if allowed { allowed_sub_fields = append(allowed_sub_fields, f) }
-			}
-			if len(allowed_sub_fields) > 0 {
-				return fmt.Sprintf("%s(%s)", fnc, strings.Join(allowed_sub_fields, ",")), true, true, allowed_sub_fields
-			}
-		} else {
-			f, allowed := CheckFieldGetValid(sub_field, cfg)
-			if allowed { 
-				return  fmt.Sprintf("%s(%s)", fnc, f), true, true, []string{f}
-			}
-		}
-	case "avg", "min", "max", "sum":
-		f, allowed := CheckFieldGetValid(sub_field, cfg)
-		if allowed { 
-			return  fmt.Sprintf("%s(%s)", fnc, f), true, false, nil
-		}
-	default:
-		qb.logger.Debug("Invalid function passed into aggregate function", "func", fnc)
-	}
-	return "", false, false, nil
 }
 
 // ConvertString converts a raw form string into the requested kind.
@@ -110,7 +56,7 @@ func ConvertString(s string, t reflect.Type) (any, error) {
 // of format `type(size)`. If there is no size, then it returns the type and -1 as 
 // the size. If the size is not an int, it returns 0 as the size and an error.
 // Maximum int size is Int32
-func extractTypeAndSize(s string) (string, int, error) {
+func ExtractTypeAndSize(s string) (string, int, error) {
 	if s == "" || !strings.Contains(s, "(") { return s, -1, nil }
 
   // Remove the trailing `)` and split it into type and size as strings
@@ -125,4 +71,27 @@ func extractTypeAndSize(s string) (string, int, error) {
 
 	// Can be successfully converted now
 	return spliced[0], ConvertToInt(spliced[1]), nil
+}
+
+// ParseDate tries common date formats, returning an error if none match.
+func ParseDate(dateStr string) (time.Time, error) {
+	formats := []string{
+		"2006-01-02",
+		"2006-01-02T15:04:05Z07:00",
+		"2006-01-02T15:04:05",
+		"2006-01-02 15:04:05",
+		"01/02/2006",
+		"02/01/2006",
+		time.RFC3339,
+		time.RFC3339Nano,
+	}
+	var lastErr error
+	for _, format := range formats {
+		if parsed, err := time.Parse(format, dateStr); err == nil {
+			return parsed, nil
+		} else {
+			lastErr = err
+		}
+	}
+	return time.Time{}, lastErr
 }

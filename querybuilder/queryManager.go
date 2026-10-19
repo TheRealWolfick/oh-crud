@@ -1,4 +1,4 @@
-package tools
+package querybuilder
 
 import (
 	"encoding/json"
@@ -12,8 +12,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"lotusforge.au/api-server/datamodel"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/reflectx"
+	"lotusforge.au/api-server/tools"
 )
 
 type QueryBuilder struct {
@@ -62,6 +64,10 @@ func NewQueryBuilder(logger *slog.Logger) *QueryBuilder {
 }
 
 func (qb *QueryBuilder) GetArgs() []any { return qb.args }
+
+func (qb *QueryBuilder) GetQuery() string { return qb.query }
+
+func (qb *QueryBuilder) GetLogger() *slog.Logger { return qb.logger }
 
 func (qb *QueryBuilder) GetPage() int {
 	if qb.offset == 0 || qb.limit == 0 {
@@ -191,7 +197,7 @@ func nullSigilValue(raw string) (string, bool) {
 
 // setWhere is an internal helper that extracts comparison operators from string values
 // and dispatches to the provided setter function with the correct type.
-func setWhere(field string, value any, fieldType FieldKind, setFunc func(string, any, string)) {
+func setWhere(field string, value any, fieldType datamodel.FieldKind, setFunc func(string, any, string)) {
 	if value == nil {
 		return
 	}
@@ -214,7 +220,7 @@ func setWhere(field string, value any, fieldType FieldKind, setFunc func(string,
 					setFunc(field, v, "IS")
 					return
 				}
-				if fieldType != FieldString {
+				if fieldType != datamodel.FieldString {
 					return
 				}
 			}
@@ -224,7 +230,7 @@ func setWhere(field string, value any, fieldType FieldKind, setFunc func(string,
 			}
 
 			switch fieldType {
-			case FieldInt:
+			case datamodel.FieldInt:
 				if mod_guess == "<" || mod_guess == ">" {
 					if mod_guess2 == "<=" || mod_guess2 == ">=" {
 						if value_as_int, err := strconv.ParseInt(value_as_string[2:], 10, 64); err == nil {
@@ -241,12 +247,12 @@ func setWhere(field string, value any, fieldType FieldKind, setFunc func(string,
 					}
 				}
 
-			case FieldBool:
+			case datamodel.FieldBool:
 				if value_as_bool, err := strconv.ParseBool(value_as_string); err == nil {
 					setFunc(field, value_as_bool, "=")
 				}
 
-			case FieldFloat:
+			case datamodel.FieldFloat:
 				if mod_guess == "<" || mod_guess == ">" {
 					if mod_guess2 == "<=" || mod_guess2 == ">=" {
 						if value_as_float, err := strconv.ParseFloat(value_as_string[2:], 64); err == nil {
@@ -263,7 +269,7 @@ func setWhere(field string, value any, fieldType FieldKind, setFunc func(string,
 					}
 				}
 
-			case FieldTime:
+			case datamodel.FieldTime:
 				var dateString string
 				var operator string
 
@@ -278,20 +284,20 @@ func setWhere(field string, value any, fieldType FieldKind, setFunc func(string,
 					dateString = value_as_string
 				}
 
-				parsedDate, err := parseDate(dateString)
+				parsedDate, err := tools.ParseDate(dateString)
 				if err != nil {
 					setFunc(field, value_as_string, "~*")
 					return
 				}
 				setFunc(field, parsedDate, operator)
 
-			case FieldJSON:
+			case datamodel.FieldJSON:
 				// Check if this has an override
 				if json.Valid([]byte(value_as_string)) {
 					setFunc(field, value_as_string, "=")
 				}
 
-			case FieldUUID:
+			case datamodel.FieldUUID:
 				// UUIDs are matched exactly — a malformed value is dropped rather than
 				// passed through to a regex/range comparison that doesn't apply to them.
 				if _, err := uuid.Parse(value_as_string); err == nil {
@@ -308,32 +314,9 @@ func setWhere(field string, value any, fieldType FieldKind, setFunc func(string,
 	}
 }
 
-// parseDate tries common date formats, returning an error if none match.
-func parseDate(dateStr string) (time.Time, error) {
-	formats := []string{
-		"2006-01-02",
-		"2006-01-02T15:04:05Z07:00",
-		"2006-01-02T15:04:05",
-		"2006-01-02 15:04:05",
-		"01/02/2006",
-		"02/01/2006",
-		time.RFC3339,
-		time.RFC3339Nano,
-	}
-	var lastErr error
-	for _, format := range formats {
-		if parsed, err := time.Parse(format, dateStr); err == nil {
-			return parsed, nil
-		} else {
-			lastErr = err
-		}
-	}
-	return time.Time{}, lastErr
-}
-
 // Wrapper function for the internal setWhere while specifying the field type 
 // and using the internal "innerSetWhere" as the setvalue function.
-func (qb *QueryBuilder) SetWhere(field string, value any, fieldType FieldKind) {
+func (qb *QueryBuilder) SetWhere(field string, value any, fieldType datamodel.FieldKind) {
 	setWhere(field, value, fieldType, qb.innerSetWhere)
 }
 
@@ -445,7 +428,7 @@ func (qb *QueryBuilder) BuildMultiInsert(cfg *models.DataModel, data []map[strin
 				} else if *field_cfg.Default == "gen_random_uuid()" {
 					qb.args = append(qb.args, uuid.New().String())
 				} else {
-					parsed, err := CoerceType(*field_cfg.Default, *field_cfg.Type)
+					parsed, err := datamodel.CoerceType(*field_cfg.Default, *field_cfg.Type)
 					if err != nil {
 						qb.logger.Debug("Parse of default value failed", "field_name", field_name, "field_type", *field_cfg.Type)
 						qb.args = append(qb.args, nil)
@@ -765,7 +748,7 @@ func (qb *QueryBuilder) BuildSchema(cfg *models.DataModel) *models.DataModelPubl
 			// Select_expression (e.g. jsonb_array_length(col)) instead of the raw jsonb
 			// column, so its effective response type is JSON_select.TreatAs, not Type.
 			// Writes are unaffected — they still expect the raw jsonb value.
-			if expr, ok := jsonSelectExpr(&v); ok {
+			if expr, ok := datamodel.JsonSelectExpr(&v); ok {
 				field_schema.Select_override = v.JSON_select
 				field_schema.Select_expression = expr
 			}
@@ -890,14 +873,14 @@ func (qb *QueryBuilder) applyPagination(r *http.Request, defaultPageSize int) {
 	}
 
 	page_int := 1
-	if page != "" && page != "0" && IsInt(page) {
-		page_int = ConvertToInt(page)
+	if page != "" && page != "0" && tools.IsInt(page) {
+		page_int = tools.ConvertToInt(page)
 	}
 	if page_int < 1 { page_int = 1 }
 
 	page_size_int := defaultPageSize
-	if page_size != "" && page_size != "0" && IsInt(page_size) {
-		page_size_int = ConvertToInt(page_size)
+	if page_size != "" && page_size != "0" && tools.IsInt(page_size) {
+		page_size_int = tools.ConvertToInt(page_size)
 	}
 	if page_size_int < 0 { page_size_int = defaultPageSize }
 	if page_size_int == 0 {
@@ -956,18 +939,18 @@ func (qb *QueryBuilder) processWhereFromConfig(r *http.Request, cfg *models.Data
 		if !dereferenced.IsValid() {
 			return fmt.Errorf("invalid data type found in config %q", *cfg.Name)
 		}
-		field_type, err := DecodeFieldType(dereferenced.Interface().(string))
+		field_type, err := datamodel.DecodeFieldType(dereferenced.Interface().(string))
 		if err != nil { return err }
 
 		// Override field type and column reference if this is json and there is an
 		// abstraction in place — the WHERE clause must filter on the same expression
 		// the SELECT list exposes (e.g. jsonb_array_length(col)), not the raw jsonb column.
 		column := field_name
-		if field_type == FieldJSON{
-			updated_type, valid := validateJsonSelectOverride(&field_cfg)
+		if field_type == datamodel.FieldJSON{
+			updated_type, valid := datamodel.ValidateJsonSelectOverride(&field_cfg)
 			if valid {
 				field_type = updated_type
-				if expr, ok := jsonSelectExpr(&field_cfg); ok {
+				if expr, ok := datamodel.JsonSelectExpr(&field_cfg); ok {
 					column = expr
 				}
 			}
@@ -986,52 +969,13 @@ func (qb *QueryBuilder) processWhereFromConfig(r *http.Request, cfg *models.Data
 				qb.innerSetWhere(column, v, "IS")
 				continue
 			}
-			if !ValidateFieldValue(field_type, url_value) { continue }
+			if !datamodel.ValidateFieldValue(field_type, url_value) { continue }
 			qb.SetWhereAbsolute(column, url_value)
 		} else {
 			qb.SetWhere(column, url_value, field_type)
 		}
 	}
 	return nil
-}
-
-// Internal helper function for extracting a field override type. Primarily for
-// jsonb > int abstraction.
-func validateJsonSelectOverride(cfg *models.DataModelField) (FieldKind, bool) {
-	if cfg.JSON_select == nil { return "", false }
-	if cfg.JSON_select.Action == nil || *cfg.JSON_select.Action == "" { return "", false }
-	if cfg.JSON_select.ApplyOn == nil || *cfg.JSON_select.ApplyOn == "" { return "", false }
-	if cfg.JSON_select.TreatAs == nil || *cfg.JSON_select.TreatAs == "" { return "", false }
-	updated_type, err := DecodeFieldType(*cfg.JSON_select.TreatAs)
-	if err != nil {
-		return "", false
-	}
-	return updated_type, true
-}
-
-// DescribeJsonSelect exposes jsonSelectExpr to callers outside this package (e.g. the
-// OpenAPI spec generator) that need to describe a field's json-select abstraction
-// without duplicating the action→SQL mapping.
-func DescribeJsonSelect(cfg *models.DataModelField) (string, bool) {
-	return jsonSelectExpr(cfg)
-}
-
-// jsonSelectExpr returns the bare SQL expression a json-select abstraction maps a jsonb
-// column to (e.g. "jsonb_array_length(col)" for a "count" action) — used by both the
-// SELECT list (aliased back to the field's JSON key, see ConvertFieldJsonSelect in
-// config.go) and the WHERE clause (used as-is, since aliases aren't valid there).
-// Returns ("", false) if no valid abstraction applies to this field.
-func jsonSelectExpr(cfg *models.DataModelField) (string, bool) {
-	if cfg.DB_type != nil && *cfg.DB_type != "jsonb" { return "", false }
-	_, valid := validateJsonSelectOverride(cfg)
-	if !valid { return "", false }
-
-	switch *cfg.JSON_select.Action {
-	case "count":
-		return fmt.Sprintf("jsonb_array_length(%s)", *cfg.JSON), true
-	default:
-		return "", false
-	}
 }
 
 // AggregateSpec captures the inputs that shape a query's SELECT/GROUP BY/ORDER BY,
@@ -1090,7 +1034,7 @@ func (qb *QueryBuilder) ApplyAggregateSpec(spec AggregateSpec, cfg *models.DataM
 
 	// 1. Plain SELECT fields.
 	for _, field := range spec.Fields {
-		f, allowed := CheckFieldGetValid(field, cfg)
+		f, allowed := datamodel.CheckFieldGetValid(field, cfg)
 		if !allowed { continue }
 		if !slices.Contains(qb.fields, f) {
 			qb.fields = append(qb.fields, f)
@@ -1118,7 +1062,7 @@ func (qb *QueryBuilder) ApplyAggregateSpec(spec AggregateSpec, cfg *models.DataM
 
 	// 3. GROUP BY columns — also added to SELECT (PostgreSQL requires it) if it is not in a distinct clause.
 	for _, field := range spec.GroupBy {
-		f, allowed := CheckFieldGetValid(field, cfg)
+		f, allowed := datamodel.CheckFieldGetValid(field, cfg)
 		if !allowed { continue }
 		if !slices.Contains(qb.groups, f) {
 			qb.groups = append(qb.groups, f)
@@ -1206,11 +1150,11 @@ func (qb *QueryBuilder) processURLParams(r *http.Request, cfg *models.DataModel,
 		return nil
 	case "":
 		qb.ApplyPagination(r)
-		qb.processFieldSelect(r, func(f string) (string, bool) { return CheckFieldGetValid(f, cfg) })
+		qb.processFieldSelect(r, func(f string) (string, bool) { return datamodel.CheckFieldGetValid(f, cfg) })
 		if err := qb.processWhereFromConfig(r, cfg); err != nil {
 			return err
 		}
-		qb.processSort(r, func(f string) (string, bool) { return CheckFieldExists(strings.Trim(f, " "), cfg) })
+		qb.processSort(r, func(f string) (string, bool) { return datamodel.CheckFieldExists(strings.Trim(f, " "), cfg) })
 		return nil
 	default:
 		return fmt.Errorf("invalid function %q", r.PathValue("function"))
@@ -1248,14 +1192,14 @@ func (qb *QueryBuilder) ProcessHistoryURLParams(r *http.Request) error {
 	}
 	qb.logger.Debug("Checked changed by")
 	if from := r.FormValue("from"); from != "" {
-		t, err := parseDate(from)
+		t, err := tools.ParseDate(from)
 		if err != nil {
 			return fmt.Errorf("invalid 'from' date %q: %v", from, err)
 		}
 		qb.AppendWhere("changed_at", ">=", t)
 	}
 	if to := r.FormValue("to"); to != "" {
-		t, err := parseDate(to)
+		t, err := tools.ParseDate(to)
 		if err != nil {
 			return fmt.Errorf("invalid 'to' date %q: %v", to, err)
 		}

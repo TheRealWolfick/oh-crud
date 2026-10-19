@@ -4,8 +4,8 @@ import (
 	"log/slog"
 
 	"github.com/fsnotify/fsnotify"
+	"lotusforge.au/api-server/datamodel"
 	"lotusforge.au/api-server/models"
-	"lotusforge.au/api-server/tools"
 )
 
 
@@ -25,7 +25,7 @@ func ServerConfigMonitor(server_conf *models.SwappableServerConfig, log *slog.Lo
 					return
 				}
 				if event.Has(fsnotify.Write) {
-					updated_config, err := tools.LoadYAMLIntoModel[models.ServerConfig](event.Name)
+					updated_config, err := datamodel.LoadYAMLIntoModel[models.ServerConfig](event.Name)
 					if err != nil {
 					  log.Error("Updated YAML failed to load. Skipping updating routes", "error", err)
 					} else {

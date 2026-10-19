@@ -1,12 +1,14 @@
-package tools
+package querybuilder
 
 import (
 	"fmt"
 	"strings"
 	"testing"
 
+	"lotusforge.au/api-server/datamodel"
 	"lotusforge.au/api-server/logging"
 	"lotusforge.au/api-server/models"
+	"lotusforge.au/api-server/tools"
 )
 
 // mapTestModel builds a DataModel for map/validation tests.
@@ -88,7 +90,7 @@ func TestValidate_Map_AgainstConfig(t *testing.T) {
 
 	t.Run("valid single row insert — returns 1 valid 0 invalid", func(t *testing.T) {
 		row := map[string]any{"code": "ABC", "label": "Test"}
-		valid, invalid := Validate_Map_AgainstConfig(cfg, row, false, true)
+		valid, invalid := datamodel.Validate_Map_AgainstConfig(cfg, row, false, true)
 		if len(valid) != 1 || len(invalid) != 0 {
 			t.Errorf("expected 1 item for valid and 0 items for invalid, got %d (valid) %d (invalid)", len(valid), len(invalid))
 		}
@@ -96,7 +98,7 @@ func TestValidate_Map_AgainstConfig(t *testing.T) {
 
 	t.Run("missing required-on-insert field — returns 0 valid 1 invalid", func(t *testing.T) {
 		row := map[string]any{"label": "No Code"}
-		valid, invalid := Validate_Map_AgainstConfig(cfg, row, false, true)
+		valid, invalid := datamodel.Validate_Map_AgainstConfig(cfg, row, false, true)
 		if len(valid) != 0 || len(invalid) != 1 {
 			t.Errorf("expected 0 valid 1 invalid, got %d valid %d invalid", len(valid), len(invalid))
 		}
@@ -104,7 +106,7 @@ func TestValidate_Map_AgainstConfig(t *testing.T) {
 
 	t.Run("valid single row update with key", func(t *testing.T) {
 		row := map[string]any{"id": 1, "label": "Updated"}
-		valid, invalid := Validate_Map_AgainstConfig(cfg, row, true, false)
+		valid, invalid := datamodel.Validate_Map_AgainstConfig(cfg, row, true, false)
 		if len(valid) != 1 || len(invalid) != 0 {
 			t.Errorf("expected 1 valid 0 invalid, got %d valid %d invalid", len(valid), len(invalid))
 		}
@@ -112,7 +114,7 @@ func TestValidate_Map_AgainstConfig(t *testing.T) {
 
 	t.Run("missing key for update — returns 0 valid 1 invalid", func(t *testing.T) {
 		row := map[string]any{"label": "No Key"}
-		valid, invalid := Validate_Map_AgainstConfig(cfg, row, true, false)
+		valid, invalid := datamodel.Validate_Map_AgainstConfig(cfg, row, true, false)
 		if len(valid) != 0 || len(invalid) != 1 {
 			t.Errorf("expected 0 valid 1 invalid, got %d valid %d invalid", len(valid), len(invalid))
 		}
@@ -125,7 +127,7 @@ func TestValidate_SliceOfMaps_AgainstConfig(t *testing.T) {
 	cfg := mapTestModel()
 
 	t.Run("empty input returns empty slices", func(t *testing.T) {
-		valid, invalid := Validate_SliceOfMaps_AgainstConfig(cfg, []map[string]any{}, false, false)
+		valid, invalid := datamodel.Validate_SliceOfMaps_AgainstConfig(cfg, []map[string]any{}, false, false)
 		if len(valid) != 0 || len(invalid) != 0 {
 			t.Errorf("expected empty results, got %d valid %d invalid", len(valid), len(invalid))
 		}
@@ -137,7 +139,7 @@ func TestValidate_SliceOfMaps_AgainstConfig(t *testing.T) {
 			{"label": "No code"},                              // invalid: missing required code
 			{"code": "A2"},                                    // valid: code present, other fields optional
 		}
-		valid, invalid := Validate_SliceOfMaps_AgainstConfig(cfg, rows, false, true)
+		valid, invalid := datamodel.Validate_SliceOfMaps_AgainstConfig(cfg, rows, false, true)
 		if len(valid) != 2 {
 			t.Errorf("expected 2 valid, got %d: %v", len(valid), valid)
 		}
@@ -152,7 +154,7 @@ func TestValidate_SliceOfMaps_AgainstConfig(t *testing.T) {
 			{"code": "ABC", "label": "UQ"},   // valid: has unique key
 			{"label": "No key"},              // invalid
 		}
-		valid, invalid := Validate_SliceOfMaps_AgainstConfig(cfg, rows, true, false)
+		valid, invalid := datamodel.Validate_SliceOfMaps_AgainstConfig(cfg, rows, true, false)
 		if len(valid) != 2 {
 			t.Errorf("expected 2 valid, got %d", len(valid))
 		}
@@ -166,7 +168,7 @@ func TestValidate_SliceOfMaps_AgainstConfig(t *testing.T) {
 			{"label": "Anything"},
 			{"score": 9.9},
 		}
-		valid, invalid := Validate_SliceOfMaps_AgainstConfig(cfg, rows, false, false)
+		valid, invalid := datamodel.Validate_SliceOfMaps_AgainstConfig(cfg, rows, false, false)
 		if len(valid) != 2 {
 			t.Errorf("expected 2 valid (no checks), got %d invalid: %v", len(invalid), invalid)
 		}
@@ -181,7 +183,7 @@ func TestValidate_SliceOfMaps_AgainstConfig(t *testing.T) {
 			{"label": "number2", "byte_data": 25594928534554},
 		}
 
-		valid, invalid := Validate_SliceOfMaps_AgainstConfig(cfg, rows, false, false)
+		valid, invalid := datamodel.Validate_SliceOfMaps_AgainstConfig(cfg, rows, false, false)
 
 		if len(valid) != 4 {
 			t.Errorf("Expected four values to be valid. Valid: %s\nInvalid: %s", logging.PrettyJSON(valid), logging.PrettyJSON(invalid))
@@ -210,14 +212,14 @@ func TestValidate_SliceOfMaps_AgainstConfig(t *testing.T) {
 			{"label": "-1", "byte_unconstrained": 25594928534554},
 		}
 
-		valid, _ := Validate_SliceOfMaps_AgainstConfig(cfg, rows, false, false)
+		valid, _ := datamodel.Validate_SliceOfMaps_AgainstConfig(cfg, rows, false, false)
 
 		if len(valid) != 5 {
 			t.Errorf("Expected all values to be valid. Valid: %v\n", logging.PrettyJSON(valid))
 		}
 
 		for _, m := range valid {
-			if len(m["byte_unconstrained"].([]byte)) != ConvertToInt(m["label"].(string)) && m["label"] != "-1" {
+			if len(m["byte_unconstrained"].([]byte)) != tools.ConvertToInt(m["label"].(string)) && m["label"] != "-1" {
 				t.Errorf("Array item {%s} was supposed to be {%s} bytes, it was {%d} bytes, value {%v}", m["byte_unconstrained"], m["label"], len(m["byte_unconstrained"].([]byte)), m["byte_unconstrained"])
 			}
 		}
@@ -228,7 +230,7 @@ func TestValidate_SliceOfMaps_AgainstConfig(t *testing.T) {
 		rows := []map[string]any{
 			{"code": "OK", "score": "not-a-float"},  // score fails coercion
 		}
-		valid, invalid := Validate_SliceOfMaps_AgainstConfig(cfg, rows, false, true)
+		valid, invalid := datamodel.Validate_SliceOfMaps_AgainstConfig(cfg, rows, false, true)
 		if len(valid) != 0 || len(invalid) != 1 {
 			t.Errorf("expected 0 valid 1 invalid after coercion failure, got %d valid %d invalid", len(valid), len(invalid))
 		}
@@ -239,7 +241,7 @@ func TestValidate_SliceOfMaps_AgainstConfig(t *testing.T) {
 		rows := []map[string]any{
 			{"code_alias": "ALIAS_VAL", "label": "via alias"},
 		}
-		valid, invalid := Validate_SliceOfMaps_AgainstConfig(cfg, rows, false, true)
+		valid, invalid := datamodel.Validate_SliceOfMaps_AgainstConfig(cfg, rows, false, true)
 		if len(valid) != 1 || len(invalid) != 0 {
 			t.Errorf("expected 1 valid via alias, got %d valid %d invalid", len(valid), len(invalid))
 		}
@@ -253,7 +255,7 @@ func TestValidate_SliceOfMaps_AgainstConfig(t *testing.T) {
 		rows := []map[string]any{
 			{"code": "T1", "score": "3.14"},  // score as string — should be coerced to float
 		}
-		valid, _ := Validate_SliceOfMaps_AgainstConfig(cfg, rows, false, true)
+		valid, _ := datamodel.Validate_SliceOfMaps_AgainstConfig(cfg, rows, false, true)
 		if len(valid) != 1 {
 			t.Fatalf("expected 1 valid row, got %d", len(valid))
 		}
@@ -274,7 +276,7 @@ func TestValidate_SliceOfMaps_AgainstConfig(t *testing.T) {
 			// Note: GetUpdateKeyOptions returns PK option + UQ option.
 			// code IS the unique key so this should pass key check.
 		}
-		valid, invalid := Validate_SliceOfMaps_AgainstConfig(cfg, rows, true, true)
+		valid, invalid := datamodel.Validate_SliceOfMaps_AgainstConfig(cfg, rows, true, true)
 		// row 0: has id (PK) and code (required) → valid
 		// row 1: has id (key ok) but no code (required) → invalid
 		// row 2: has code (UQ key ok, required ok) → valid

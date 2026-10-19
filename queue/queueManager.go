@@ -1,4 +1,4 @@
-package tools
+package queue
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"lotusforge.au/api-server/events"
 	"lotusforge.au/api-server/logging"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/reqctx"
@@ -44,7 +45,7 @@ type QueueManager struct {
 	Db             models.DBExecQuery
 	Logger         *slog.Logger
 	mu             sync.Mutex
-	eventHub       *EventManager
+	eventHub       *events.EventManager
 }
 
 type Worker struct {
@@ -58,7 +59,7 @@ func newWorker(id int) *Worker {
 }
 
 // NewQueue creates a new async task queue with the given number of workers.
-func NewQueue(db models.DBExecQuery, num_workers int, logger *slog.Logger, evh *EventManager) *QueueManager {
+func NewQueue(db models.DBExecQuery, num_workers int, logger *slog.Logger, evh *events.EventManager) *QueueManager {
 	workers := make([]*Worker, num_workers)
 	for i := range num_workers {
 		workers[i] = newWorker(i)
@@ -74,8 +75,8 @@ func NewQueue(db models.DBExecQuery, num_workers int, logger *slog.Logger, evh *
 	}
 }
 
-func (qm *QueueManager) ReturnTargets() map[string]*Instructions {
-	return qm.eventHub.targets
+func (qm *QueueManager) ReturnTargets() map[string]*events.Instructions {
+	return qm.eventHub.CurrentTargets()
 }
 
 // -----------------------------------------------------------------

@@ -1,4 +1,4 @@
-package tools
+package store
 
 import (
 	"context"
@@ -9,10 +9,13 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"lotusforge.au/api-server/datamodel"
 	"lotusforge.au/api-server/logging"
 	"lotusforge.au/api-server/models"
+	"lotusforge.au/api-server/querybuilder"
 	"lotusforge.au/api-server/reqctx"
 	"lotusforge.au/api-server/secrets"
+	"lotusforge.au/api-server/tools"
 )
 
 type failed_row struct {
@@ -59,11 +62,11 @@ func createDiff(
 		log = logging.Basic()
 	}
 
-	comparatorKey := GetDiffComparatorKey(cfg)
+	comparatorKey := datamodel.GetDiffComparatorKey(cfg)
 	if comparatorKey == "" {
 		return "create_diff", nil, fmt.Errorf("no diff comparator field found in config for table %s", *cfg.Table_name)
 	}
-	excludeKeys := BuildExcludeKeysFromConfig(cfg)
+	excludeKeys := datamodel.BuildExcludeKeysFromConfig(cfg)
 
 	cols := []string{}
 	for field_name := range cfg.Fields {
@@ -71,7 +74,7 @@ func createDiff(
 	}
 
 	// Create the query builder and set any default clauses
-	qb := NewQueryBuilder(log)
+	qb := querybuilder.NewQueryBuilder(log)
 	query := qb.BuildSelect(*cfg.Table_name, cols)
 
 	rows, err := db.Query(ctx, query)
@@ -84,14 +87,14 @@ func createDiff(
 	}
 	coerced_stored := []map[string]any{}
 	for _, row := range stored {
-		coerced_row, err := DecodeAndCoerceFromDB(row, cfg, comparatorKey)
+		coerced_row, err := datamodel.DecodeAndCoerceFromDB(row, cfg, comparatorKey)
 		if err != nil {
 			continue
 		}
 		coerced_stored = append(coerced_stored, coerced_row)
 	}
 
-	diff_struct := DiffMapSlices(supplied, coerced_stored, comparatorKey, excludeKeys)
+	diff_struct := tools.DiffMapSlices(supplied, coerced_stored, comparatorKey, excludeKeys)
 	if diff_struct == nil {
 		log.Debug("Supplied[0:10]", "data", supplied[0:10])
 		log.Debug("Stored[0:10]", "data", stored[0:10])
@@ -137,7 +140,7 @@ func createDiff(
 	diff_struct.DiffType = &tableName
 	diff_struct.Note = &note
 
-	insertQb := NewQueryBuilder(log)
+	insertQb := querybuilder.NewQueryBuilder(log)
 	insertQuery := insertQb.BuildInsert("diffs", diff_struct)
 	cmdtag, err := db.Exec(ctx, insertQuery, insertQb.GetArgs()...)
 
@@ -238,7 +241,7 @@ func recursiveBatchInsertProcess(
 		log = logging.Basic()
 	}
 
-	qb := NewQueryBuilder(log)
+	qb := querybuilder.NewQueryBuilder(log)
 	query := qb.BuildMultiInsert(cfg, items)
 
 	cmdTag, err := db.Exec(ctx, query, qb.GetArgs()...)
@@ -250,12 +253,12 @@ func recursiveBatchInsertProcess(
 
 		// If this table tracks changes via a history, insert into the history table
 		if cfg.Track_history != nil && *cfg.Track_history {
-			qb_history := NewQueryBuilder(log)                                                // Use a new querybuilder
+			qb_history := querybuilder.NewQueryBuilder(log)                                                // Use a new querybuilder
 			user, _ := reqctx.GetUser(ctx) 																								// Get the user
 			query_history := qb_history.BuildMultiInsertHistory(cfg, items, user.Username)		// Build the insert
 			_, err := db.Exec(ctx, query_history, qb_history.GetArgs()...)										// Execute the insert
 			if err != nil {
-				qb_history.logger.Error("Error creating insert history records", "error", err) 	// Gracefully handle any errors
+				qb_history.GetLogger().Error("Error creating insert history records", "error", err) 	// Gracefully handle any errors
 			}
 		}
 		return result
@@ -285,7 +288,7 @@ func recursiveBatchInsertProcess(
 	result.FailedItems = append(result.FailedItems, rightResult.FailedItems...)
 	result.SuccessItems = append(result.SuccessItems, rightResult.SuccessItems...)
 
-	result.Query = qb.query
+	result.Query = qb.GetQuery()
 	return result
 }
 
@@ -316,7 +319,7 @@ func multiUpdate(
 	}
 
 	for idx, row := range supplied {
-		where_fields, ok := FindRowKeyFields(row, cfg)
+		where_fields, ok := datamodel.FindRowKeyFields(row, cfg)
 		if !ok {
 			log.Error("Update: no key fields found in row", "idx", idx)
 			log_data["failed_items"] = append(log_data["failed_items"].([]models.FailedItem), models.FailedItem{Row: row, Error: "no identifying key (PK or unique key) found in row"})
@@ -333,19 +336,19 @@ func multiUpdate(
 		// Update data for history logging
 		existing_data := map[string]any{}
 		if log_history { 
-			desired_fields_for_values := []string{GetHistoryUniqueField(cfg)}
+			desired_fields_for_values := []string{datamodel.GetHistoryUniqueField(cfg)}
 
 			// Create a query builder
-			qb_existing_vals := NewQueryBuilder(log.With("special_logger", "getting historical values including reference", "key_fields", where_fields))
+			qb_existing_vals := querybuilder.NewQueryBuilder(log.With("special_logger", "getting historical values including reference", "key_fields", where_fields))
 
 			// Build the query
 			for k, v := range row { if where_set[k] { qb_existing_vals.SetWhereAbsolute(k, v) } else { desired_fields_for_values = append(desired_fields_for_values, k) }}
 			query := qb_existing_vals.BuildSelect(*cfg.Table_name, desired_fields_for_values)
 
 			// Execute the query
-			rows, err := db.Query(ctx, query, qb_existing_vals.args...)
+			rows, err := db.Query(ctx, query, qb_existing_vals.GetArgs()...)
 			if err != nil {
-				qb_existing_vals.logger.Error("Error querying existing values", "error", err)
+				qb_existing_vals.GetLogger().Error("Error querying existing values", "error", err)
 			} else {
 				// Read the data
 				existing_data, err = pgx.CollectOneRow(rows, pgx.RowToMap)
@@ -353,7 +356,7 @@ func multiUpdate(
 		}
 
 		// Create the query builder for the update and save the values to be updated
-		qb := NewQueryBuilder(log.With("key_fields", where_fields))
+		qb := querybuilder.NewQueryBuilder(log.With("key_fields", where_fields))
 		updated_vals := models.UpdateSuccessItem{
 			WhereFields: map[string]any{},
 			UpdatedValues: map[string]any{},
@@ -376,12 +379,12 @@ func multiUpdate(
 			log_data["success_items"] = append(log_data["success_items"].([]models.UpdateSuccessItem), updated_vals)
 			// If this has history tacking, also save the changed values to the history table
 			if log_history {
-				qb_history := NewQueryBuilder(log)                                                                  // Use a new querybuilder
+				qb_history := querybuilder.NewQueryBuilder(log)                                                                  // Use a new querybuilder
 				user, _ := reqctx.GetUser(ctx) 																								                  // Get the user
 				query_history := qb_history.BuildUpdateHistory(cfg, existing_data, row, user.Username)	            // Build the insert
 				if query_history != "" {
 					_, err := db.Exec(ctx, query_history, qb_history.GetArgs()...)												              // Execute the insert
-					if err != nil { qb_history.logger.Error("Error creating update history records", "error", err) } 	  // Gracefully handle any errors
+					if err != nil { qb_history.GetLogger().Error("Error creating update history records", "error", err) } 	  // Gracefully handle any errors
 				}
 			}
 		} else {
@@ -429,7 +432,7 @@ func multiDelete(
 	if cfg.Soft_delete != nil && *cfg.Soft_delete { soft_delete = true }
 
 	for idx, row := range supplied {
-		where_fields, ok := FindRowKeyFields(row, cfg)
+		where_fields, ok := datamodel.FindRowKeyFields(row, cfg)
 		if !ok {
 			log.Debug("Multi Delete: no key fields found in row", "idx", idx)
 			log_data["failed_items"] = append(log_data["failed_items"].([]models.FailedItem), models.FailedItem{Row: row, Error: "no identifying key (PK or unique key) found in row"})
@@ -443,7 +446,7 @@ func multiDelete(
 			where_set[f] = true
 		}
 
-		qb := NewQueryBuilder(log.With("key_fields", where_fields))
+		qb := querybuilder.NewQueryBuilder(log.With("key_fields", where_fields))
 		deleted_val := models.DeleteSuccessItem{WhereFields: map[string]any{}}
 		for _, f := range where_fields {
 			qb.SetWhereAbsolute(f, row[f])
@@ -453,11 +456,11 @@ func multiDelete(
 		// Update data for history logging
 		existing_data := map[string]any{}
 		if log_history && soft_delete { 
-			desired_fields_for_values := []string{GetHistoryUniqueField(cfg)}
+			desired_fields_for_values := []string{datamodel.GetHistoryUniqueField(cfg)}
 			fmt.Println("Desired field: ", desired_fields_for_values)
 
 			// Create a query builder
-			qb_existing_vals := NewQueryBuilder(log.With("special_logger", "getting historical values including reference", "key_fields", where_fields))
+			qb_existing_vals := querybuilder.NewQueryBuilder(log.With("special_logger", "getting historical values including reference", "key_fields", where_fields))
 
 			// Build the query
 			for k, v := range row { if where_set[k] { qb_existing_vals.SetWhereAbsolute(k, v) } else { desired_fields_for_values = append(desired_fields_for_values, k) }}
@@ -465,9 +468,9 @@ func multiDelete(
 			fmt.Println(query)
 
 			// Execute the query
-			rows, err := db.Query(ctx, query, qb_existing_vals.args...)
+			rows, err := db.Query(ctx, query, qb_existing_vals.GetArgs()...)
 			if err != nil {
-				qb_existing_vals.logger.Error("Error querying existing values", "error", err)
+				qb_existing_vals.GetLogger().Error("Error querying existing values", "error", err)
 			} else {
 				// Read the data
 				existing_data, err = pgx.CollectOneRow(rows, pgx.RowToMap)
@@ -481,17 +484,17 @@ func multiDelete(
 			log_data["success_items"] = append(log_data["success_items"].([]models.DeleteSuccessItem), deleted_val)
 
 			if log_history && soft_delete { 
-				qb_history := NewQueryBuilder(log)                                                                  // Use a new querybuilder
+				qb_history := querybuilder.NewQueryBuilder(log)                                                                  // Use a new querybuilder
 				user, _ := reqctx.GetUser(ctx) 																								                  // Get the user
 				query_history := qb_history.BuildUpdateHistory(cfg, existing_data, map[string]any{"deleted_flag": true}, user.Username)	            // Build the insert
 				if query_history != "" {
 					_, err := db.Exec(ctx, query_history, qb_history.GetArgs()...)												              // Execute the insert
-					if err != nil { qb_history.logger.Error("Error creating update history records", "error", err) } 	  // Gracefully handle any errors
+					if err != nil { qb_history.GetLogger().Error("Error creating update history records", "error", err) } 	  // Gracefully handle any errors
 				}
 			}
 		} else {
 			if err != nil {
-				qb.logger.Error("Error executing delete", "error", err)
+				qb.GetLogger().Error("Error executing delete", "error", err)
 				log_data["failed_items"] = append(log_data["failed_items"].([]models.FailedItem), models.FailedItem{
 					Row: row, Error: "Failed to apply delete to row. Most likely an invalid identifier in row",
 				})

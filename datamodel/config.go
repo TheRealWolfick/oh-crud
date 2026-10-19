@@ -1,4 +1,4 @@
-package tools
+package datamodel
 
 import (
 	"encoding/binary"
@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"gopkg.in/yaml.v3"
 	"lotusforge.au/api-server/models"
+	"lotusforge.au/api-server/tools"
 )
 
 // ── Config loading ────────────────────────────────────────────────────────────
@@ -83,7 +84,7 @@ func ValidateFieldValue(kind FieldKind, raw any) bool {
 	case FieldString:
 		return true
 	case FieldTime:
-		_, err := parseDate(as_string)
+		_, err := tools.ParseDate(as_string)
 		return err == nil
 	case FieldJSON:
 		return json.Valid([]byte(as_string))
@@ -342,7 +343,7 @@ func CoerceType(raw any, type_name string) (any, error) {
 	}
 
 	// Remove any modifiers (supports multiple byte sizes)
-	type_name_clean, type_size, err := extractTypeAndSize(type_name)
+	type_name_clean, type_size, err := tools.ExtractTypeAndSize(type_name)
 	if err != nil { return nil, err }
 
 	switch type_name_clean {
@@ -842,10 +843,10 @@ func DynamicGetDatabaseColumns(cfg *models.DataModel, pk_only bool, req_only boo
 // ConvertFieldJsonSelect returns the SELECT-list expression for a field with a valid
 // json-select abstraction (e.g. "jsonb_array_length(col) AS col"), aliased back to its
 // own JSON key so the response shape is unaffected. Returns ("", false) if no valid
-// abstraction applies. See jsonSelectExpr (queryManager.go) for the WHERE-clause
+// abstraction applies. See JsonSelectExpr (json_select.go) for the WHERE-clause
 // equivalent, which needs the bare expression without the alias.
 func ConvertFieldJsonSelect(cfg *models.DataModelField) (string, bool) {
-	expr, valid := jsonSelectExpr(cfg)
+	expr, valid := JsonSelectExpr(cfg)
 	if !valid { return "", false }
 	return fmt.Sprintf("%s AS %s", expr, *cfg.JSON), true
 }

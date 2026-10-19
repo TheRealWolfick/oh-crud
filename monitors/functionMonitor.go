@@ -4,9 +4,12 @@ import (
 	"net/http"
 
 	"github.com/fsnotify/fsnotify"
+	"lotusforge.au/api-server/datamodel"
+	"lotusforge.au/api-server/events"
 	"lotusforge.au/api-server/handlers"
 	"lotusforge.au/api-server/models"
-	"lotusforge.au/api-server/tools"
+	"lotusforge.au/api-server/queue"
+	"lotusforge.au/api-server/registry"
 )
 
 // FunctionsMonitor watches config/functions/ for changes to declarative
@@ -15,13 +18,13 @@ import (
 // re-registered as an HTTP route via the version-gated HandlerRegistry. Bad
 // updates log loudly and leave the previous version in place.
 func FunctionsMonitor(
-	handlerRegistry *tools.HandlerRegistry,
-	modelRegistry *tools.ModelRegistry,
-	functionRegistry *tools.FunctionRegistry,
+	handlerRegistry *registry.HandlerRegistry,
+	modelRegistry *registry.ModelRegistry,
+	functionRegistry *registry.FunctionRegistry,
 	auth func(http.Handler) http.Handler,
-	qm *tools.QueueManager,
+	qm *queue.QueueManager,
 	server_conf *models.SwappableServerConfig,
-	evh *tools.EventManager,
+	evh *events.EventManager,
 ) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -37,13 +40,13 @@ func FunctionsMonitor(
 				if !ok { return }
 				if !event.Has(fsnotify.Write) { continue }
 
-				fn, err := tools.LoadYAMLIntoModel[models.FunctionDef](event.Name)
+				fn, err := datamodel.LoadYAMLIntoModel[models.FunctionDef](event.Name)
 				if err != nil {
 					qm.Logger.Error("Updated function YAML failed to load; skipping",
 						"file", event.Name, "error", err)
 					continue
 				}
-				if errs := tools.ValidateFunction(fn, modelRegistry); len(errs) > 0 {
+				if errs := registry.ValidateFunction(fn, modelRegistry); len(errs) > 0 {
 					qm.Logger.Error("Updated function YAML failed validation; skipping",
 						"file", event.Name, "errors", errs)
 					continue

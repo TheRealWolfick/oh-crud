@@ -1,10 +1,11 @@
-package tools
+package querybuilder
 
 import (
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"lotusforge.au/api-server/datamodel"
 	"lotusforge.au/api-server/logging"
 	"lotusforge.au/api-server/models"
 )
@@ -46,7 +47,7 @@ func TestJsonSelectExpr(t *testing.T) {
 
 	t.Run("count action on jsonb field produces jsonb_array_length", func(t *testing.T) {
 		field := cfg.Fields["missing_from_supplied"]
-		expr, ok := jsonSelectExpr(&field)
+		expr, ok := datamodel.JsonSelectExpr(&field)
 		if !ok || expr != "jsonb_array_length(missing_from_supplied)" {
 			t.Errorf("expected jsonb_array_length(missing_from_supplied), got %q (ok=%v)", expr, ok)
 		}
@@ -54,7 +55,7 @@ func TestJsonSelectExpr(t *testing.T) {
 
 	t.Run("field without json-select is not abstracted", func(t *testing.T) {
 		field := cfg.Fields["raw_payload"]
-		if _, ok := jsonSelectExpr(&field); ok {
+		if _, ok := datamodel.JsonSelectExpr(&field); ok {
 			t.Errorf("expected no abstraction for a field with no json-select config")
 		}
 	})
@@ -64,7 +65,7 @@ func TestJsonSelectExpr(t *testing.T) {
 			JSON: ptr("count_field"), DB_type: ptr("integer"),
 			JSON_select: &models.DataModelJsonSelect{Action: ptr("count"), ApplyOn: ptr("list"), TreatAs: ptr("int")},
 		}
-		if _, ok := jsonSelectExpr(&field); ok {
+		if _, ok := datamodel.JsonSelectExpr(&field); ok {
 			t.Errorf("expected no abstraction for a non-jsonb db-type")
 		}
 	})
@@ -74,7 +75,7 @@ func TestJsonSelectExpr(t *testing.T) {
 			JSON: ptr("x"), DB_type: ptr("jsonb"),
 			JSON_select: &models.DataModelJsonSelect{Action: ptr("sum"), ApplyOn: ptr("list"), TreatAs: ptr("int")},
 		}
-		if _, ok := jsonSelectExpr(&field); ok {
+		if _, ok := datamodel.JsonSelectExpr(&field); ok {
 			t.Errorf("expected no abstraction for an unsupported action")
 		}
 	})
@@ -84,7 +85,7 @@ func TestConvertFieldJsonSelect(t *testing.T) {
 	cfg := jsonSelectTestModel()
 	field := cfg.Fields["missing_from_supplied"]
 
-	expr, ok := ConvertFieldJsonSelect(&field)
+	expr, ok := datamodel.ConvertFieldJsonSelect(&field)
 	want := "jsonb_array_length(missing_from_supplied) AS missing_from_supplied"
 	if !ok || expr != want {
 		t.Errorf("expected %q, got %q (ok=%v)", want, expr, ok)
@@ -162,7 +163,7 @@ func TestBuildSchema_CopiesDescriptionAndMeta(t *testing.T) {
 
 func TestDynamicGetDatabaseColumns_JsonSelect(t *testing.T) {
 	cfg := jsonSelectTestModel()
-	cols := DynamicGetDatabaseColumns(cfg, false, false)
+	cols := datamodel.DynamicGetDatabaseColumns(cfg, false, false)
 
 	found := false
 	for _, c := range cols {
