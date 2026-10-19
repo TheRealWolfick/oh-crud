@@ -176,7 +176,7 @@ func (ks *KeyStore) Verify(raw string) (*models.Claims, error) {
 	)
 
 	if err != nil { return nil, err }
-	if c.TokenUse != "service" || c.TokenUse != "user" { return nil, errors.New("missing token use") }
+	if c.TokenUse != "service" && c.TokenUse != "user" { return nil, errors.New("missing token use") }
 
 	// Everything all good, return the claims
 	return c, nil
