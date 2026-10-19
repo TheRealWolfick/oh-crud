@@ -38,7 +38,7 @@ func NewSigningKey() (*SigningKey, error) {
 	if err != nil { return nil, err }
 
 	return &SigningKey{
-		KID: "ohc-" + time.Now().UTC().Format("20051201"),
+		KID: "ohc-" + time.Now().UTC().Format("20060102"),
 		Private: priv,
 		Public: pub,
 	}, nil
@@ -206,7 +206,6 @@ func (ks *KeyStore) RefreshKeys() error {
 	for _, k := range keys { 
 		ks.all[k.KID] = &SigningKey{
 			KID: k.KID,
-			Private: tools.Decr,
 		}  
 	}
 

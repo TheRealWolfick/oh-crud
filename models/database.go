@@ -47,7 +47,7 @@ type CommandTag interface {
 	RowsAffected() int64
 }
 
-type DBHandler interface {
+/* type DBHandler interface {
 	DBExecutor
 	DBQueryer
 	DBExecQuery
@@ -55,5 +55,5 @@ type DBHandler interface {
 
 type DBReportable interface {
 	ResultAsJSONString() string
-}
+} */
 
