@@ -22,6 +22,9 @@ import (
 	"lotusforge.au/api-server/schematools"
 )
 
+// Compile-time check that the event manager can be handed to the queue as its publisher
+var _ queue.Publisher = (*events.EventManager)(nil)
+
 func main() {
 	// ---------------------------------------------------------------
 	//                Directories
@@ -61,7 +64,7 @@ func main() {
 	// ---------------------------------------------------------------
 	//                Queue Manager
 	// ---------------------------------------------------------------
-	qm := queue.NewQueue(pool, 5, logger, evh)
+	qm := queue.NewQueue(pool, 5, logger, evh)                                       // evh satisfies queue.Publisher
 
 
 	// ---------------------------------------------------------------

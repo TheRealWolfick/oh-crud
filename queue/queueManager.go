@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"lotusforge.au/api-server/events"
 	"lotusforge.au/api-server/logging"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/reqctx"
@@ -45,7 +44,7 @@ type QueueManager struct {
 	Db             models.DBExecQuery
 	Logger         *slog.Logger
 	mu             sync.Mutex
-	eventHub       *events.EventManager
+	publisher      Publisher
 }
 
 type Worker struct {
@@ -59,7 +58,9 @@ func newWorker(id int) *Worker {
 }
 
 // NewQueue creates a new async task queue with the given number of workers.
-func NewQueue(db models.DBExecQuery, num_workers int, logger *slog.Logger, evh *events.EventManager) *QueueManager {
+func NewQueue(db models.DBExecQuery, num_workers int, logger *slog.Logger, pub Publisher) *QueueManager {
+	if pub == nil { pub = noopPublisher{} }
+
 	workers := make([]*Worker, num_workers)
 	for i := range num_workers {
 		workers[i] = newWorker(i)
@@ -71,12 +72,8 @@ func NewQueue(db models.DBExecQuery, num_workers int, logger *slog.Logger, evh *
 		active_workers: 0,
 		workers_count:  num_workers,
 		Logger:         logger,
-		eventHub:       evh,
+		publisher:      pub,
 	}
-}
-
-func (qm *QueueManager) ReturnTargets() map[string]*events.Instructions {
-	return qm.eventHub.CurrentTargets()
 }
 
 // -----------------------------------------------------------------
@@ -244,12 +241,12 @@ func (qm *QueueManager) getReportableTaskInfo(w *Worker) (map[string]any, int) {
 func (qm *QueueManager) publish(w *Worker) {
 
 	payload, success_count := qm.getReportableTaskInfo(w)
-	qm.eventHub.PublishNoTimestamp(w.TaskActioning.Ctx, w.TaskActioning.TaskType, w.TaskActioning.Status, w.TaskActioning.Topic, payload, success_count)
+	qm.publisher.Publish(w.TaskActioning.Ctx, w.TaskActioning.TaskType, w.TaskActioning.Status, time.Now(), w.TaskActioning.Topic, payload, success_count)
 }
 // This is an internal helper function for publishing an event when there is no worker assigned, 
 // instead utilizing the task directly
 func (qm *QueueManager) publishTask(t *Task) {
-	qm.eventHub.PublishNoTimestamp(t.Ctx, t.TaskType, t.Status, t.Topic, map[string]any{
+	qm.publisher.Publish(t.Ctx, t.TaskType, t.Status, time.Now(), t.Topic, map[string]any{
 		"task_id":       t.TaskID,
 		"task_type":     t.TaskType,
 		"task_start":    t.StartTime,
@@ -257,14 +254,14 @@ func (qm *QueueManager) publishTask(t *Task) {
 	}, 0)
 }
 func (qm *QueueManager) publishTaskQueued(t *Task) {
-	qm.eventHub.PublishNoTimestamp(t.Ctx, t.TaskType, t.Status, t.Topic, map[string]any{
+	qm.publisher.Publish(t.Ctx, t.TaskType, t.Status, time.Now(), t.Topic, map[string]any{
 		"task_id":       t.TaskID,
 		"task_type":     t.TaskType,
 		"task_status":   t.Status,
 	}, 0)
 }
 func (qm *QueueManager) publishTaskStart(t *Task) {
-	qm.eventHub.PublishNoTimestamp(t.Ctx, t.TaskType, t.Status, t.Topic, map[string]any{
+	qm.publisher.Publish(t.Ctx, t.TaskType, t.Status, time.Now(), t.Topic, map[string]any{
 		"task_id":       t.TaskID,
 		"task_type":     t.TaskType,
 		"task_status":   t.Status,
@@ -272,7 +269,7 @@ func (qm *QueueManager) publishTaskStart(t *Task) {
 	}, 0)
 }
 func (qm *QueueManager) publishTaskSuccess(t *Task) {
-	qm.eventHub.Publish(t.Ctx, t.TaskType, t.Status, t.CompleteTime, t.Topic, map[string]any{
+	qm.publisher.Publish(t.Ctx, t.TaskType, t.Status, t.CompleteTime, t.Topic, map[string]any{
 		"task_id":       t.TaskID,
 		"task_type":     t.TaskType,
 		"start_time":    t.StartTime.String(),
@@ -282,7 +279,7 @@ func (qm *QueueManager) publishTaskSuccess(t *Task) {
 	}, t.Response["success_count"].(int))
 }
 func (qm *QueueManager) publishTaskWarn(t *Task) {
-	qm.eventHub.Publish(t.Ctx, t.TaskType, t.Status, t.CompleteTime, t.Topic, map[string]any{
+	qm.publisher.Publish(t.Ctx, t.TaskType, t.Status, t.CompleteTime, t.Topic, map[string]any{
 		"task_id":       t.TaskID,
 		"task_type":     t.TaskType,
 		"task_status":   t.Status,
@@ -293,7 +290,7 @@ func (qm *QueueManager) publishTaskWarn(t *Task) {
 	}, t.Response["success_count"].(int))
 }
 func (qm *QueueManager) publishTaskFail(t *Task) {
-	qm.eventHub.Publish(t.Ctx, t.TaskType, t.Status, t.CompleteTime, t.Topic, map[string]any{
+	qm.publisher.Publish(t.Ctx, t.TaskType, t.Status, t.CompleteTime, t.Topic, map[string]any{
 		"task_id":       t.TaskID,
 		"task_type":     t.TaskType,
 		"task_status":   t.Status,
@@ -303,7 +300,7 @@ func (qm *QueueManager) publishTaskFail(t *Task) {
 	}, 0)
 }
 func (qm *QueueManager) publishTaskError(t *Task) {
-	qm.eventHub.PublishNoTimestamp(t.Ctx, t.TaskType, t.Status, t.Topic, map[string]any{
+	qm.publisher.Publish(t.Ctx, t.TaskType, t.Status, time.Now(), t.Topic, map[string]any{
 		"task_id":       t.TaskID,
 		"task_type":     t.TaskType,
 		"task_status":   t.Status,
