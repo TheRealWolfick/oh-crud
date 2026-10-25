@@ -13,7 +13,7 @@ type Jwk struct {
 
 type Claims struct {
 	TokenUse  string    `json:"token_use"`   // Service or user
-	Roles     []string  `json:"roles"`
+	Roles     []string  `json:"roles,omitempty"`
 	SID       string    `json:"sid,omitempty"`  // login session - user ID
 	AMR       []string  `json:"amr,omitempty"`  // How the user authenticated
 	jwt.RegisteredClaims
