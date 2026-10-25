@@ -42,6 +42,11 @@ type DBExecQuery interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 }
 
+type DBTxBeginner interface {
+	DBExecQuery
+	Begin(ctx context.Context) (pgx.Tx, error)
+}
+
 // CommandTag interface to abstract the database command tag
 type CommandTag interface {
 	RowsAffected() int64

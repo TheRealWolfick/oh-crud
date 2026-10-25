@@ -12,8 +12,8 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"lotusforge.au/api-server/models"
+	"lotusforge.au/api-server/reqctx"
 	"lotusforge.au/api-server/secrets"
 )
 
@@ -30,7 +30,7 @@ type KeyStore struct {
 	all      map[string]*SigningKey
 	issuer   string
 	audience string
-	db       models.DBExecQuery
+	db       models.DBTxBeginner
 	master   []byte
 }
 
@@ -40,15 +40,30 @@ func NewSigningKey() (*SigningKey, error) {
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil { return nil, err }
 
+	mod, _ := secrets.RandomString(6)
+
 	return &SigningKey{
-		KID: "ohc-" + time.Now().UTC().Format("20060102"),
+		KID: "ohc-" + time.Now().UTC().Format("20060102") + "-" + mod,
 		Private: priv,
 		Public: pub,
 	}, nil
 }
 
+func ValidateSigningKey(k *SigningKey) bool {
+	// Ensure all fields present
+	if k.KID == "" || k.Public == nil || k.Private == nil { return false }
+
+	// Ensure key pairs match
+	if !k.Private.Public().(ed25519.PublicKey).Equal(k.Public) { return false }
+
+	// Ensure length is proper
+	if len(k.Public) != ed25519.PublicKeySize || len(k.Private) != ed25519.PrivateKeySize { return false }
+
+	return true
+} 
+
 // Create a new keystore
-func NewKeyStore(issuer string, audience string, db models.DBExecQuery, master []byte) *KeyStore {
+func NewKeyStore(issuer string, audience string, db models.DBTxBeginner, master []byte) *KeyStore {
 	return &KeyStore{
 		active: nil,
 		all: map[string]*SigningKey{},
@@ -82,31 +97,82 @@ func (ks *KeyStore) Lookup(kid string) (*SigningKey, bool) {
 // Publish adds a key to the JWKS without signing with it
 // Does this need an error / prevention of overriding a key?
 func (ks *KeyStore) Publish(k *SigningKey) {
-	ks.mu.RLock()
-	defer ks.mu.RUnlock()
+	// Ensure signing key is valid
+	if !ValidateSigningKey(k) { 
+		lg, ok := reqctx.GetLogger(context.Background())
+		if ok { lg.Error("Publish signing key: Key is invalid") }
+		return 
+	}
+
+	// Encrypt and add the key to the database
+	priv_sealed, err := secrets.Encrypt(ks.master, k.Private, []byte(k.KID))
+	if err != nil { 
+		lg, ok := reqctx.GetLogger(context.Background())
+		if ok { lg.Error("Failed to encrypt key", "error", err.Error()) }
+		return 
+	}
+
+	qry := `INSERT INTO signing_keys(kid, public_key, private_key, status) VALUES ( $1, $2, $3, $4 )`
+
+	cmd, err := ks.db.Exec(context.Background(), qry, k.KID, k.Public, priv_sealed, "next")
+	if err != nil {
+		lg, ok := reqctx.GetLogger(context.Background())
+		if ok { lg.Error("Key wasn't saved", "error", err.Error()) }
+		return 
+	}
+	if cmd.RowsAffected() != 1 {
+		lg, ok := reqctx.GetLogger(context.Background())
+		if ok { lg.Error("Key wasn't saved") }
+		return 
+	}
+
+	ks.mu.Lock()
+	defer ks.mu.Unlock()
+
 	ks.all[k.KID] = k
 }
 
-// Activate moves a published key into an active state
-// It returns the success or failure
-func (ks *KeyStore) Activate(kid string) bool {
-	ks.mu.RLock()
-	defer ks.mu.RUnlock()
+// Activate moves a published key into the active state and retires the current one.
+// Both status changes run in one transaction, so the database is never left without an active key.
+// The retiring key stays in the JWKS so tokens it already signed still verify.
+func (ks *KeyStore) Activate(ctx context.Context, kid string) error {
+	ks.mu.Lock()
+	defer ks.mu.Unlock()
 
 	k, ok := ks.all[kid]
-	if !ok { return false }
+	if !ok { return fmt.Errorf("activate: unknown kid %s", kid) }
 
+	tx, err := ks.db.Begin(ctx)
+	if err != nil { return fmt.Errorf("activate: begin: %w", err) }
+	// Does nothing once Commit has succeeded, so it's safe to always defer
+	defer tx.Rollback(ctx)
+
+	// Retire the current key, if there is one
+	if ks.active != nil {
+		cmd, err := tx.Exec(ctx, `UPDATE signing_keys SET status = 'retiring', retired_at = now() WHERE kid = $1`, ks.active.KID)
+		if err != nil { return fmt.Errorf("activate: retire %s: %w", ks.active.KID, err) }
+		if cmd.RowsAffected() != 1 { return fmt.Errorf("activate: retire %s: row not found", ks.active.KID) }
+	}
+
+	// Activate the new key
+	cmd, err := tx.Exec(ctx, `UPDATE signing_keys SET status = 'active', activated_at = now() WHERE kid = $1`, k.KID)
+	if err != nil { return fmt.Errorf("activate: %s: %w", k.KID, err) }
+	if cmd.RowsAffected() != 1 { return fmt.Errorf("activate: %s: row not found", k.KID) }
+
+	if err := tx.Commit(ctx); err != nil { return fmt.Errorf("activate: commit: %w", err) }
+
+	// Change memory only after the commit worked
 	ks.active = k
-	return true
+	return nil
 }
 
 // Delete removes a key from the JWKS and prevents it from
 // activating anything
 func (ks *KeyStore) Delete(kid string) {
-	ks.mu.RLock()
-	defer ks.mu.RUnlock()
+	ks.mu.Lock()
+	defer ks.mu.Unlock()
 
-  delete(ks.all, kid)
+	delete(ks.all, kid)
 }
 
 
@@ -117,7 +183,7 @@ func (ks *KeyStore) JWKS() []models.Jwk {
 
 	// Make the jwks structure
 	keys := make([]models.Jwk, 0, len(ks.all))
-  
+
 	// Append all the keys
 	for _, k := range ks.all {
 		keys = append(keys, models.Jwk{
@@ -139,15 +205,15 @@ func (ks *KeyStore) Issue(c models.Claims, ttl time.Duration) (string, error) {
 	k := ks.active
 	if k == nil || k.Private == nil { return "", errors.New("No active signing key") }
 
-  now := time.Now()
+	now := time.Now()
 	c.Issuer = ks.issuer
-  c.Audience = jwt.ClaimStrings{ks.audience}
+	c.Audience = jwt.ClaimStrings{ks.audience}
 	c.IssuedAt = jwt.NewNumericDate(now)
 	c.NotBefore = jwt.NewNumericDate(now)
 	c.ExpiresAt = jwt.NewNumericDate(now.Add(ttl))
-  c.ID        = uuid.NewString()
+	c.ID        = uuid.NewString()
 
-  t := jwt.NewWithClaims(jwt.SigningMethodEdDSA, c)
+	t := jwt.NewWithClaims(jwt.SigningMethodEdDSA, c)
 	t.Header["kid"] = k.KID
 	t.Header["typ"] = "at+jwt"
 
@@ -192,9 +258,9 @@ func (ks *KeyStore) Verify(raw string) (*models.Claims, error) {
 // Safe to call at startup and on a timer. On any error the current keys are kept.
 func (ks *KeyStore) RefreshKeys(ctx context.Context) error {
 	rows, err := ks.db.Query(ctx, `
-		SELECT kid, public_key, private_key, status
-		FROM signing_keys
-		WHERE status IN ('next', 'active', 'retiring')`)
+	SELECT kid, public_key, private_key, status
+	FROM signing_keys
+	WHERE status IN ('next', 'active', 'retiring')`)
 	if err != nil {
 		return fmt.Errorf("query signing keys: %w", err)
 	}
@@ -203,40 +269,47 @@ func (ks *KeyStore) RefreshKeys(ctx context.Context) error {
 	all := make(map[string]*SigningKey)
 	var active *SigningKey
 
+	// For each row
 	for rows.Next() {
+		// Declare variables
 		var kid, status string
 		var pub, encrypted []byte
+
+		// Scan the row into the variables
 		if err := rows.Scan(&kid, &pub, &encrypted, &status); err != nil {
 			return fmt.Errorf("scan signing key: %w", err)
 		}
 
+		// Decrypt the private key
 		priv, err := secrets.Decrypt(ks.master, encrypted, []byte(kid))
-		if err != nil {
-			return fmt.Errorf("decrypt signing key %s (wrong master key or tampered row): %w", kid, err)
-		}
+		if err != nil { return fmt.Errorf("decrypt signing key %s (wrong master key or tampered row): %w", kid, err) }
 		if len(pub) != ed25519.PublicKeySize || len(priv) != ed25519.PrivateKeySize {
 			return fmt.Errorf("signing key %s has the wrong size", kid)
 		}
+
+		// Create the decrypted key construct.
 		k := &SigningKey{KID: kid, Public: ed25519.PublicKey(pub), Private: ed25519.PrivateKey(priv)}
 		if !k.Private.Public().(ed25519.PublicKey).Equal(k.Public) {
 			return fmt.Errorf("signing key %s: private and public halves don't match", kid)
 		}
 
+		// Add the signing key to the JWKS keystore staging
 		all[kid] = k
+
+		// Action the active key (assign active, throw error if active already has an assignment)
 		if status == "active" {
-			if active != nil {
-				return errors.New("more than one active signing key")
-			}
+			if active != nil { return errors.New("more than one active signing key") }
 			active = k
 		}
 	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("read signing keys: %w", err)
-	}
-	if active == nil {
-		return errors.New("no active key")
-	}
 
+	// Row reading error`
+	if err := rows.Err(); err != nil { return fmt.Errorf("read signing keys: %w", err) }
+
+	// No active error
+	if active == nil { return errors.New("no active key") }
+
+	// Move staging into the JWKS
 	ks.mu.Lock()
 	ks.all, ks.active = all, active
 	ks.mu.Unlock()
