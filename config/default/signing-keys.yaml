@@ -15,13 +15,19 @@ fields:
     db-type: character varying(32)
     json: kid
   public_key:
-    type: byte(32)
+    type: byte
     db-type: bytea
     json: public_key
+    rules:
+      min: 32
+      max: 32
   private_key:
-    type: byte(32)
+    type: byte
     db-type: bytea
     json: public_key
+    rules:
+      min: 32
+      max: 32
   status:
     type: string
     db-type: character varying(15)

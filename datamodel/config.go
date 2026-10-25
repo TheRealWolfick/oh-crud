@@ -52,11 +52,12 @@ const (
 	FieldTime   FieldKind = "time"
 	FieldJSON   FieldKind = "json"
 	FieldUUID   FieldKind = "uuid"
+	FieldByte   FieldKind = "byte"
 )
 
 func DecodeFieldType(typ string) (FieldKind, error) {
 	switch FieldKind(typ) {
-	case FieldInt, FieldFloat, FieldString, FieldBool, FieldTime, FieldJSON, FieldUUID:
+	case FieldInt, FieldFloat, FieldString, FieldBool, FieldTime, FieldJSON, FieldUUID, FieldByte:
 		return FieldKind(typ), nil
 	}
 	return "", fmt.Errorf("Unsupported data format %s", typ)
@@ -91,6 +92,8 @@ func ValidateFieldValue(kind FieldKind, raw any) bool {
 	case FieldUUID:
 		_, err := uuid.Parse(as_string)
 		return err == nil
+	case FieldByte:
+		return true
 	}
 	return false
 }
@@ -299,6 +302,8 @@ func DecodeAndCoerceFromUser(raw map[string]any, cfg *models.DataModel) (map[str
 				rule_errs, valid = ValidateIntRules(field_name, coerced_val.(int), field_cfg.Rules)
 			case "string":
 				rule_errs, valid = ValidateStringRules(field_name, coerced_val.(string), field_cfg.Rules)
+			case "byte":
+				rule_errs, valid = ValidateByteRules(field_name, coerced_val.([]byte), field_cfg.Rules)
 			default:
 				valid = true
 			}
@@ -525,53 +530,53 @@ case [16]byte:
 ), nil
 		}
 
-case "byte":
-	switch v := raw.(type) {
-	case string:
-		if v == "" { return nil, nil }
-		if type_size > 0 {
-			// Validate that the data is of the correct size
-			// Early exit on something being blatantly too large
-			if len(v) > type_size { return nil, fmt.Errorf("Data too large for byte size") }
+	case "byte":
+		switch v := raw.(type) {
+		case string:
+			if v == "" { return nil, nil }
+			if type_size > 0 {
+				// Validate that the data is of the correct size
+				// Early exit on something being blatantly too large
+				if len(v) > type_size { return nil, fmt.Errorf("Data too large for byte size") }
 
-			// Data should fit, make and return it
-			buffer := make([]byte, type_size)
-			copy(buffer, []byte(v))
-			return buffer, nil
+				// Data should fit, make and return it
+				buffer := make([]byte, type_size)
+				copy(buffer, []byte(v))
+				return buffer, nil
 
-		} else if type_size == -1 {
-			// Undefined size, return as is
-			return []byte(v), nil
+			} else if type_size == -1 {
+				// Undefined size, return as is
+				return []byte(v), nil
+			}
+
+		case pgtype.UndecodedBytes:
+			if type_size > 0 {
+				if len(v) > type_size { return nil, fmt.Errorf("Byte of type UndecodedBytes was too large, could not convert") }
+
+				// Make and return the data
+				buffer := make([]byte, type_size)
+				copy(buffer, []byte(v))
+				return buffer, nil
+
+			} else if type_size == -1 {
+				// Undefined size, return as is
+				return v, nil
+			}
+
+		case int:
+			if type_size > 0 {
+				buffer := make([]byte, type_size)
+				binary.BigEndian.PutUint64(buffer, uint64(v))
+				return buffer, nil
+			} else if type_size == -1 {
+				return new(big.Int).SetInt64(int64(v)).Bytes(), nil
+			}
+
 		}
-
-	case pgtype.UndecodedBytes:
-		if type_size > 0 {
-			if len(v) > type_size { return nil, fmt.Errorf("Byte of type UndecodedBytes was too large, could not convert") }
-
-			// Make and return the data
-			buffer := make([]byte, type_size)
-			copy(buffer, []byte(v))
-			return buffer, nil
-
-		} else if type_size == -1 {
-			// Undefined size, return as is
-			return v, nil
-		}
-
-	case int:
-		if type_size > 0 {
-			buffer := make([]byte, type_size)
-			binary.BigEndian.PutUint64(buffer, uint64(v))
-			return buffer, nil
-		} else if type_size == -1 {
-			return new(big.Int).SetInt64(int64(v)).Bytes(), nil
-		}
-
 	}
-}
 
 
-return nil, fmt.Errorf("could not convert %v (%T) into type %s", raw, raw, type_name)
+	return nil, fmt.Errorf("could not convert %v (%T) into type %s", raw, raw, type_name)
 }
 
 // ── Version management ────────────────────────────────────────────────────────
@@ -649,6 +654,7 @@ func ValidateDataModel(m models.DataModel) error {
 	validTypes := map[string]bool{
 		"int": true, "float": true, "string": true,
 		"bool": true, "json": true, "time": true, "uuid": true,
+		"byte": true,
 	}
 	validDBTypes := map[string]bool{
 		"int": true, "integer": true, "bigint": true, "smallint": true,

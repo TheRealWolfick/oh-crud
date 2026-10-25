@@ -68,15 +68,6 @@ func main() {
 
 
 	// ---------------------------------------------------------------
-	//                JWKS Store
-	// ---------------------------------------------------------------
-	if os.Getenv("OH_CRUD_SECRET") == "" { logger.Error("Must set the OH_CRUD_SECRET environment variable"); os.Exit(1) }
-	if len([]byte(os.Getenv("OH_CRUD_SECRET"))) != 32 { logger.Error("OH_CRUD_SECRET must be 32 bytes"); os.Exit(1) }
-	ks := auth.NewKeyStore("https://ohcrud.internal", "oh-crud", pool, []byte(os.Getenv("OH_CRUD_SECRET")))            // Create the keystore
-	if err := ks.RefreshKeys(context.Background()); err != nil { logger.Error(err.Error()); os.Exit(1) }    // Load the keys
-
-
-	// ---------------------------------------------------------------
 	//                Server Config Loading
 	// ---------------------------------------------------------------
 	intial_server_conf, err := datamodel.LoadYAMLIntoModel[models.ServerConfig]("./config/server/server.yaml")
@@ -97,6 +88,15 @@ func main() {
 	// Destructive changes are recorded in the gate and blocked until manually approved.
 	gate := schematools.NewPendingApprovalGate()
 	schematools.BootstrapModels(context.Background(), pool, all_models, logger, gate)
+
+
+	// ---------------------------------------------------------------
+	//                JWKS Store
+	// ---------------------------------------------------------------
+	if os.Getenv("OH_CRUD_SECRET") == "" { logger.Error("Must set the OH_CRUD_SECRET environment variable"); os.Exit(1) }
+	if len([]byte(os.Getenv("OH_CRUD_SECRET"))) != 32 { logger.Error("OH_CRUD_SECRET must be 32 bytes", "len", len([]byte(os.Getenv("OH_CRUD_SECRET")))); os.Exit(1) }
+	ks := auth.NewKeyStore("https://ohcrud.internal", "oh-crud", pool, []byte(os.Getenv("OH_CRUD_SECRET")))            // Create the keystore
+	if err := ks.RefreshKeys(context.Background()); err != nil { logger.Error(err.Error()); os.Exit(1) }    // Load the keys
 
 
 	// ---------------------------------------------------------------

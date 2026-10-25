@@ -110,3 +110,38 @@ func ValidateFloatRules(field_name string, coerced_data float64, field_rules *mo
 	if len(errors) > 0 {return strings.Join(errors, ", "), false}
 	return "", true
 }
+
+
+// Validate that a byte field is valid based on its rules
+func ValidateByteRules(field_name string, coerced_data []byte, field_rules *models.DataModelFieldRules) (string, bool) {
+	errors := []string{}
+
+	// Test min
+  if field_rules.Min != nil {
+		if len(coerced_data) < *field_rules.Min {
+			errors = append(errors, fmt.Sprintf("Field {%s} violated minimum of {%v}", field_name, *field_rules.Min)) 
+		}
+	}
+
+	// Test max
+  if field_rules.Max != nil {
+		if len(coerced_data) > *field_rules.Max {
+			errors = append(errors, fmt.Sprintf("Field {%s} violated maximum of {%v}", field_name, *field_rules.Max)) 
+		}
+	}
+
+	// Test enum
+	if field_rules.Enum != nil {
+		matched := slices.ContainsFunc(field_rules.Enum, func(v string) bool {
+			as_int, err := strconv.Atoi(v)
+			if err != nil {return false}
+			return len(coerced_data) == int(as_int)
+		})
+		if !matched {
+			errors = append(errors, fmt.Sprintf(`Field {%s} is not a valid value. Allowed values: [%s]"`, field_name, strings.Join(field_rules.Enum, ", "))) 
+		}
+	}
+
+	if len(errors) > 0 {return strings.Join(errors, ", "), false}
+	return "", true
+}
