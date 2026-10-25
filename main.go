@@ -159,7 +159,7 @@ func main() {
 	// ---------------------------------------------------------------
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("OK")) })
 	mux.Handle("GET /openapi.json", handlers.NewOpenAPIHandler(modelRegister, functionRegister))
-	mux.Handle("GET /.well-known/jwks.json", handlers.NewKeystoreHandler(ks))
+	mux.Handle("GET /.well-known/jwks.json", handlers.JWKSHandler(ks))
 
 
 	// ---------------------------------------------------------------

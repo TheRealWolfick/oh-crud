@@ -4,6 +4,8 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 )
 
@@ -42,4 +44,11 @@ func Decrypt(master_key []byte, encrypted []byte, auth_key []byte) ([]byte, erro
 
 	// Decript and return
 	return gcm.Open(nil, encrypted[:nonce_size], encrypted[nonce_size:], auth_key)
+}
+
+
+// Encode a function into a sha256 hex string
+func sha256Hex(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])
 }
