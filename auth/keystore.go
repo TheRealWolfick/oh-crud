@@ -13,7 +13,6 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"lotusforge.au/api-server/models"
-	"lotusforge.au/api-server/reqctx"
 	"lotusforge.au/api-server/secrets"
 )
 
@@ -94,42 +93,36 @@ func (ks *KeyStore) Lookup(kid string) (*SigningKey, bool) {
 }
 
 
-// Publish adds a key to the JWKS without signing with it
-// Does this need an error / prevention of overriding a key?
-func (ks *KeyStore) Publish(k *SigningKey) {
+// insertKey validates, encrypts and saves a key to the database with the given status.
+// It only touches the database, so callers decide when the key goes into memory.
+func (ks *KeyStore) insertKey(ctx context.Context, k *SigningKey, status string) error {
 	// Ensure signing key is valid
-	if !ValidateSigningKey(k) { 
-		lg, ok := reqctx.GetLogger(context.Background())
-		if ok { lg.Error("Publish signing key: Key is invalid") }
-		return 
-	}
+	if !ValidateSigningKey(k) { return errors.New("invalid signing key") }
 
 	// Encrypt and add the key to the database
 	priv_sealed, err := secrets.Encrypt(ks.master, k.Private, []byte(k.KID))
-	if err != nil { 
-		lg, ok := reqctx.GetLogger(context.Background())
-		if ok { lg.Error("Failed to encrypt key", "error", err.Error()) }
-		return 
-	}
+	if err != nil { return fmt.Errorf("encrypt %s: %w", k.KID, err) }
 
-	qry := `INSERT INTO signing_keys(kid, public_key, private_key, status) VALUES ( $1, $2, $3, $4 )`
+	// activated_at is only stamped when the key goes straight in as active
+	qry := `INSERT INTO signing_keys(kid, public_key, private_key, status, activated_at)
+	VALUES ( $1, $2, $3, $4::varchar, CASE WHEN $4::varchar = 'active' THEN now() END )`
 
-	cmd, err := ks.db.Exec(context.Background(), qry, k.KID, k.Public, priv_sealed, "next")
-	if err != nil {
-		lg, ok := reqctx.GetLogger(context.Background())
-		if ok { lg.Error("Key wasn't saved", "error", err.Error()) }
-		return 
-	}
-	if cmd.RowsAffected() != 1 {
-		lg, ok := reqctx.GetLogger(context.Background())
-		if ok { lg.Error("Key wasn't saved") }
-		return 
-	}
+	cmd, err := ks.db.Exec(ctx, qry, k.KID, k.Public, priv_sealed, status)
+	if err != nil { return fmt.Errorf("save %s: %w", k.KID, err) }
+	if cmd.RowsAffected() != 1 { return fmt.Errorf("save %s: row not inserted", k.KID) }
+	return nil
+}
+
+// Publish saves a key to the database as 'next' and adds it to the JWKS without signing with it.
+// The JWKS is only changed once the insert succeeds.
+func (ks *KeyStore) Publish(ctx context.Context, k *SigningKey) error {
+	if err := ks.insertKey(ctx, k, "next"); err != nil { return fmt.Errorf("publish: %w", err) }
 
 	ks.mu.Lock()
 	defer ks.mu.Unlock()
 
 	ks.all[k.KID] = k
+	return nil
 }
 
 // Activate moves a published key into the active state and retires the current one.
@@ -305,6 +298,19 @@ func (ks *KeyStore) RefreshKeys(ctx context.Context) error {
 
 	// Row reading error`
 	if err := rows.Err(); err != nil { return fmt.Errorf("read signing keys: %w", err) }
+
+	// Nothing in the key store, so create a key straight into the active state (there is nothing to retire).
+	// Only the database is written here; memory changes at the swap below, so an error keeps the current keys.
+	if len(all) == 0 {
+		// Keys already loaded means the table was emptied under us (wipe, restore, wrong database).
+		// Keep serving with the current keys rather than replacing them.
+		if ks.Active() != nil { return errors.New("signing_keys is empty but keys are loaded; keeping current keys") }
+
+		key, err := NewSigningKey()
+		if err != nil { return fmt.Errorf("bootstrap signing key: %w", err) }
+		if err := ks.insertKey(ctx, key, "active"); err != nil { return fmt.Errorf("bootstrap signing key: %w", err) }
+		all[key.KID], active = key, key
+	}
 
 	// No active error
 	if active == nil { return errors.New("no active key") }

@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"crypto/ed25519"
 	"errors"
 	"strings"
 	"testing"
@@ -29,11 +30,20 @@ func newTestKey(t *testing.T) *SigningKey {
 	return k
 }
 
+func mustPublish(t *testing.T, ks *KeyStore, k *SigningKey) {
+	t.Helper()
+	if err := ks.Publish(context.Background(), k); err != nil {
+		t.Fatalf("Publish %s: %v", k.KID, err)
+	}
+}
+
 func TestKeyStorePublish(t *testing.T) {
 	ks, fake_db := newTestKeyStore(t)
 	k := newTestKey(t)
 
-	ks.Publish(k)
+	if err := ks.Publish(context.Background(), k); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
 
 	if _, found := ks.Lookup(k.KID); !found {
 		t.Fatalf("Expected %s to be published", k.KID)
@@ -49,7 +59,9 @@ func TestKeyStorePublishNotSaved(t *testing.T) {
 	fake_db.ExecErr = errors.New("db down")
 	k := newTestKey(t)
 
-	ks.Publish(k)
+	if err := ks.Publish(context.Background(), k); err == nil {
+		t.Errorf("Expected an error when the insert fails")
+	}
 
 	if _, found := ks.Lookup(k.KID); found {
 		t.Errorf("Key should not be published when the insert fails")
@@ -59,8 +71,8 @@ func TestKeyStorePublishNotSaved(t *testing.T) {
 func TestKeyStoreActivate(t *testing.T) {
 	ks, fake_db := newTestKeyStore(t)
 	first, second := newTestKey(t), newTestKey(t)
-	ks.Publish(first)
-	ks.Publish(second)
+	mustPublish(t, ks, first)
+	mustPublish(t, ks, second)
 
 	if err := ks.Activate(context.Background(), first.KID); err != nil {
 		t.Fatalf("Activate first: %v", err)
@@ -84,7 +96,7 @@ func TestKeyStoreActivate(t *testing.T) {
 func TestKeyStoreActivateCommitFails(t *testing.T) {
 	ks, fake_db := newTestKeyStore(t)
 	k := newTestKey(t)
-	ks.Publish(k)
+	mustPublish(t, ks, k)
 	fake_db.CommitErr = errors.New("commit failed")
 
 	if err := ks.Activate(context.Background(), k.KID); err == nil {
@@ -124,6 +136,96 @@ func TestKeyStoreRefreshKeysReadError(t *testing.T) {
 	}
 	if ks.Active() != nil {
 		t.Errorf("Keys must not be swapped in after a read error")
+	}
+}
+
+func TestKeyStorePublishInvalidKey(t *testing.T) {
+	ks, fake_db := newTestKeyStore(t)
+	k := newTestKey(t)
+	k.Public = newTestKey(t).Public
+
+	if err := ks.Publish(context.Background(), k); err == nil {
+		t.Fatalf("Expected an error for mismatched key halves")
+	}
+	if len(fake_db.Calls) != 0 {
+		t.Errorf("Invalid key must not reach the database, got %+v", fake_db.Calls)
+	}
+}
+
+// fakeSigningKeysTable makes Exec store inserted keys and status changes in the
+// FakeDB's query rows, so a later RefreshKeys reads back what was written
+func fakeSigningKeysTable(fake_db *modelstest.FakeDB) {
+	fake_db.ExecFunc = func(sql string, args []any) (pgconn.CommandTag, error) {
+		switch {
+		case strings.Contains(sql, "INSERT INTO signing_keys"):
+			pub := args[1].(ed25519.PublicKey)
+			fake_db.Rows.Data = append(fake_db.Rows.Data, []any{args[0], []byte(pub), args[2], args[3]})
+			return pgconn.NewCommandTag("INSERT 0 1"), nil
+		case strings.Contains(sql, "status = 'active'"):
+			for _, row := range fake_db.Rows.Data {
+				if row[0] == args[0] {
+					row[3] = "active"
+					return pgconn.NewCommandTag("UPDATE 1"), nil
+				}
+			}
+		}
+		return pgconn.NewCommandTag("UPDATE 0"), nil
+	}
+}
+
+func TestKeyStoreRefreshKeysEmptyCreatesKey(t *testing.T) {
+	ks, fake_db := newTestKeyStore(t)
+	fakeSigningKeysTable(fake_db)
+
+	if err := ks.RefreshKeys(context.Background()); err != nil {
+		t.Fatalf("RefreshKeys on an empty table: %v", err)
+	}
+	active := ks.Active()
+	if active == nil {
+		t.Fatalf("Expected a key to be created and activated")
+	}
+	if _, found := ks.Lookup(active.KID); !found || len(ks.JWKS()) != 1 {
+		t.Errorf("Expected only %s in the JWKS, got %+v", active.KID, ks.JWKS())
+	}
+	if len(fake_db.Rows.Data) != 1 || fake_db.Rows.Data[0][3] != "active" {
+		t.Errorf("Expected one active row in the database, got %+v", fake_db.Rows.Data)
+	}
+}
+
+func TestKeyStoreRefreshKeysEmptyInsertFails(t *testing.T) {
+	ks, fake_db := newTestKeyStore(t)
+	fake_db.ExecErr = errors.New("db down")
+
+	if err := ks.RefreshKeys(context.Background()); err == nil {
+		t.Fatalf("Expected an error when the bootstrap insert fails")
+	}
+	if ks.Active() != nil || len(ks.JWKS()) != 0 {
+		t.Errorf("Keys must not change when the bootstrap insert fails")
+	}
+}
+
+func TestKeyStoreRefreshKeysEmptyWhileLoaded(t *testing.T) {
+	ks, fake_db := newTestKeyStore(t)
+	loaded := newTestKey(t)
+	fake_db.Rows.Data = [][]any{keyRow(t, loaded, "active")}
+	if err := ks.RefreshKeys(context.Background()); err != nil {
+		t.Fatalf("RefreshKeys: %v", err)
+	}
+
+	// The table is emptied while the server is running
+	fake_db.Rows.Data = nil
+	fake_db.Calls = nil
+
+	if err := ks.RefreshKeys(context.Background()); err == nil {
+		t.Fatalf("Expected an error when the table empties while keys are loaded")
+	}
+	if got := ks.Active(); got == nil || got.KID != loaded.KID || len(ks.JWKS()) != 1 {
+		t.Errorf("Expected the loaded key %s to be kept, got %+v", loaded.KID, got)
+	}
+	for _, c := range fake_db.Calls {
+		if c.Method == "Exec" {
+			t.Errorf("No key should be created while keys are loaded, got %s", c.SQL)
+		}
 	}
 }
 
