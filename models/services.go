@@ -34,8 +34,3 @@ type ReplayCache interface {
 	Remember(jti string, until time.Time) bool
 }
 
-type Auth struct {
-	DB        ServiceStore
-	TokenURL  string
-	Replay    ReplayCache
-}
