@@ -70,8 +70,9 @@ func main() {
 	// ---------------------------------------------------------------
 	//                JWKS Store
 	// ---------------------------------------------------------------
-	ks := auth.NewKeyStore("https://ohcrud.internal", "oh-crud", pool)            // Create the keystore
-	if err := ks.RefreshKeys(); err != nil { logger.Error(err.Error()); os.Exit(1) }    // Load the keys
+	if os.Getenv("OH_CRUD_SECRET") == "" { logger.Error("Must set the OH_CRUD_SECRET environment variable"); os.Exit(1) }
+	ks := auth.NewKeyStore("https://ohcrud.internal", "oh-crud", pool, []byte(os.Getenv("OH_CRUD_SECRET")))            // Create the keystore
+	if err := ks.RefreshKeys(context.Background()); err != nil { logger.Error(err.Error()); os.Exit(1) }    // Load the keys
 
 
 	// ---------------------------------------------------------------
