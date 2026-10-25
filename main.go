@@ -71,6 +71,7 @@ func main() {
 	//                JWKS Store
 	// ---------------------------------------------------------------
 	if os.Getenv("OH_CRUD_SECRET") == "" { logger.Error("Must set the OH_CRUD_SECRET environment variable"); os.Exit(1) }
+	if len([]byte(os.Getenv("OH_CRUD_SECRET"))) != 32 { logger.Error("OH_CRUD_SECRET must be 32 bytes"); os.Exit(1) }
 	ks := auth.NewKeyStore("https://ohcrud.internal", "oh-crud", pool, []byte(os.Getenv("OH_CRUD_SECRET")))            // Create the keystore
 	if err := ks.RefreshKeys(context.Background()); err != nil { logger.Error(err.Error()); os.Exit(1) }    // Load the keys
 
@@ -158,6 +159,7 @@ func main() {
 	// ---------------------------------------------------------------
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("OK")) })
 	mux.Handle("GET /openapi.json", handlers.NewOpenAPIHandler(modelRegister, functionRegister))
+	mux.Handle("GET /.well-known/jwks.json", handlers.NewKeystoreHandler(ks))
 
 
 	// ---------------------------------------------------------------
