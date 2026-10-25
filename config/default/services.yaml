@@ -1,0 +1,32 @@
+# The services table records public keys of all valid services
+
+name: services
+version: 1.0.0
+table-name: services
+end-point: ""
+primary-key: id
+fields:
+  id:
+    type: string
+    db-type: text
+    json: id
+    nullable: false
+    required-on-insert: true
+  role:
+    type: string
+    db-type: text
+    json: role
+    required-on-insert: true
+    nullable: false
+  entra_client_id:
+    type: string
+    db-type: text
+    json: entra_client_id
+    json-alias:
+      - entra_id
+    nullable: true
+  disabled_at:
+    type: time
+    db-type: timestamptz
+    nullable: true
+    json: disabled_at

@@ -3,11 +3,15 @@ package auth
 import (
 	"context"
 	"crypto/ed25519"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/models/modelstest"
 	"lotusforge.au/api-server/secrets"
 )
@@ -225,6 +229,118 @@ func TestKeyStoreRefreshKeysEmptyWhileLoaded(t *testing.T) {
 	for _, c := range fake_db.Calls {
 		if c.Method == "Exec" {
 			t.Errorf("No key should be created while keys are loaded, got %s", c.SQL)
+		}
+	}
+}
+
+// newActiveKeyStore returns a keystore that has bootstrapped one active key
+func newActiveKeyStore(t *testing.T) *KeyStore {
+	t.Helper()
+	ks, fake_db := newTestKeyStore(t)
+	fakeSigningKeysTable(fake_db)
+	if err := ks.RefreshKeys(context.Background()); err != nil {
+		t.Fatalf("RefreshKeys: %v", err)
+	}
+	return ks
+}
+
+// decodeSegment base64url decodes one part of a JWT into a map
+func decodeSegment(t *testing.T, seg string) map[string]any {
+	t.Helper()
+	raw, err := base64.RawURLEncoding.DecodeString(seg)
+	if err != nil {
+		t.Fatalf("Decode segment: %v", err)
+	}
+	out := map[string]any{}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatalf("Unmarshal segment: %v", err)
+	}
+	return out
+}
+
+func TestKeyStoreIssue(t *testing.T) {
+	ks := newActiveKeyStore(t)
+	raw, err := ks.Issue(models.Claims{TokenUse: "service"}, 5*time.Minute)
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+
+	parts := strings.Split(raw, ".")
+	if len(parts) != 3 {
+		t.Fatalf("Expected a 3 part JWT, got %d parts", len(parts))
+	}
+
+	header := decodeSegment(t, parts[0])
+	if header["alg"] != "EdDSA" || header["typ"] != "at+jwt" || header["kid"] != ks.Active().KID {
+		t.Errorf("Unexpected header: %v", header)
+	}
+
+	payload := decodeSegment(t, parts[1])
+	if payload["iss"] != "https://ohcrud.internal" {
+		t.Errorf("Unexpected iss: %v", payload["iss"])
+	}
+	if aud, _ := payload["aud"].([]any); len(aud) != 1 || aud[0] != "oh-crud" {
+		t.Errorf("Unexpected aud: %v", payload["aud"])
+	}
+	if jti, _ := payload["jti"].(string); jti == "" {
+		t.Errorf("Expected a jti")
+	}
+	exp, _ := payload["exp"].(float64)
+	if want := time.Now().Add(5 * time.Minute).Unix(); int64(exp) < want-5 || int64(exp) > want+5 {
+		t.Errorf("Expected exp about %d, got %v", want, payload["exp"])
+	}
+
+	claims, err := ks.Verify(raw)
+	if err != nil {
+		t.Fatalf("Verify of an issued token: %v", err)
+	}
+	if claims.TokenUse != "service" {
+		t.Errorf("Expected token_use service, got %q", claims.TokenUse)
+	}
+}
+
+func TestKeyStoreIssueNoActiveKey(t *testing.T) {
+	ks, _ := newTestKeyStore(t)
+	if _, err := ks.Issue(models.Claims{TokenUse: "service"}, time.Minute); err == nil {
+		t.Fatalf("Expected an error without an active key")
+	}
+}
+
+func TestKeyStoreVerifyRejects(t *testing.T) {
+	ks := newActiveKeyStore(t)
+	claims := models.Claims{TokenUse: "service"}
+
+	// Signed by a key this keystore has never published
+	stranger, err := newActiveKeyStore(t).Issue(claims, time.Minute)
+	if err != nil {
+		t.Fatalf("Issue from other keystore: %v", err)
+	}
+	expired, err := ks.Issue(claims, -2*time.Minute) // past the 50s leeway
+	if err != nil {
+		t.Fatalf("Issue expired: %v", err)
+	}
+	valid, err := ks.Issue(claims, time.Minute)
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+	// Same claims with token_use changed, so only the signature can fail
+	parts := strings.Split(valid, ".")
+	payload := decodeSegment(t, parts[1])
+	payload["token_use"] = "user"
+	edited, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("Marshal tampered payload: %v", err)
+	}
+	tampered := parts[0] + "." + base64.RawURLEncoding.EncodeToString(edited) + "." + parts[2]
+
+	cases := map[string]string{
+		"unknown kid": stranger,
+		"expired":     expired,
+		"tampered":    tampered,
+	}
+	for name, raw := range cases {
+		if _, err := ks.Verify(raw); err == nil {
+			t.Errorf("%s: expected Verify to reject the token", name)
 		}
 	}
 }

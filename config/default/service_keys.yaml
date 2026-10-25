@@ -1,0 +1,59 @@
+name: service_keys
+version: 1.0.0
+table-name: service_keys
+end-point: ""
+primary-key: kid
+
+foreign-keys:
+  fk_service_id_services:
+    foreign-key-fields:
+      - service_id
+    foreign-key-target-table: services
+    foreign-key-target-fields:
+      - id
+
+fields:
+  kid:
+    type: string
+    db-type: character varying(32)
+    required-on-insert: true
+    json: kid
+  service_id:
+    type: string
+    db-type: text
+    json: service_id
+    nullable: false
+    required-on-insert: true
+    absolute-match: true
+  public_key:
+    type: byte
+    db-type: bytea
+    required-on-insert: true
+    nullable: false
+    json: public_key
+    absolute-match: true
+    rules:
+      min: 32
+      max: 32
+  created_at:
+    type: time
+    db-type: timestamptz
+    json: created_at
+    default: now()
+    nullable: false
+    skip-insert: true
+  last_used_at:
+    type: time
+    db-type: timestamptz
+    nullable: true
+    json: last_used_at
+  revoked_at:
+    type: time
+    db-type: timestamptz
+    nullable: true
+    json: revoked_at
+  revoked_reason:
+    type: string
+    db-type: text
+    json: revoked_reason
+    nullable: true

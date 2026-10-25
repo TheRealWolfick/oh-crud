@@ -195,7 +195,7 @@ func (ks *KeyStore) JWKS() []models.Jwk {
 
 // Fill in the claim with the standard claims then return it signed with the active key
 func (ks *KeyStore) Issue(c models.Claims, ttl time.Duration) (string, error) {
-	k := ks.active
+	k := ks.Active()
 	if k == nil || k.Private == nil { return "", errors.New("No active signing key") }
 
 	now := time.Now()

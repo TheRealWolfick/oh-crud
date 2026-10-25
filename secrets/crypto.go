@@ -48,7 +48,7 @@ func Decrypt(master_key []byte, encrypted []byte, auth_key []byte) ([]byte, erro
 
 
 // Encode a function into a sha256 hex string
-func sha256Hex(s string) string {
+func Sha256Hex(s string) string {
 	sum := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(sum[:])
 }
