@@ -1,6 +1,7 @@
 package httpx
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -80,4 +81,11 @@ func UrlValuesToMap[T any](values url.Values, s *T) map[string]any {
 	}
 
 	return m
+}
+
+// A healper function to write json with cache set to no-store
+func WriteJSON_nostore(w http.ResponseWriter, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store") // tokens must never be cached
+	json.NewEncoder(w).Encode(v)
 }

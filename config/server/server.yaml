@@ -20,3 +20,7 @@ rbac:
   default-user-role: user
   custom-roles:
     - report
+
+issuer:    "https://ohcrud.internal"
+token-url: "https://ohcrud.internal/oauth/token"
+token-lifetime: 10m

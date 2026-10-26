@@ -1,6 +1,9 @@
 package models
 
-import "sync"
+import (
+	"sync"
+	"time"
+)
 
 type CorsConfig struct {
 	Allowed_Origins []string `yaml:"allowed-origins"`
@@ -15,8 +18,11 @@ type RBACConfig struct {
 }
 
 type ServerConfig struct {
-	CORS *CorsConfig `yaml:"cors"`
-	RBAC *RBACConfig `yaml:"rbac"`
+	CORS 						*CorsConfig    `yaml:"cors"`
+	RBAC 						*RBACConfig    `yaml:"rbac"`
+  Issuer          string 	   	   `yaml:"issuer"`
+	Token_url       string 			   `yaml:"token-url"`
+	Token_lifetime  time.Duration  `yaml:"token-lifetime"`
 }
 
 type SwappableServerConfig struct {

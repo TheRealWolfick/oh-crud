@@ -1,7 +1,6 @@
 package models
 
 import (
-	"context"
 	"time"
 )
 
@@ -15,18 +14,11 @@ type Service struct {
 
 type ServiceKey struct {
 	KID            string      `yaml:"kid"`
-	Sevice_id      string      `yaml:"service_id"`
+	Service_id     string      `yaml:"service_id"`
 	Public_key     []byte      `yaml:"public_key"`
 	Last_used_at   *time.Time  `yaml:"last_used_at,omitempty"`
   Revoked_at     *time.Time  `yaml:"revoked_at,omitempty"`
-	Revoked_reason string      `yaml:"revoked_reason,omitempty"`
-}
-
-type ServiceStore interface {
-	// Returns the public key and its service, or an error if invalid / revoked etc
-	ServicePublicKey(ctx context.Context, serviceID string, kid string) ([]byte, *Service, error)
-	// Ensure that the key is still valid and update the last_used_at
-	TouchServiceKey(ctx context.Context, kid string) error
+	Revoked_reason *string      `yaml:"revoked_reason,omitempty"`
 }
 
 type ReplayCache interface {
