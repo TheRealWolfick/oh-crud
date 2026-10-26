@@ -168,13 +168,38 @@ func (a *Auth) TokenEndpoint() http.HandlerFunc {
 }
 
 
-// A wrapper for the standard OathError
-func (a *Auth) OathError(w http.ResponseWriter, r *http.Request) {
-	oathError(w, "unsupported_grant_type", http.StatusBadRequest)
-}
+// Returns the openid-configuration for Services
+func (a *Auth) OpenIDConfig() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		cfg := a.svr_conf.Get()
+		res := map[string]any{
+			"issuer": cfg.Issuer,
+			"jwks_uri": cfg.Issuer+"/.well-known/jwks.json",
+			"token_endpoint": cfg.Token_url,
+			"authorization_endpoint": cfg.Issuer+"/authorize",
+			"end_session_endpoint": cfg.Issuer+"/logout",
+			"grant_types_supported": []string{
+				"client_credentials", 
+				"refresh_token", 
+				"authorization_code",
+				"urn:ietf:params:oauth:grant-type:token-exchange"},
+				"token_endpoint_auth_methods_supported": []string{"private_key_jwt"},
+				"id_token_signing_alg_values_supported": []string{"EdDSA"},
+				"code_challenge_methods_supported": []string{"S256"},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(res)
+		}
+	}
 
-func oathError(w http.ResponseWriter, code string, status int) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(map[string]string{"error": code})
-}
+
+	// A wrapper for the standard OathError
+	func (a *Auth) OathError(w http.ResponseWriter, r *http.Request) {
+		oathError(w, "unsupported_grant_type", http.StatusBadRequest)
+	}
+
+	func oathError(w http.ResponseWriter, code string, status int) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		json.NewEncoder(w).Encode(map[string]string{"error": code})
+	}

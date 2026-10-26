@@ -161,6 +161,7 @@ func main() {
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("OK")) })
 	mux.Handle("GET /openapi.json", handlers.NewOpenAPIHandler(modelRegister, functionRegister))
 	mux.Handle("GET /.well-known/jwks.json", handlers.JWKSHandler(ks))
+	mux.Handle("GET /.well-known/openid-configuration", oauthHandler.OpenIDConfig())
 	mux.Handle("POST /oauth/token", oauthHandler.TokenEndpoint())
 
 
