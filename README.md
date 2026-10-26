@@ -107,7 +107,7 @@ fields:
 ```
 
 That file alone creates the `buildings` and `buildings_history` tables and the whole `/building` 
-endpoint tree. See `docs/config_instructions.md` for every available field.
+endpoint tree. See `docs/config-instructions.md` for every available field.
 
 ## Endpoints
 
