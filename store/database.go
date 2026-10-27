@@ -363,10 +363,33 @@ func multiUpdate(
 		}
 
 		query := qb.BuildUpdate(cfg)
-		cmdtag, err := db.Exec(ctx, query, qb.GetArgs()...)
 
-		if err == nil && cmdtag.RowsAffected() > 0 {
-			log_data["success_count"] = log_data["success_count"].(int) + int(cmdtag.RowsAffected())
+		var rows_affected int64
+		var err error
+		if len(qb.ListPatchedFields()) > 0 {
+			// Add/remove patches return the column's new list, so the report and history
+			// record the resulting value rather than the patch that was sent
+			var rows pgx.Rows
+			rows, err = db.Query(ctx, query, qb.GetArgs()...)
+			if err == nil {
+				var returned []map[string]any
+				returned, err = pgx.CollectRows(rows, pgx.RowToMap)
+				rows_affected = int64(len(returned))
+				if len(returned) > 0 {
+					for k, v := range returned[0] {
+						row[k] = v
+						updated_vals.UpdatedValues[k] = v
+					}
+				}
+			}
+		} else {
+			var cmdtag pgconn.CommandTag
+			cmdtag, err = db.Exec(ctx, query, qb.GetArgs()...)
+			rows_affected = cmdtag.RowsAffected()
+		}
+
+		if err == nil && rows_affected > 0 {
+			log_data["success_count"] = log_data["success_count"].(int) + int(rows_affected)
 			log_data["success_items"] = append(log_data["success_items"].([]models.UpdateSuccessItem), updated_vals)
 			// If this has history tacking, also save the changed values to the history table
 			if log_history {

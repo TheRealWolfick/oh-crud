@@ -110,6 +110,7 @@ filtered or sorted on. They do not appear in the schema.
 | `uuid` | 36-character string | |
 | `json` | JSON object/array, or a string containing JSON | |
 | `byte` | String | Stored as the string's raw bytes |
+| `[]string` | JSON array of strings, or a list string such as `"[a,b]"`, `"{a,b}"` or `"a,b"` | Returned as a JSON array. Updates can also add or remove values (section 8.3) |
 
 An empty string for `time`, `uuid` or `json` is stored as `NULL`.
 
@@ -209,6 +210,8 @@ prefix and the field's type.
 | `>=`   | greater or equal     | int, float, time                 |
 | `<`    | less than            | int, float, time                 |
 | `<=`   | less or equal        | int, float, time                 |
+| `~`    | contains any of      | []string                         |
+| `!`    | contains all of      | []string                         |
 | (none) | equality / fuzzy     | depends on field — see below     |
 
 ### Default behaviour by type
@@ -220,6 +223,12 @@ prefix and the field's type.
 | `bool`     | `field = value` (parsed as bool)    |
 | `time`     | `field = parsedDate`; if not parseable, falls back to `~*` (case-insensitive regex) |
 | `string`   | `field ~* value` (case-insensitive regex match)                     |
+| `[]string` | `field && list`: rows containing **any** of the listed values       |
+
+For `[]string` fields the value is a comma-separated list, with or without
+brackets (`a,b`, `[a,b]` or `{a,b}`). Matching is exact and case-sensitive.
+Prefix it with `!` to match rows containing **all** of the values. A list with
+unbalanced brackets is ignored.
 
 If the field has `absolute-match: true` set in its model YAML, the operator
 is forced to `=` regardless.
@@ -249,6 +258,8 @@ GET /asset/data?install_date=>=2024-01-01&install_date=<=2024-12-31
 GET /asset/data?description=pump
 GET /asset/data?install_date=#NULL
 GET /asset/data?description=#NOTNULL
+GET /asset/data?tags=pump,urgent        # tagged pump or urgent
+GET /asset/data?tags=![pump,urgent]     # tagged pump and urgent
 ```
 
 ---
@@ -356,7 +367,7 @@ parameters. Private fields are left out.
 
 | Key | Meaning |
 |-----|---------|
-| `Type` | `string`, `int`, `float`, `bool`, `time`, `uuid`, `json` or `byte` (section 3.2) |
+| `Type` | `string`, `int`, `float`, `bool`, `time`, `uuid`, `json`, `byte` or `[]string` (section 3.2) |
 | `JSON` | Key to use in request bodies. Empty means clients can't set it |
 | `Required` | Must be supplied on create (`required-on-insert`) |
 | `Skip_insert` | Never written by the API (e.g. serial ids, `deleted_flag`). Don't show it on create forms |
@@ -374,8 +385,8 @@ Rules are enforced on writes. A row that breaks one is returned in `invalid`
 | Rule | Applies to |
 |------|-----------|
 | `Min`, `Max` | `int`/`float`: the value. `byte`: the length in bytes |
-| `Max_length` | `string`: the length |
-| `Pattern` | `string`: a regular expression the whole value must match |
+| `Max_length` | `string`: the length in bytes. `[]string`: the length of each item, in bytes |
+| `Pattern` | `string`: a regular expression the whole value must match. `[]string`: every item must match |
 | `Enum` | `string`/`int`/`float`: the allowed values, as strings (render as a select). `byte`: allowed lengths |
 
 #### Foreign keys
@@ -562,6 +573,47 @@ required/key fields, or a single string for type and rule failures.
 | No valid rows | `400` with the same JSON shape, `successful_submission: false` |
 | `PUT /{endpoint}` (single) with an invalid row | `400` |
 | Body is not valid JSON | `400` or `500`, plain text |
+
+### 8.3 Updating string lists
+
+A `[]string` field can be updated two ways.
+
+**Replace the list** by sending the full list, as for any other field:
+
+```json
+{"asset_no": "CL001", "tags": ["pump", "urgent"]}
+```
+
+**Add or remove values** by sending an object with `add`, `remove`, or both:
+
+```json
+{"asset_no": "CL001", "tags": {"add": ["urgent"], "remove": ["draft"]}}
+```
+
+- Added values already in the list are skipped. New values go on the end and
+  the existing order is kept.
+- Removing a value that isn't in the list does nothing.
+- An empty (`NULL`) list is treated as `[]`.
+- Each of `add` and `remove` accepts the same formats as a full list (section 3.2).
+
+Prefer add/remove when more than one client may edit the same record. The
+change is applied by the database against the current list, so two clients
+adding different values at the same time both keep their value. Replacing the
+list overwrites whatever another client saved in between.
+
+The row is rejected (returned in `invalid`) when:
+
+- the object has a key other than `add` or `remove`
+- `add` and `remove` are both missing or empty
+- the same value appears in both `add` and `remove`
+- an added value breaks the field's `max-length` or `pattern` rule. Removed
+  values are not checked
+
+When creating a record, `add` is used as the starting list and `remove` is
+ignored.
+
+The update's success item and history entry record the field's resulting
+list, not the `add`/`remove` object that was sent.
 
 ---
 

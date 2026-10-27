@@ -42,6 +42,45 @@ func ValidateStringRules(field_name string, coerced_data string, field_rules *mo
 }
 
 
+// Validate that each item of a string list field is valid to its relevant rules
+// (max-length and pattern).
+// coerced_data is a []string for a full list, or a StringListPatch, where only the
+// added values are checked as removed values never reach the database.
+func ValidateStringListRules(field_name string, coerced_data any, field_rules *models.DataModelFieldRules) (string, bool) {
+	errors := []string{}
+
+	var items []string
+	switch v := coerced_data.(type) {
+	case []string:
+		items = v
+	case StringListPatch:
+		items = v.Add
+	}
+
+	// Test max-length against each item
+	if field_rules.Max_length != nil {
+		for _, item := range items {
+			if len(item) > *field_rules.Max_length {
+				errors = append(errors, fmt.Sprintf("Field {%s} item {%s} exceeds max length of {%v}", field_name, item, *field_rules.Max_length))
+			}
+		}
+	}
+
+	// Test pattern against each item
+	if field_rules.Pattern != nil {
+		pat := regexp.MustCompile(*field_rules.Pattern)
+		for _, item := range items {
+			if len(pat.FindString(item)) != len(item) {
+				errors = append(errors, fmt.Sprintf(`Field {%s} item {%s} did not match the pattern of r"%s"`, field_name, item, *field_rules.Pattern))
+			}
+		}
+	}
+
+	// Return
+	if len(errors) > 0 {return strings.Join(errors, ", "), false}
+	return "", true
+}
+
 // Validate that an int field is valid to its relevant rules
 func ValidateIntRules(field_name string, coerced_data int, field_rules *models.DataModelFieldRules) (string, bool) {
 	errors := []string{}

@@ -2,6 +2,7 @@ package datamodel
 
 import (
 	"sort"
+	"strings"
 	"testing"
 
 	"lotusforge.au/api-server/models"
@@ -75,6 +76,13 @@ func configTestModel() *models.DataModel {
 					Max: ptr(20),
 					Enum: []string{"5.0", "13.35", "20.0"},
 				},
+			},
+			"roles": {
+				Type: ptr("[]string"),
+				DB_type: ptr("text[]"),
+				JSON: ptr("roles"),
+				Nullable: ptr(true),
+				Include_in_diff: ptr(false),
 			},
 		},
 	}
@@ -452,13 +460,41 @@ func TestRowFieldRules(t *testing.T) {
 			t.Errorf("Expected float of 17.05 (min=0,max=20) to error")
 		}
 	})
+
+	list_rules := &models.DataModelFieldRules{Max_length: ptr(6), Pattern: ptr("[a-z]+")}
+
+	t.Run("string list items within max-length and pattern", func(t *testing.T) {
+		errs, valid := ValidateStringListRules("tags", []string{"urgent", "draft"}, list_rules)
+		if !valid { t.Errorf("Expected [urgent draft] to not error. Got {%s}", errs) }
+	})
+
+	t.Run("string list item over max-length", func(t *testing.T) {
+		errs, valid := ValidateStringListRules("tags", []string{"urgent", "brethren"}, list_rules)
+		if valid { t.Errorf("Expected 'brethren' to error with max-length=6") }
+		if !strings.Contains(errs, "brethren") || strings.Contains(errs, "urgent") { t.Errorf("Expected only 'brethren' to be reported. Got {%s}", errs) }
+	})
+
+	t.Run("string list item not matching pattern", func(t *testing.T) {
+		errs, valid := ValidateStringListRules("tags", []string{"urgent", "Draft"}, list_rules)
+		if valid { t.Errorf("Expected 'Draft' to error with pattern [a-z]+") }
+		if !strings.Contains(errs, "Draft") || strings.Contains(errs, "urgent") { t.Errorf("Expected only 'Draft' to be reported. Got {%s}", errs) }
+	})
+
+	t.Run("string list patch checks added values only", func(t *testing.T) {
+		patch := StringListPatch{Add: []string{"ok"}, Remove: []string{"Too-Long-And-Bad"}}
+		errs, valid := ValidateStringListRules("tags", patch, list_rules)
+		if !valid { t.Errorf("Expected removed values to be ignored. Got {%s}", errs) }
+
+		patch = StringListPatch{Add: []string{"BAD"}, Remove: []string{}}
+		if _, valid := ValidateStringListRules("tags", patch, list_rules); valid { t.Errorf("Expected added value 'BAD' to error") }
+	})
 }
 
 // --- DynamicGetDatabaseColumns ---
 
 func TestDynamicGetDatabaseColumns(t *testing.T) {
 	cfg := configTestModel()
-	allFields := []string{"id", "code", "name", "amt"}
+	allFields := []string{"id", "code", "name", "amt", "roles"}
 
 	t.Run("all columns when pk_only=false req_only=false", func(t *testing.T) {
 		cols := DynamicGetDatabaseColumns(cfg, false, false)

@@ -34,6 +34,7 @@ type QueryBuilder struct {
 	schemaBuilder bool
 	aggregating  bool
 	distinctFields []string // resolved columns of a DISTINCT projection (aggregate=distinct:...) when there is no GROUP BY
+	listPatched  []string // []string columns updated with an add/remove patch; BuildUpdate returns their new values
 }
 
 type SetCallback interface {
@@ -303,6 +304,26 @@ func setWhere(field string, value any, fieldType datamodel.FieldKind, setFunc fu
 					setFunc(field, value_as_string, "=")
 				}
 
+			case datamodel.FieldStringList:
+				// Check mod guess if it is matches any (~) or matches all (!).
+				// Default is matches any if no mod guess match
+				switch mod_guess {
+				// The []string is bound as a parameter; pgx encodes it as text[].
+				case "!":
+					// Process a match all
+					string_list, err := tools.ParseToSlice[string](value_as_string[1:])
+					if err != nil { break }
+					setFunc(field, string_list, "@>")
+				case "~":
+					string_list, err := tools.ParseToSlice[string](value_as_string[1:])
+					if err != nil { break }
+					setFunc(field, string_list, "&&")
+				default:
+					string_list, err := tools.ParseToSlice[string](value_as_string)
+					if err != nil { break }
+					setFunc(field, string_list, "&&")
+				}
+
 			default:
 				setFunc(field, value_as_string, "~*")
 			}
@@ -413,6 +434,8 @@ func (qb *QueryBuilder) BuildMultiInsert(cfg *models.DataModel, data []map[strin
 			// Read this column info from the row data. If this column is not present, it will be !ok
 			val, ok := row[field_name]
 			if ok {
+				// A new row has no existing list to patch, so the added values are the list
+				if patch, isPatch := val.(datamodel.StringListPatch); isPatch { val = patch.Add }
 				qb.args = append(qb.args, val)																		// Save the value into the query builder args list
 				local_values = append(local_values, fmt.Sprintf("$%d", qb.pos))   // Save the position of this value in the query builder args list
 				qb.pos++																													// Increase the position marker for the next value
@@ -592,8 +615,11 @@ func (qb *QueryBuilder) buildWhereClause() string {
 
 	// For each key-value pair in the where data
 	for key, val := range qb.where {
-		// If it is a list
-		if reflect.TypeOf(qb.args[val-1]).Kind() == reflect.Slice {
+		// Array operators compare the bound list against an array column directly
+		if qb.wheremod[key] == "&&" || qb.wheremod[key] == "@>" {
+			w = append(w, fmt.Sprintf("%s %s $%d", key, qb.wheremod[key], val))
+		} else if reflect.TypeOf(qb.args[val-1]).Kind() == reflect.Slice {
+			// If it is a list
 			w = append(w, fmt.Sprintf("%s IN $%d", key, val))
 		} else {
 			// Check if it is an IS clause
@@ -785,16 +811,16 @@ func (qb *QueryBuilder) BuildCountWithWhere(table string) string {
 	if len(qb.groups) > 0 {
 		groups := strings.Join(qb.groups, ", ")
 		return fmt.Sprintf("SELECT COUNT(*) FROM (SELECT %s FROM %s%s GROUP BY %s) AS sub;",
-			groups, table, qb.buildWhereClause(), groups)
+		groups, table, qb.buildWhereClause(), groups)
 	}
 	if expr, ok := qb.distinctProjection(); ok {
 		return fmt.Sprintf("SELECT COUNT(*) FROM (SELECT DISTINCT %s FROM %s%s) AS sub;",
-			expr, table, qb.buildWhereClause())
+		expr, table, qb.buildWhereClause())
 	}
 	// Bare scalar aggregate: the data query yields exactly one row. Count it via
 	// the same table/WHERE so the placeholder count matches the bound args.
 	return fmt.Sprintf("SELECT COUNT(*) FROM (SELECT 1 FROM %s%s LIMIT 1) AS sub;",
-		table, qb.buildWhereClause())
+	table, qb.buildWhereClause())
 }
 
 // BuildUpdate builds a parameterized UPDATE query from the where and value clauses
@@ -811,11 +837,38 @@ func (qb *QueryBuilder) BuildUpdate(cfg *models.DataModel) string {
 		w = append(w, fmt.Sprintf("%s = $%d", key, val))
 	}
 	for key, val := range qb.values {
-		v = append(v, fmt.Sprintf("%s = $%d", key, val))
+		if patch, ok := qb.args[val-1].(datamodel.StringListPatch); ok {
+			// The add list takes the field's existing slot; the remove list gets a new one
+			qb.args[val-1] = patch.Add
+			removePos := qb.innerSaveValue(patch.Remove)
+			v = append(v, fmt.Sprintf("%s = %s", key, listPatchSQL(key, int(val), removePos)))
+			qb.listPatched = append(qb.listPatched, key)
+		} else {
+			v = append(v, fmt.Sprintf("%s = $%d", key, val))
+		}
 	}
 
-	qb.query = fmt.Sprintf("UPDATE %s SET %s WHERE %s;", *cfg.Table_name, strings.Join(v, ", "), strings.Join(w, " AND "))
+	returning := ""
+	if len(qb.listPatched) > 0 {
+		slices.Sort(qb.listPatched)
+		returning = " RETURNING " + strings.Join(qb.listPatched, ", ")
+	}
+
+	qb.query = fmt.Sprintf("UPDATE %s SET %s WHERE %s%s;", *cfg.Table_name, strings.Join(v, ", "), strings.Join(w, " AND "), returning)
 	return qb.query
+}
+
+// ListPatchedFields returns the columns BuildUpdate patched with add/remove. When
+// non-empty the UPDATE ends in RETURNING these columns and must be run as a query.
+func (qb *QueryBuilder) ListPatchedFields() []string { return qb.listPatched }
+
+// listPatchSQL builds the expression for an add/remove patch on an array column.
+// Added values not already present are appended, then removed values are filtered
+// out, keeping the existing order. A NULL column is treated as an empty list.
+func listPatchSQL(col string, addPos, removePos int) string {
+	current := fmt.Sprintf("COALESCE(%s, '{}')", col)
+	added := fmt.Sprintf("ARRAY(SELECT a FROM unnest($%d::text[]) WITH ORDINALITY AS l_add(a, i) WHERE a <> ALL(%s) ORDER BY i)", addPos, current)
+	return fmt.Sprintf("ARRAY(SELECT v FROM unnest(%s || %s) WITH ORDINALITY AS l_cur(v, i) WHERE v <> ALL($%d::text[]) ORDER BY i)", current, added, removePos)
 }
 
 func (qb *QueryBuilder) HasUpdates() bool { return len(qb.values) > 0 }

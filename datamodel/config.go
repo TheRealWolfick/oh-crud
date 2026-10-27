@@ -45,19 +45,20 @@ func LoadYAMLIntoModel[T any](path string) (*T, error) {
 type FieldKind string
 
 const (
-	FieldInt    FieldKind = "int"
-	FieldFloat  FieldKind = "float"
-	FieldString FieldKind = "string"
-	FieldBool   FieldKind = "bool"
-	FieldTime   FieldKind = "time"
-	FieldJSON   FieldKind = "json"
-	FieldUUID   FieldKind = "uuid"
-	FieldByte   FieldKind = "byte"
+	FieldInt    		FieldKind = "int"
+	FieldFloat  		FieldKind = "float"
+	FieldString 		FieldKind = "string"
+	FieldBool   		FieldKind = "bool"
+	FieldTime   		FieldKind = "time"
+	FieldJSON   		FieldKind = "json"
+	FieldUUID   		FieldKind = "uuid"
+	FieldByte   		FieldKind = "byte"
+	FieldStringList FieldKind = "[]string"
 )
 
 func DecodeFieldType(typ string) (FieldKind, error) {
 	switch FieldKind(typ) {
-	case FieldInt, FieldFloat, FieldString, FieldBool, FieldTime, FieldJSON, FieldUUID, FieldByte:
+	case FieldInt, FieldFloat, FieldString, FieldBool, FieldTime, FieldJSON, FieldUUID, FieldByte, FieldStringList:
 		return FieldKind(typ), nil
 	}
 	return "", fmt.Errorf("Unsupported data format %s", typ)
@@ -82,7 +83,7 @@ func ValidateFieldValue(kind FieldKind, raw any) bool {
 	case FieldBool:
 		_, err := strconv.ParseBool(as_string)
 		return err == nil
-	case FieldString:
+	case FieldString, FieldStringList:
 		return true
 	case FieldTime:
 		_, err := tools.ParseDate(as_string)
@@ -304,6 +305,8 @@ func DecodeAndCoerceFromUser(raw map[string]any, cfg *models.DataModel) (map[str
 				rule_errs, valid = ValidateStringRules(field_name, coerced_val.(string), field_cfg.Rules)
 			case "byte":
 				rule_errs, valid = ValidateByteRules(field_name, coerced_val.([]byte), field_cfg.Rules)
+			case "[]string":
+				rule_errs, valid = ValidateStringListRules(field_name, coerced_val, field_cfg.Rules)
 			default:
 				valid = true
 			}
@@ -340,8 +343,49 @@ func DecodeAndCoerceFromDB(raw map[string]any, cfg *models.DataModel, comparator
 	return row_data, nil
 }
 
+// StringListPatch is an in-place change to a []string column, sent by the user as
+// {"add": [...], "remove": [...]} instead of a full list. On update it is applied in
+// SQL so concurrent edits to the same row don't overwrite each other. On insert only
+// Add is used, as the starting list.
+type StringListPatch struct {
+	Add    []string `json:"add"`
+	Remove []string `json:"remove"`
+}
+
+// parseStringListPatch reads an add/remove object into a StringListPatch.
+// Both lists are de-duplicated. A value in both lists is ambiguous and is an error.
+func parseStringListPatch(m map[string]any) (StringListPatch, error) {
+	patch := StringListPatch{Add: []string{}, Remove: []string{}}
+
+	for k, v := range m {
+		list, err := tools.ParseToSlice[string](v)
+		if err != nil {
+			return patch, fmt.Errorf("list %q: %w", k, err)
+		}
+		switch k {
+		case "add":
+			patch.Add = tools.Unique(list)
+		case "remove":
+			patch.Remove = tools.Unique(list)
+		default:
+			return patch, fmt.Errorf("unknown list operation %q, expected \"add\" or \"remove\"", k)
+		}
+	}
+
+	if len(patch.Add) == 0 && len(patch.Remove) == 0 {
+		return patch, errors.New("list operation must contain at least one value in \"add\" or \"remove\"")
+	}
+	for _, a := range patch.Add {
+		if slices.Contains(patch.Remove, a) {
+			return patch, fmt.Errorf("value %q is in both \"add\" and \"remove\"", a)
+		}
+	}
+
+	return patch, nil
+}
+
 // CoerceType converts a raw value to the named Go type.
-// Supports: "int", "float", "string", "bool", "json", "time", "uuid", "byte(size)"
+// Supports: "int", "float", "string", "bool", "json", "time", "uuid", "byte", "[]string"
 func CoerceType(raw any, type_name string) (any, error) {
 	if raw == nil {
 		return nil, nil
@@ -435,100 +479,105 @@ func CoerceType(raw any, type_name string) (any, error) {
 			if !v.Valid {
 				return nil, nil
 			}
+			return fmt.Sprintf("%x-%x-%x-%x-%x", v.Bytes[0:4], v.Bytes[4:6], v.Bytes[6:8], v.Bytes[8:10], v.Bytes[10:16]), nil
+
+		case time.Time:
+			return v.UTC().Format(time.RFC3339), nil
+		case []byte:
+			return string(v), nil
+		default:
+			return fmt.Sprintf("%v", v), nil
+		}
+
+	case "[]string":
+		if m, ok := raw.(map[string]any); ok {
+			return parseStringListPatch(m)
+		}
+		return tools.ParseToSlice[string](raw)
+
+	case "bool":
+		switch v := raw.(type) {
+		case bool:
+			return v, nil
+		case float64:
+			return v != 0, nil
+		case int:
+			return v != 0, nil
+		case string:
+			if v == "" {
+				return nil, nil
+			}
+			return strconv.ParseBool(v)
+		case pgtype.Bool:
+			if !v.Valid {
+				return nil, nil
+			}
+			return v.Bool, nil
+		}
+
+	case "json":
+		switch v := raw.(type) {
+		case []byte:
+			var out any
+			if err := json.Unmarshal(v, &out); err != nil {
+				return nil, fmt.Errorf("json unmarshal failed: %w", err)
+			}
+			return out, nil
+		case string:
+			if v == "" {
+				return nil, nil
+			}
+			var out any
+			if err := json.Unmarshal([]byte(v), &out); err != nil {
+				return nil, fmt.Errorf("json unmarshal failed: %w", err)
+			}
+			return out, nil
+		case map[string]any, []any:
+			return v, nil
+		}
+
+	case "time":
+		switch v := raw.(type) {
+		case time.Time:
+			return v.UTC(), nil
+		case pgtype.Timestamptz:
+			if !v.Valid {
+				return nil, nil
+			}
+			return v.Time.UTC(), nil
+		case string:
+			if v == "" {
+				return nil, nil
+			}
+			t, err := time.Parse(time.RFC3339, v)
+			if err != nil {
+				return nil, fmt.Errorf("could not parse time string %q: %w", v, err)
+			}
+			return t.UTC(), nil
+		}
+
+	case "uuid":
+		switch v := raw.(type) {
+		case string:
+			if v == "" {
+				return nil, nil
+			}
+			if len(v) != 36 {
+				return nil, fmt.Errorf("invalid UUID string: %q", v)
+			}
+			return v, nil
+		case pgtype.UUID:
+			if !v.Valid {
+				return nil, nil
+			}
 			return fmt.Sprintf("%x-%x-%x-%x-%x",
 			v.Bytes[0:4], v.Bytes[4:6], v.Bytes[6:8], v.Bytes[8:10], v.Bytes[10:16],
 		), nil
-	case time.Time:
-		return v.UTC().Format(time.RFC3339), nil
-	case []byte:
-		return string(v), nil
-	default:
-		return fmt.Sprintf("%v", v), nil
-	}
-
-case "bool":
-	switch v := raw.(type) {
-	case bool:
-		return v, nil
-	case float64:
-		return v != 0, nil
-	case int:
-		return v != 0, nil
-	case string:
-		if v == "" {
-			return nil, nil
-		}
-		return strconv.ParseBool(v)
-	case pgtype.Bool:
-		if !v.Valid {
-			return nil, nil
-		}
-		return v.Bool, nil
-	}
-
-case "json":
-	switch v := raw.(type) {
-	case []byte:
-		var out any
-		if err := json.Unmarshal(v, &out); err != nil {
-			return nil, fmt.Errorf("json unmarshal failed: %w", err)
-		}
-		return out, nil
-	case string:
-		if v == "" {
-			return nil, nil
-		}
-		var out any
-		if err := json.Unmarshal([]byte(v), &out); err != nil {
-			return nil, fmt.Errorf("json unmarshal failed: %w", err)
-		}
-		return out, nil
-	case map[string]any, []any:
-		return v, nil
-	}
-
-case "time":
-	switch v := raw.(type) {
-	case time.Time:
-		return v.UTC(), nil
-	case pgtype.Timestamptz:
-		if !v.Valid {
-			return nil, nil
-		}
-		return v.Time.UTC(), nil
-	case string:
-		if v == "" {
-			return nil, nil
-		}
-		t, err := time.Parse(time.RFC3339, v)
-		if err != nil {
-			return nil, fmt.Errorf("could not parse time string %q: %w", v, err)
-		}
-		return t.UTC(), nil
-	}
-
-case "uuid":
-	switch v := raw.(type) {
-	case string:
-		if v == "" {
-			return nil, nil
-		}
-		if len(v) != 36 {
-			return nil, fmt.Errorf("invalid UUID string: %q", v)
-		}
-		return v, nil
-	case pgtype.UUID:
-		if !v.Valid {
-			return nil, nil
-		}
+	case [16]byte:
 		return fmt.Sprintf("%x-%x-%x-%x-%x",
-		v.Bytes[0:4], v.Bytes[4:6], v.Bytes[6:8], v.Bytes[8:10], v.Bytes[10:16],
+		v[0:4], v[4:6], v[6:8], v[8:10], v[10:16],
 	), nil
-case [16]byte:
-	return fmt.Sprintf("%x-%x-%x-%x-%x",
-	v[0:4], v[4:6], v[6:8], v[8:10], v[10:16],
-), nil
-		}
+}
 
 	case "byte":
 		switch v := raw.(type) {
@@ -654,7 +703,7 @@ func ValidateDataModel(m models.DataModel) error {
 	validTypes := map[string]bool{
 		"int": true, "float": true, "string": true,
 		"bool": true, "json": true, "time": true, "uuid": true,
-		"byte": true,
+		"byte": true, "[]string": true,
 	}
 	validDBTypes := map[string]bool{
 		"int": true, "integer": true, "bigint": true, "smallint": true,
@@ -683,7 +732,8 @@ func ValidateDataModel(m models.DataModel) error {
 		if field.DB_type == nil || strings.TrimSpace(*field.DB_type) == "" {
 			errs = append(errs, fmt.Sprintf("%s: db-type is required", prefix))
 		} else {
-			baseType := strings.ToLower(strings.Split(*field.DB_type, "(")[0])
+			// Array columns (e.g. text[], varchar(20)[]) are validated by their element type
+			baseType := strings.ToLower(strings.Split(strings.TrimSuffix(strings.TrimSpace(*field.DB_type), "[]"), "(")[0])
 			if !validDBTypes[baseType] && baseType != "varchar" {
 				errs = append(errs, fmt.Sprintf("%s: unknown db-type %q", prefix, *field.DB_type))
 			}

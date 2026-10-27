@@ -63,9 +63,9 @@ func RegisterRoutes(
 		if diff_cfg == nil {
 			qm.Logger.Error("Cannot register diff routes: diffs model was not loaded", "data-model", *cfg.Name)
 		} else {
-			handlerRegistry.Register(fmt.Sprintf("GET /%s/diff", *cfg.End_point), auth(handleGetDiff(cfg, diff_cfg, qm, server_conf)), *cfg.Version)
-			handlerRegistry.Register(fmt.Sprintf("POST /%s/diff", *cfg.End_point), auth(dynamicCreateDiff(cfg, qm, server_conf.Get())), *cfg.Version)
-			handlerRegistry.Register(fmt.Sprintf("PUT /%s/diff", *cfg.End_point), auth(dynamicActionDiff(cfg, qm, server_conf.Get())), *cfg.Version)
+			handlerRegistry.Register(fmt.Sprintf("GET /%s/diff", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleGetDiff(cfg, diff_cfg, qm, server_conf))), *cfg.Version)
+			handlerRegistry.Register(fmt.Sprintf("POST /%s/diff", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(dynamicCreateDiff(cfg, qm, server_conf.Get()))), *cfg.Version)
+			handlerRegistry.Register(fmt.Sprintf("PUT /%s/diff", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(dynamicActionDiff(cfg, qm, server_conf.Get()))), *cfg.Version)
 		}
 	}
 

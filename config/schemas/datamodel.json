@@ -150,7 +150,7 @@
         "properties": {
           "type": {
             "type": "string",
-            "enum": ["int", "float", "string", "bool", "json", "time", "uuid", "byte"]
+            "enum": ["int", "float", "string", "bool", "json", "time", "uuid", "byte", "[]string"]
           },
           "json": { "type": "string" },
           "json-alias": {
@@ -235,6 +235,25 @@
                "type": "array",
                "items": { "type": "string" }
               }
+             },
+             "additionalProperties": false
+            }
+           }
+          }
+         },
+         {
+          "if": {
+           "properties": {
+            "type": { "enum": ["[]string"] }
+           },
+           "required": ["type"]
+          },
+          "then": {
+           "properties": {
+            "rules": {
+             "properties": { 
+              "pattern": { "type": "string" },
+              "max-length": { "type": "number" }
              },
              "additionalProperties": false
             }

@@ -1,6 +1,7 @@
 package datamodel
 
 import (
+	"slices"
 	"testing"
 	"time"
 
@@ -592,4 +593,61 @@ func TestDecodeAndCoerceFromUser(t *testing.T) {
 			t.Errorf("primary JSON key not used: got %v", got["name"])
 		}
 	})
+}
+
+func TestCoerceType_StringList(t *testing.T) {
+	t.Run("plain list", func(t *testing.T) {
+		got, err := CoerceType("[a,b]", "[]string")
+		if err != nil { t.Fatalf("unexpected error %v", err) }
+		if !slices.Equal(got.([]string), []string{"a", "b"}) { t.Errorf("got %v, want [a b]", got) }
+	})
+
+	t.Run("add/remove patch", func(t *testing.T) {
+		got, err := CoerceType(map[string]any{"add": []any{"a", "b", "a"}, "remove": "c"}, "[]string")
+		if err != nil { t.Fatalf("unexpected error %v", err) }
+		patch, ok := got.(StringListPatch)
+		if !ok { t.Fatalf("got %T, want StringListPatch", got) }
+		if !slices.Equal(patch.Add, []string{"a", "b"}) { t.Errorf("Add: got %v, want [a b]", patch.Add) }
+		if !slices.Equal(patch.Remove, []string{"c"}) { t.Errorf("Remove: got %v, want [c]", patch.Remove) }
+	})
+
+	t.Run("add only leaves remove empty, not nil", func(t *testing.T) {
+		got, err := CoerceType(map[string]any{"add": []any{"a"}}, "[]string")
+		if err != nil { t.Fatalf("unexpected error %v", err) }
+		if got.(StringListPatch).Remove == nil { t.Error("Remove should be an empty slice so it binds as '{}' rather than NULL") }
+	})
+
+	errorCases := map[string]map[string]any{
+		"unknown operation":       {"replace": []any{"a"}},
+		"empty patch":             {},
+		"empty lists":             {"add": []any{}, "remove": []any{}},
+		"value in add and remove": {"add": []any{"a"}, "remove": []any{"a"}},
+		"bad list":                {"add": "[a,b"},
+	}
+	for name, in := range errorCases {
+		t.Run(name, func(t *testing.T) {
+			if got, err := CoerceType(in, "[]string"); err == nil {
+				t.Errorf("expected an error, got %#v", got)
+			}
+		})
+	}
+}
+
+func TestValidateDataModel_ArrayDBType(t *testing.T) {
+	cases := map[string]bool{
+		"text[]":                   true,
+		"varchar(20)[]":            true,
+		"character varying(20)[]":  true,
+		"string[]":                 false,
+		"notatype[]":               false,
+	}
+	for db_type, want_valid := range cases {
+		t.Run(db_type, func(t *testing.T) {
+			m := basicModel()
+			m.Fields["tags"] = models.DataModelField{Type: ptr("[]string"), JSON: ptr("tags"), DB_type: ptr(db_type)}
+			err := ValidateDataModel(m)
+			if want_valid && err != nil { t.Errorf("expected %q to be valid, got: %v", db_type, err) }
+			if !want_valid && err == nil { t.Errorf("expected %q to be rejected", db_type) }
+		})
+	}
 }

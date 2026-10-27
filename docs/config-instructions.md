@@ -272,8 +272,8 @@ database column and the key used in API responses.
 
 | Key | Meaning |
 |-----|---------|
-| `type` | API type: `int`, `float`, `bool`, `string`, `time`, `uuid`, `json`, `byte` |
-| `db-type` | PostgreSQL type. Base types accepted: `int`, `integer`, `smallint`, `bigint`, `serial`, `smallserial`, `numeric`, `decimal`, `boolean`, `text`, `varchar`, `character varying`, `char`, `character`, `uuid`, `json`, `jsonb`, `date`, `timestamptz`, `timestamp with time zone`, `timestamp without time zone`, `bytea`. Sizes go in brackets: `character varying(255)`, `numeric(10,2)` |
+| `type` | API type: `int`, `float`, `bool`, `string`, `time`, `uuid`, `json`, `byte`, `[]string` |
+| `db-type` | PostgreSQL type. Base types accepted: `int`, `integer`, `smallint`, `bigint`, `serial`, `smallserial`, `numeric`, `decimal`, `boolean`, `text`, `varchar`, `character varying`, `char`, `character`, `uuid`, `json`, `jsonb`, `date`, `timestamptz`, `timestamp with time zone`, `timestamp without time zone`, `bytea`. Sizes go in brackets: `character varying(255)`, `numeric(10,2)`. Append `[]` for an array column, e.g. `text[]` |
 
 ### 4.2 Naming and defaults
 
@@ -285,7 +285,31 @@ database column and the key used in API responses.
 | `description` | Free text. Returned by the `schema` function |
 | `meta` | Free-form map, returned by the `schema` function |
 
-### 4.3 Flags
+### 4.3 String lists
+
+A `[]string` field holds a list of strings in a PostgreSQL array column. Use
+`db-type: text[]`:
+
+```yaml
+  tags:
+    type: "[]string"
+    db-type: "text[]"
+    json: tags
+    rules:
+      max-length: 30
+      pattern: "[a-z0-9-]+"
+```
+
+`text[]` is preferred over `varchar(n)[]`. The two store and perform the same,
+and the API reads and writes these columns as `text[]`. Limit item length with
+the `max-length` rule rather than the column size, so it can change without a
+migration. A `varchar[]` column needs PostgreSQL 14 or later for add/remove
+updates.
+
+Clients can replace the whole list, or add and remove values without sending
+the rest (`api-guide.md`, section 8.3).
+
+### 4.4 Flags
 
 | Key | Default | Meaning |
 |-----|---------|---------|
@@ -299,7 +323,7 @@ database column and the key used in API responses.
 
 `deleted_flag` is reserved and cannot be declared (use `soft-delete`).
 
-### 4.4 `rules`
+### 4.5 `rules`
 
 Validation applied to writes. Failing rows are rejected with the reason.
 
@@ -307,12 +331,14 @@ Validation applied to writes. Failing rows are rejected with the reason.
 |------|-------|---------|
 | `min`, `max` | `int`, `float` | Value bounds |
 | | `byte` | Length bounds in bytes |
-| `max-length` | `string` | Maximum length |
+| `max-length` | `string` | Maximum length in bytes |
+| | `[]string` | Maximum length of each item, in bytes |
 | `pattern` | `string` | Regular expression the whole value must match |
+| | `[]string` | Regular expression every item must match |
 | `enum` | `string`, `int`, `float` | Allowed values, written as strings |
 | | `byte` | Allowed lengths |
 
-### 4.5 `json-select`
+### 4.6 `json-select`
 
 Returns a computed value for a `jsonb` field in GET responses instead of the raw
 JSON. Writes still take the raw value.

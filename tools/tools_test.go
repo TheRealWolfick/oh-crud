@@ -3,6 +3,7 @@ package tools
 import (
 	"encoding/json"
 	"reflect"
+	"slices"
 	"testing"
 
 	"lotusforge.au/api-server/logging"
@@ -181,4 +182,112 @@ func TestDiffs(t *testing.T) {
 			//t.Errorf("Returned: %v", logging.PrettyJSON(diffs))
 		}
 	})
+}
+
+func TestSliceParsing(t *testing.T) {
+	
+	slice_string1 := "(brave,clean,fast)"
+	slice_string2 := "brave,clean,fast"
+	slice_string3 := "brave,clean,fast,"
+	slice_string5 := "[turn,into,pointer]"
+	slice_int1 := "[52,34,22]"
+	slice_string_byte1 := []byte("[brave,clean,fast]")
+	slice_int_byte1 := []byte("[52,34,22]")
+	slice_any1 := []any{52, "34", 22.0}
+
+	expected1 := []string{"brave", "clean", "fast"}
+	expected3 := []string{"turn", "into", "pointer"}
+	expected4 := []int{52, 34, 22}
+
+	t.Run("Round brackets to string slice", func(t *testing.T) {
+		converted, err := ParseToSlice[string](slice_string1)
+		if err != nil { t.Fatalf("Unexpected error: %v", err) }
+		eq := slices.Compare(converted, expected1)
+		if eq != 0 { t.Errorf("Expected slices to be equal. Converted: %v  -- Expected: %v", converted, expected1) }
+	})
+
+	t.Run("no brackets to string slice", func(t *testing.T) {
+		converted, err := ParseToSlice[string](slice_string2)
+		if err != nil { t.Fatalf("Unexpected error: %v", err) }
+		eq := slices.Compare(converted, expected1)
+		if eq != 0 { t.Errorf("Expected slices to be equal. Converted: %v  -- Expected: %v", converted, expected1) }
+	})
+
+	t.Run("Trailing comma to string slice", func(t *testing.T) {
+		converted, err := ParseToSlice[string](slice_string3)
+		if err != nil { t.Fatalf("Unexpected error: %v", err) }
+		eq := slices.Compare(converted, expected1)
+		if eq != 0 { t.Errorf("Expected slices to be equal. Converted: %v  -- Expected: %v", converted, expected1) }
+	})
+
+	t.Run("Square brackets to string slice", func(t *testing.T) {
+		converted, err := ParseToSlice[string](&slice_string5)
+		if err != nil { t.Fatalf("Unexpected error: %v", err) }
+		eq := slices.Compare(converted, expected3)
+		if eq != 0 { t.Errorf("Expected slices to be equal. Converted: %v  -- Expected: %v", converted, expected3) }
+	})
+
+	t.Run("Int string to into slice", func(t *testing.T) {
+		converted, err := ParseToSlice[int](slice_int1)
+		if err != nil { t.Fatalf("Unexpected error: %v", err) }
+		eq := slices.Compare(converted, expected4)
+		if eq != 0 { t.Errorf("Expected slices to be equal. Converted: %v  -- Expected: %v", converted, expected4) }
+	})
+
+	t.Run("byte into string slice", func(t *testing.T) {
+		converted, err := ParseToSlice[string](slice_string_byte1)
+		if err != nil { t.Fatalf("Unexpected error: %v", err) }
+		eq := slices.Compare(converted, expected1)
+		if eq != 0 { t.Errorf("Expected slices to be equal. Converted: %v  -- Expected: %v", converted, expected1) }
+	})
+
+	t.Run("int byte to int slice", func(t *testing.T) {
+		converted, err := ParseToSlice[int](slice_int_byte1)
+		if err != nil { t.Fatalf("Unexpected error: %v", err) }
+		eq := slices.Compare(converted, expected4)
+		if eq != 0 { t.Errorf("Expected slices to be equal. Converted: %v  -- Expected: %v", converted, expected4) }
+	})
+
+	t.Run("Mixed any slice to int slice", func(t *testing.T) {
+		converted, err := ParseToSlice[int](slice_any1)
+		if err != nil { t.Fatalf("Unexpected error: %v", err) }
+		eq := slices.Compare(converted, expected4)
+		if eq != 0 { t.Errorf("Expected slices to be equal. Converted: %v  -- Expected: %v", converted, expected4) }
+	})
+
+	t.Run("Empty inputs return empty slice", func(t *testing.T) {
+		var nilPtr *string
+		for _, in := range []any{nil, "", "   ", "[]", "{}", []byte{}, nilPtr} {
+			converted, err := ParseToSlice[string](in)
+			if err != nil { t.Errorf("Unexpected error for %#v: %v", in, err) }
+			if len(converted) != 0 { t.Errorf("Expected empty slice for %#v, got: %v", in, converted) }
+		}
+	})
+
+	errorCases := []struct {
+		name string
+		parse func() (any, error)
+	}{
+		{"End bracket missing", func() (any, error) { return ParseToSlice[string]("[something,5,wrong ") }},
+		{"Start bracket missing", func() (any, error) { return ParseToSlice[string]("something,5,wrong]") }},
+		{"Mismatched brackets", func() (any, error) { return ParseToSlice[string]("[a,b}") }},
+		{"Int string with bad element", func() (any, error) { return ParseToSlice[int]("[52,oops,22]") }},
+		{"Int byte with bad element", func() (any, error) { return ParseToSlice[int]([]byte("{52,oops}")) }},
+		{"Native slice with bad element", func() (any, error) { return ParseToSlice[int]([]string{"52", "oops"}) }},
+		{"Map input", func() (any, error) { return ParseToSlice[string](map[string]int{"a": 1}) }},
+		{"Struct input", func() (any, error) { return ParseToSlice[string](struct{ A int }{1}) }},
+		{"Unsupported target type", func() (any, error) { return ParseToSlice[struct{}]("a,b") }},
+	}
+
+	for _, tc := range errorCases {
+		t.Run(tc.name, func(t *testing.T) {
+			converted, err := tc.parse()
+			if err == nil { t.Errorf("Expected an error, got: %v", converted) }
+		})
+	}
+}
+
+func TestUnique(t *testing.T) {
+	got := Unique([]string{"b", "a", "b", "c", "a"})
+	if !slices.Equal(got, []string{"b", "a", "c"}) { t.Errorf("Expected [b a c] in first-seen order. Received: %v", got) }
 }
