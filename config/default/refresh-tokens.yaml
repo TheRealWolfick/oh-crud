@@ -1,0 +1,62 @@
+name: refresh-tokens
+version: 1.0.0
+table-name: refresh_tokens
+end-point: ""
+primary-key: id
+
+unique-keys:
+  uk-refresh-tokens-tokenhash:
+    unique-key-fields:
+      - token_hash
+
+indexes:
+  family_id:
+    index-fields:
+      - family_id
+
+fields:
+  id:
+    type: int
+    db-type: bigserial
+    json: id
+    skip-insert: true
+  token_hash:
+    type: string
+    db-type: text
+    private: true
+    nullable: false
+    required-on-insert: true
+  user_id:
+    type: string
+    db-type: text
+    json: user_id
+    required-on-insert: true
+    nullable: false
+  client_id:
+    type: string
+    db-type: text
+    json: client_id
+    nullable: false
+    required-on-insert: true
+  family_id:
+    type: string
+    db-type: text
+    json: family_id
+    nullable: false
+    required-on-insert: true
+  expires_at:
+    type: time
+    db-type: timestamptz
+    nullable: false
+    json: expires_at
+    required-on-insert: true
+  used_at:
+    type: time
+    db-type: timestamptz
+    nullable: true
+    json: used_at
+  revoked_at:
+    type: time
+    db-type: timestamptz
+    nullable: true
+    json: revoked_at

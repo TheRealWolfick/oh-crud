@@ -214,6 +214,56 @@ func TestValidateDataModel(t *testing.T) {
 		}
 	})
 
+	t.Run("valid index passes", func(t *testing.T) {
+		m := basicModel()
+		m.Indexes = map[string]models.Index{
+			"idx_name_active": {Fields: []string{"name", "active"}, Type: ptr("btree"), Where: ptr("active")},
+		}
+		if err := ValidateDataModel(m); err != nil {
+			t.Errorf("unexpected error for valid index: %v", err)
+		}
+	})
+
+	t.Run("index references non-existent field", func(t *testing.T) {
+		m := basicModel()
+		m.Indexes = map[string]models.Index{
+			"bad_idx": {Fields: []string{"nonexistent"}},
+		}
+		if err := ValidateDataModel(m); err == nil {
+			t.Error("expected error for index referencing unknown field")
+		}
+	})
+
+	t.Run("index with no fields", func(t *testing.T) {
+		m := basicModel()
+		m.Indexes = map[string]models.Index{
+			"empty_idx": {Fields: []string{}},
+		}
+		if err := ValidateDataModel(m); err == nil {
+			t.Error("expected error for index with no fields")
+		}
+	})
+
+	t.Run("index unknown type", func(t *testing.T) {
+		m := basicModel()
+		m.Indexes = map[string]models.Index{
+			"idx_name": {Fields: []string{"name"}, Type: ptr("btreee")},
+		}
+		if err := ValidateDataModel(m); err == nil {
+			t.Error("expected error for unknown index-type")
+		}
+	})
+
+	t.Run("index name clashes with unique key", func(t *testing.T) {
+		m := basicModel()
+		m.Indexes = map[string]models.Index{
+			"test_uq_code": {Fields: []string{"name"}},
+		}
+		if err := ValidateDataModel(m); err == nil {
+			t.Error("expected error for index sharing a unique key's name")
+		}
+	})
+
 	t.Run("foreign-key field count mismatch", func(t *testing.T) {
 		m := basicModel()
 		m.Foreign_keys = map[string]models.ForeignKey{

@@ -4,7 +4,7 @@
 #
 
 name: signing_keys
-version: 1.0.0
+version: 1.0.1
 table-name: signing_keys
 end-point: ""
 primary-key: kid
@@ -24,10 +24,11 @@ fields:
   private_key:
     type: byte
     db-type: bytea
-    json: public_key
+    json: private_key
+    private: true
     rules:
-      min: 32
-      max: 32
+      min: 92
+      max: 92
   status:
     type: string
     db-type: character varying(15)

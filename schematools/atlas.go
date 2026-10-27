@@ -145,6 +145,11 @@ func tableBlockOpts(m *models.DataModel, includeFKs bool) string {
 		}
 	}
 
+	// --- indexes ---
+	for _, idxName := range sortedIndexKeys(m.Indexes) {
+		sb.WriteString(indexBlock(idxName, m.Indexes[idxName]))
+	}
+
 	sb.WriteString("}\n")
 	return sb.String()
 }
@@ -214,6 +219,26 @@ func uniqueKeyBlock(name string, uk models.UniqueKey) string {
 		cols[i] = "column." + c
 	}
 	sb.WriteString(fmt.Sprintf("    columns = [%s]\n", strings.Join(cols, ", ")))
+	sb.WriteString("  }\n")
+	return sb.String()
+}
+
+// indexBlock renders one non-unique `index "x" { … }` block.
+func indexBlock(name string, idx models.Index) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("\n  index %q {\n", name))
+
+	cols := make([]string, len(idx.Fields))
+	for i, c := range idx.Fields {
+		cols[i] = "column." + c
+	}
+	sb.WriteString(fmt.Sprintf("    columns = [%s]\n", strings.Join(cols, ", ")))
+	if idx.Type != nil {
+		sb.WriteString(fmt.Sprintf("    type    = %s\n", strings.ToUpper(*idx.Type)))
+	}
+	if idx.Where != nil {
+		sb.WriteString(fmt.Sprintf("    where   = %q\n", *idx.Where))
+	}
 	sb.WriteString("  }\n")
 	return sb.String()
 }
@@ -639,6 +664,15 @@ func sortedKeys(m map[string]models.ForeignKey) []string {
 }
 
 func sortedUKKeys(m map[string]models.UniqueKey) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func sortedIndexKeys(m map[string]models.Index) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)

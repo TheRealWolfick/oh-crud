@@ -5,9 +5,9 @@ end-point: user
 primary-key: username
 
 unique-keys:
-  uk_users_api:
+  uk_users_username:
     unique-key-fields:
-      - api_key
+      - username
 
 end-points-allowed:
   GET: []
@@ -50,14 +50,22 @@ fields:
     required-on-insert: false
   created_at:
     type: time
-    json: ""
+    json: created_at
     db-type: timestampz
     default: now()
+    nullable: false
     private: true
+    skip-insert: true
+  disabled_at:
+    type: time
+    json: disabled_at
+    db-type: timestampz
+    private: true
+    skip-insert: true
   roles:
     type: "[]string"
     json: roles
     json-alias:
       - role
     db-type: "text[]"
-    default: "user"
+    default: "{}"

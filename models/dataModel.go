@@ -19,6 +19,14 @@ type UniqueKey struct {
 	Fields []string `yaml:"unique-key-fields"`
 }
 
+// Index is a non-unique index. Type is the access method (BTREE, HASH, GIN, GIST,
+// BRIN, SPGIST — BTREE when omitted). Where makes it a partial index.
+type Index struct {
+	Fields []string `yaml:"index-fields"`
+	Type   *string  `yaml:"index-type"`
+	Where  *string  `yaml:"index-where"`
+}
+
 type EventStatus struct {
 	Queued  []string `yaml:"queued"`
 	Start   []string `yaml:"start"`
@@ -134,6 +142,7 @@ type DataModel struct {
 	Primary_key          *string                   `yaml:"primary-key"`
 	Foreign_keys         map[string]ForeignKey     `yaml:"foreign-keys"`
 	Unique_keys          map[string]UniqueKey      `yaml:"unique-keys"`
+	Indexes              map[string]Index          `yaml:"indexes"`
 	Fields               map[string]DataModelField `yaml:"fields"`
 	Admin_roles          []string                  `yaml:"admin-roles"`
 	Filepath             *string                   `yaml:"-"`

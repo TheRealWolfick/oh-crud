@@ -800,6 +800,30 @@ func ValidateDataModel(m models.DataModel) error {
 		}
 	}
 
+	validIndexTypes := map[string]bool{
+		"BTREE": true, "HASH": true, "GIN": true, "GIST": true, "BRIN": true, "SPGIST": true,
+	}
+	for idxName, idx := range m.Indexes {
+		prefix := fmt.Sprintf("indexes.%s", idxName)
+		if _, clash := m.Unique_keys[idxName]; clash {
+			errs = append(errs, fmt.Sprintf("%s: name is already used by a unique key", prefix))
+		}
+		if len(idx.Fields) == 0 {
+			errs = append(errs, fmt.Sprintf("%s: index-fields cannot be empty", prefix))
+		}
+		for _, f := range idx.Fields {
+			if _, ok := m.Fields[f]; !ok {
+				errs = append(errs, fmt.Sprintf("%s: index-field %q does not match any field name", prefix, f))
+			}
+		}
+		if idx.Type != nil && !validIndexTypes[strings.ToUpper(*idx.Type)] {
+			errs = append(errs, fmt.Sprintf("%s: unknown index-type %q", prefix, *idx.Type))
+		}
+		if idx.Where != nil && strings.TrimSpace(*idx.Where) == "" {
+			errs = append(errs, fmt.Sprintf("%s: index-where cannot be empty", prefix))
+		}
+	}
+
 	if m.Allow_diff != nil && *m.Allow_diff {
 		if m.Diff_comparator == nil || strings.TrimSpace(*m.Diff_comparator) == "" {
 			errs = append(errs, "diff-comparator is required when allow-diff is true")

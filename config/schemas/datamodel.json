@@ -141,6 +141,23 @@
       }
     },
 
+    "indexes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["index-fields"],
+        "additionalProperties": false,
+        "properties": {
+          "index-fields": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+          "index-type": {
+            "type": "string",
+            "enum": ["BTREE", "HASH", "GIN", "GIST", "BRIN", "SPGIST", "btree", "hash", "gin", "gist", "brin", "spgist"]
+          },
+          "index-where": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+
     "fields": {
       "type": "object",
       "additionalProperties": {

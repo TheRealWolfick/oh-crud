@@ -190,6 +190,7 @@ fields:
 | `primary-key` | Field name of the primary key. Required. Cannot be nullable |
 | `unique-keys` | Unique constraints (3.5) |
 | `foreign-keys` | Foreign keys (3.6) |
+| `indexes` | Non-unique indexes (3.7) |
 | `web-hooks` | URLs notified of events (3.4) |
 | `fields` | Column definitions (4). At least one required |
 
@@ -260,6 +261,35 @@ A map of constraint name → definition:
 | `foreign-key-target-field-description` | No | Field on the target table holding a human-readable label for the referenced record. Returned by the `schema` function for display only |
 | `foreign-key-on-update` | No | `CASCADE`, `SET NULL`, `SET DEFAULT`, `RESTRICT`, `NO ACTION` |
 | `foreign-key-on-delete` | No | Same values |
+
+### 3.7 `indexes`
+
+A map of index name → definition. Indexes speed up lookups on fields that are
+not keys. They don't change the API, and each name must differ from the
+`unique-keys` names.
+
+| Key | Required | Meaning |
+|-----|----------|---------|
+| `index-fields` | Yes | Fields in the index, in order |
+| `index-type` | No | `BTREE` (default), `HASH`, `GIN`, `GIST`, `BRIN`, `SPGIST` |
+| `index-where` | No | SQL predicate that makes it a partial index |
+
+```yaml
+indexes:
+  idx_refresh_tokens_user:
+    index-fields: [user_id]
+    index-where: revoked_at IS NULL
+```
+
+Bump `version` to apply an index change (section 6). New indexes are added
+automatically. Removing or renaming one drops an index and needs approval.
+
+Write `index-where` the way PostgreSQL stores it (`pg_get_expr(indpred, indrelid)`),
+without the outer brackets. A simple predicate like `revoked_at IS NULL` is fine
+as written. PostgreSQL brackets each part of a compound predicate, so write
+`(a IS NULL) AND (b IS NULL)`, not `a IS NULL AND b IS NULL`. Otherwise every
+sync sees the index as changed and silently drops and recreates it. A rebuild
+isn't treated as destructive, so it never asks for approval.
 
 ---
 
@@ -371,6 +401,8 @@ required, so editors using that schema will flag models without one.
 - A foreign key has no target table, empty field lists, lists of different
   lengths, a field that doesn't exist, or an unknown on-update/on-delete action.
 - A unique key is empty or names a field that doesn't exist.
+- An index is empty, names a field that doesn't exist, has an unknown
+  `index-type`, or shares its name with a unique key.
 - `allow-diff` is true without a valid `diff-comparator`, or no field has
   `include-in-diff: true`.
 
