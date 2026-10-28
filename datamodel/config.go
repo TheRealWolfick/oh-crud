@@ -710,7 +710,7 @@ func ValidateDataModel(m models.DataModel) error {
 		"boolean": true, "jsonb": true, "json": true, "uuid": true,
 		"timestamptz": true, "text": true, "numeric": true, "timestamp without time zone": true,
 		"timestamp with time zone": true, "date": true, "varchar": true, "character varying": true,
-		"char": true, "character": true, "decimal": true, "serial": true, "smallserial": true,
+		"char": true, "character": true, "decimal": true, "serial": true, "smallserial": true, "bigserial": true,
 		"bytea": true,
 	}
 	validMigrations := map[string]bool{

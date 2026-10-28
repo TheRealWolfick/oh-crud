@@ -30,7 +30,7 @@ fields:
     json-alias:
       - user
     db-type: character varying(20)
-    nullable: true
+    nullable: false
   display_name:
     type: string
     db-type: text
@@ -51,7 +51,7 @@ fields:
   created_at:
     type: time
     json: created_at
-    db-type: timestampz
+    db-type: timestamptz
     default: now()
     nullable: false
     private: true
@@ -59,7 +59,7 @@ fields:
   disabled_at:
     type: time
     json: disabled_at
-    db-type: timestampz
+    db-type: timestamptz
     private: true
     skip-insert: true
   roles:
