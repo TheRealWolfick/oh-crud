@@ -45,8 +45,10 @@ type FakeDB struct {
 	RowErr error
 
 	// Query results. Each Query gets a fresh copy of Rows, so the cursor is never shared.
-	Rows     FakeRows
-	QueryErr error
+	// QueryFunc, when set, overrides Rows and QueryErr, for tests that run different queries.
+	Rows      FakeRows
+	QueryErr  error
+	QueryFunc func(sql string, args []any) (pgx.Rows, error)
 
 	// Begin results. Tx is the most recent transaction returned by Begin.
 	BeginErr  error
@@ -85,6 +87,9 @@ func (f *FakeDB) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row 
 
 func (f *FakeDB) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
 	f.record("Query", sql, args)
+	if f.QueryFunc != nil {
+		return f.QueryFunc(sql, args)
+	}
 	if f.QueryErr != nil {
 		return nil, f.QueryErr
 	}

@@ -44,6 +44,11 @@ fields:
     json: family_id
     nullable: false
     required-on-insert: true
+  amr:
+    type: "[]string"
+    db-type: "text[]"
+    json: amr
+    default: "{}"
   expires_at:
     type: time
     db-type: timestamptz

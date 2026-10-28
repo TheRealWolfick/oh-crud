@@ -348,7 +348,7 @@ func TestTokenEndpointErrors(t *testing.T) {
 	badClient := assertionRequest(testAssertionType, signAssertion(t, priv, "unknown-kid", validAssertionClaims()))
 	a.Auth = *store.NewServices(&modelstest.FakeDB{}) // no keys at all
 
-	form := url.Values{"grant_type": {"password"}}
+	form := url.Values{"grant_type": {"implicit"}}
 	badGrant := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader(form.Encode()))
 	badGrant.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 

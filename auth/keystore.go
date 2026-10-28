@@ -324,20 +324,28 @@ func (ks *KeyStore) RefreshKeys(ctx context.Context) error {
 }
 
 
-// Save a new refresh token
+// ErrFamilyRevoked is returned when a refresh token would join a session that has been revoked
+var ErrFamilyRevoked = errors.New("refresh token family is revoked")
+
+// Save a new refresh token. A rotation racing a reuse revocation can reach here after the
+// family was revoked, so the insert is refused rather than leaving a live token behind.
 func (ks *KeyStore) SaveRefreshToken(ctx context.Context, rt *models.RefreshToken) error {
-	sql := `INSERT INTO refresh_tokens (token_hash, user_id, client_id, family_id, expires_at) VALUES ($1, $2, $3, $4, $5)`
+	sql := `INSERT INTO refresh_tokens (token_hash, user_id, client_id, family_id, amr, expires_at)
+	SELECT $1::text, $2::text, $3::text, $4::text, $5::text[], $6::timestamptz
+	WHERE NOT EXISTS (SELECT 1 FROM refresh_tokens WHERE family_id = $4::text AND revoked_at IS NOT NULL)`
 
 	// Add the token to the database
-	cmd, err := ks.db.Exec(ctx, sql, rt.TokenHash, rt.UserID, rt.ClientID, rt.FamilyID, rt.ExpiresAt)
-	if err != nil || cmd.RowsAffected() == 0 { return err }
+	cmd, err := ks.db.Exec(ctx, sql, rt.TokenHash, rt.UserID, rt.ClientID, rt.FamilyID, rt.AMR, rt.ExpiresAt)
+	if err != nil { return err }
+	if cmd.RowsAffected() == 0 { return ErrFamilyRevoked }
 
 	return nil
 }
 
 // Read a refresh token
 func (ks *KeyStore) RefreshTokenbyHash(ctx context.Context, hash string) (*models.RefreshToken, error) {
-	sql := `SELECT id, token_hash, user_id, client_id, family_id, expires_at, used_at, revoked_at
+	sql := `SELECT id, token_hash, user_id, client_id, family_id, COALESCE(amr, '{}') AS amr,
+		expires_at, used_at, revoked_at
 	FROM refresh_tokens WHERE token_hash = $1 LIMIT 1`
 
 	// Get the refresh token
@@ -345,4 +353,24 @@ func (ks *KeyStore) RefreshTokenbyHash(ctx context.Context, hash string) (*model
 	if err != nil { return nil, err }
 
 	return pgx.CollectOneRow(rows, pgx.RowToAddrOfStructByName[models.RefreshToken])
+}
+
+// Mark a refresh token as used. Only one caller can win this for a given token:
+// false means it was already used, revoked or expired by the time we got to it
+func (ks *KeyStore) UseRefreshToken(ctx context.Context, id int) (bool, error) {
+	sql := `UPDATE refresh_tokens SET used_at = now()
+	WHERE id = $1 AND used_at IS NULL AND revoked_at IS NULL AND expires_at > now()`
+
+	cmd, err := ks.db.Exec(ctx, sql, id)
+	if err != nil { return false, err }
+
+	return cmd.RowsAffected() == 1, nil
+}
+
+// Revoke every live refresh token in a family, ending that login session
+func (ks *KeyStore) RevokeRefreshFamily(ctx context.Context, family string) error {
+	sql := `UPDATE refresh_tokens SET revoked_at = now() WHERE family_id = $1 AND revoked_at IS NULL`
+
+	_, err := ks.db.Exec(ctx, sql, family)
+	return err
 }

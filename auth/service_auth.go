@@ -9,7 +9,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"strings"
+	"slices"
 	"sync"
 	"time"
 
@@ -182,6 +182,10 @@ func (a *Auth) TokenEndpoint() http.HandlerFunc {
 		switch r.PostFormValue("grant_type") {
 		case "client_credentials":
 			a.ClientCredentials(w, r)
+		case "password":
+			a.PasswordLogin(w, r)
+		case "refresh_token":
+			a.RefreshGrant(w, r)
 		default:
 			oauthError(w, "unsupported_grant_type", http.StatusBadRequest)
 		}
@@ -200,8 +204,9 @@ func (a *Auth) OpenIDConfig() http.HandlerFunc {
 			"authorization_endpoint": cfg.Issuer+"/authorize",
 			"end_session_endpoint": cfg.Issuer+"/logout",
 			"grant_types_supported": []string{
-				"client_credentials", 
-				//	"refresh_token", 
+				"client_credentials",
+				"password",
+				"refresh_token",
 				//	"authorization_code",
 				//	"urn:ietf:params:oauth:grant-type:token-exchange"
 			},
@@ -214,19 +219,25 @@ func (a *Auth) OpenIDConfig() http.HandlerFunc {
 	}
 }
 
-func (a *Auth) getUserByUsername(ctx context.Context,  username string) (*models.User, error) {
-	// Text columns are nullable, so coalesce them to fit the plain string fields
-	sql := `
-	SELECT id, COALESCE(username, '') AS username, COALESCE(display_name, '') AS display_name,
-		COALESCE(password_hash, '') AS password_hash, totp_secret, created_at, disabled_at,
-		COALESCE(roles, '{}') AS roles
-	FROM users WHERE username = $1 LIMIT 1;
-	`
+// Text columns are nullable, so coalesce them to fit the plain string fields
+const userColumns = `
+	id, COALESCE(username, '') AS username, COALESCE(display_name, '') AS display_name,
+	COALESCE(password_hash, '') AS password_hash, totp_secret, created_at, disabled_at,
+	COALESCE(roles, '{}') AS roles`
 
-	rows, err := a.ks.db.Query(ctx, sql, username)
+func (a *Auth) getUser(ctx context.Context, where string, arg string) (*models.User, error) {
+	rows, err := a.ks.db.Query(ctx, `SELECT `+userColumns+` FROM users WHERE `+where+` = $1 LIMIT 1`, arg)
 	if err != nil { return nil, err }
 
 	return pgx.CollectOneRow(rows, pgx.RowToAddrOfStructByName[models.User])
+}
+
+func (a *Auth) getUserByUsername(ctx context.Context, username string) (*models.User, error) {
+	return a.getUser(ctx, "username", username)
+}
+
+func (a *Auth) getUserByID(ctx context.Context, id string) (*models.User, error) {
+	return a.getUser(ctx, "id", id)
 }
 
 // Swap the stored hash only if it hasn't changed since it was read, so a
@@ -237,127 +248,221 @@ func (a *Auth) updatePasswordHash(ctx context.Context, userID string, oldHash st
 	return err
 }
 
-// An auth handler for a password login
-func (a *Auth) PasswordLogin() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		username := r.PostFormValue("username")
-		password := r.PostFormValue("password")   // This should be a hash
+// The password grant for a user login. The client must assert who it is.
+func (a *Auth) PasswordLogin(w http.ResponseWriter, r *http.Request) {
+	username := r.PostFormValue("username")
+	password := r.PostFormValue("password")   // This should be a hash
 
-		// Verify who is asking
-		clientID := "cli"
-		if raw, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer "); ok {
-			svc, err := a.ks.Verify(raw)
-			if err != nil || svc.TokenUse != "service" {
-				unauthorized(w)
-				return
-			}
-			clientID = strings.TrimPrefix(svc.Subject, "svc:")
-		}
-
-		// Ensure the request can be processed
-		if !a.Limiter.Allow(clientID+":"+username) {
-			oauthError(w, "slow_down", http.StatusTooManyRequests)
-			return
-		}
-
-		// Get the user
-		usr, err := a.getUserByUsername(r.Context(), username)
-		
-		// Use a dummy hash if no user was returned
-		hash := secrets.DummyHash
-		if err == nil && usr.PasswordHash != "" { hash = usr.PasswordHash }
-
-		// Check if the hash matches the supplied password
-		match, params, hashErr := argon2id.CheckHash(password, hash)
-
-		// Handle false login TODO: implement logging for failed login
-		if err != nil || hashErr != nil || !match { unauthorized(w); return }
-
-		// A disabled account fails the same way as a wrong password
-		if usr.DisabledAt != nil { unauthorized(w); return }
-
-		amr := []string{"pwd"}
-		if len(usr.TotpSecret) > 0 {
-			secret, err := secrets.Decrypt(a.ks.master, usr.TotpSecret, []byte(usr.ID))
-			if err != nil || !totp.Validate(r.PostFormValue("otp"), string(secret)) {
-				oauthError(w, "invalid_grant", http.StatusUnauthorized)
-				return
-			} else {
-				amr = append(amr, "otp")
-			}
-		}
-
-		// Rehash if the stored hash used weaker params than we now require.
-		// The password is already verified, so a failure here must not fail the login
-		if secrets.NeedsRehash(params) {
-			if h, err := secrets.HashPassword(password); err == nil {
-				if err := a.updatePasswordHash(r.Context(), usr.ID, usr.PasswordHash, h); err != nil {
-					a.lg.Warn("password rehash failed", "user", usr.ID, "error", err)
-				}
-			}
-		}
-
-		// issue the user token
-		a.issueUserTokens(w, *r, usr, clientID, uuid.NewString(), amr)
+	// Verify which client is asking
+	svc, err := a.AuthenticateService(r)
+	if err != nil {
+		a.lg.Warn("invalid client attempted a password login", "error", err)
+		oauthError(w, "invalid_client", http.StatusUnauthorized)
+		return
 	}
+	clientID := svc.ID
+
+	// Ensure the request can be processed
+	if !a.Limiter.Allow(clientID+":"+username) {
+		oauthError(w, "slow_down", http.StatusTooManyRequests)
+		return
+	}
+
+	// Get the user
+	usr, err := a.getUserByUsername(r.Context(), username)
+	
+	// Use a dummy hash if there is no user, or the user has no password (such as one
+	// who signs in through Entra), so every failure takes as long as a real check
+	hasPassword := err == nil && usr.PasswordHash != ""
+	hash := secrets.DummyHash
+	if hasPassword { hash = usr.PasswordHash }
+
+	// Check if the hash matches the supplied password
+	match, params, hashErr := argon2id.CheckHash(password, hash)
+
+	// Handle false login. A match against the dummy never counts.
+	// TODO: implement logging for failed login
+	if !hasPassword || hashErr != nil || !match { unauthorized(w); return }
+
+	// A disabled account fails the same way as a wrong password
+	if usr.DisabledAt != nil { unauthorized(w); return }
+
+	amr := []string{"pwd"}
+	if len(usr.TotpSecret) > 0 {
+		secret, err := secrets.Decrypt(a.ks.master, usr.TotpSecret, []byte(usr.ID))
+		if err != nil || !totp.Validate(r.PostFormValue("otp"), string(secret)) {
+			oauthError(w, "invalid_grant", http.StatusUnauthorized)
+			return
+		} else {
+			amr = append(amr, "otp")
+		}
+	}
+
+	// Rehash if the stored hash used weaker params than we now require.
+	// The password is already verified, so a failure here must not fail the login
+	if secrets.NeedsRehash(params) {
+		if h, err := secrets.HashPassword(password); err == nil {
+			if err := a.updatePasswordHash(r.Context(), usr.ID, usr.PasswordHash, h); err != nil {
+				a.lg.Warn("password rehash failed", "user", usr.ID, "error", err)
+			}
+		}
+	}
+
+	// issue the user token
+	a.issueUserTokens(w, r, usr, clientID, uuid.NewString(), amr, refreshExpiry(amr, nil))
 }
 
 
+const (
+	// amrFederated marks a login made through an external IdP such as Entra
+	amrFederated = "fed"
+
+	// Password sessions slide: each rotation extends them by the full lifetime
+	refreshLifetime = 14 * 24 * time.Hour
+	// External IdP sessions are capped from login and never extended, so the user goes
+	// back to the IdP daily and an account disabled there is noticed within a day
+	federatedRefreshLifetime = 24 * time.Hour
+)
+
+// refreshExpiry returns when a session's next refresh token expires. current is the
+// token being rotated, or nil for a new login.
+func refreshExpiry(amr []string, current *models.RefreshToken) time.Time {
+	if !slices.Contains(amr, amrFederated) { return time.Now().Add(refreshLifetime) }
+	if current != nil { return current.ExpiresAt }
+	return time.Now().Add(federatedRefreshLifetime)
+}
+
 // Issue a user token to the user
 func (a *Auth) issueUserTokens(
-	w http.ResponseWriter, 
-	r http.Request, 
+	w http.ResponseWriter,
+	r *http.Request,
 	u *models.User, 
 	clientID string, 
 	family string, 
-	amr []string) {
-		// Create the access token
-		access, err := a.ks.Issue(models.Claims{
-			TokenUse: "user",
-			Roles: u.Roles,
-			SID: family,
-			AMR: amr,
-			RegisteredClaims: jwt.RegisteredClaims{Subject: u.ID},
-		}, 15*time.Minute)
+	amr []string,
+	refreshExpires time.Time,
+) {
+	// Create the access token
+	access, err := a.ks.Issue(models.Claims{
+		TokenUse: "user",
+		Roles: u.Roles,
+		SID: family,
+		AMR: amr,
+		RegisteredClaims: jwt.RegisteredClaims{Subject: u.ID},
+	}, 15*time.Minute)
 
-		// Handle the server failing to create the access issue
-		if err != nil { http.Error(w, "server_error", http.StatusInternalServerError); return }
+	// Handle the server failing to create the access issue
+	if err != nil { http.Error(w, "server_error", http.StatusInternalServerError); return }
 
-		// Create a new refresh token that the client can use
-		refresh, err := a.newRefreshToken(r.Context(), u.ID, clientID, family)
-		if err != nil { http.Error(w, "server_error", http.StatusInternalServerError); return }
+	// Create a new refresh token that the client can use
+	refresh, err := a.newRefreshToken(r.Context(), u.ID, clientID, family, amr, refreshExpires)
+	if errors.Is(err, ErrFamilyRevoked) { oauthError(w, "invalid_grant", http.StatusBadRequest); return }
+	if err != nil { http.Error(w, "server_error", http.StatusInternalServerError); return }
 
-		// Give the token back to the user
-		httpx.WriteJSON_nostore(w, map[string]any{
-			"access_token": access, "token_type": "Bearer", "expires_in": 900,
-			"refresh_token": refresh,
-		})
+	// Give the token back to the user
+	httpx.WriteJSON_nostore(w, map[string]any{
+		"access_token": access, "token_type": "Bearer", "expires_in": 900,
+		"refresh_token": refresh,
+	})
+}
+
+// Create and save a new refresh token
+func (a *Auth) newRefreshToken(
+	ctx context.Context,
+	userID string,
+	clientID string,
+	family string,
+	amr []string,
+	expiresAt time.Time,
+) (string, error) {
+	// Create the key and randomize it
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil { return "", err }
+
+	// Create the token and save it
+	tok := "ohc_rt_"+base64.RawURLEncoding.EncodeToString(b)
+	rt := models.RefreshToken{
+		TokenHash: secrets.Sha256Hex(tok),
+		UserID: userID,
+		ClientID: clientID,
+		FamilyID: family,
+		AMR: amr,
+		ExpiresAt: expiresAt,
 	}
 
+	// Save the token
+	err := a.ks.SaveRefreshToken(ctx, &rt)
 
-	func (a *Auth) newRefreshToken(
-		ctx context.Context,
-		userID string,
-		clientID string,
-		family string,
-	) (string, error) {
-		// Create the key and randomize it
-		b := make([]byte, 32)
-		if _, err := rand.Read(b); err != nil { return "", err }
+	// Return the unhashed token 
+	return tok, err
+}
 
-		// Create the token and save it
-		tok := "ohc_rt_"+base64.RawStdEncoding.EncodeToString(b)
-		rt := models.RefreshToken{
-			TokenHash: secrets.Sha256Hex(tok),
-			UserID: userID,
-			ClientID: clientID,
-			FamilyID: family,
-			ExpiresAt: time.Now().Add(14 * 24 * time.Hour),
-		}
+// The refresh grant. Each refresh token is single use: redeeming it marks it
+// used and issues a new one in the same family. A used token presented again
+// means it was copied, so the whole family (the login session) is revoked.
+func (a *Auth) RefreshGrant(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 
-		// Save the token
-		err := a.ks.SaveRefreshToken(ctx, &rt)
-
-		// Return the unhashed token 
-		return tok, err
+	// Verify which client is asking
+	svc, err := a.AuthenticateService(r)
+	if err != nil {
+		a.lg.Warn("invalid client attempted a refresh", "error", err)
+		oauthError(w, "invalid_client", http.StatusUnauthorized)
+		return
 	}
+
+	// Find the token
+	rt, err := a.ks.RefreshTokenbyHash(ctx, secrets.Sha256Hex(r.PostFormValue("refresh_token")))
+	if errors.Is(err, pgx.ErrNoRows) { oauthError(w, "invalid_grant", http.StatusBadRequest); return }
+	if err != nil {
+		a.lg.Error("refresh token lookup failed", "error", err)
+		oauthError(w, "server_error", http.StatusInternalServerError)
+		return
+	}
+
+	// Token must be redeemed by the client it was issued to
+	if rt.ClientID != svc.ID {
+		a.lg.Warn("refresh token presented by the wrong client", "client", svc.ID, "family", rt.FamilyID)
+		oauthError(w, "invalid_grant", http.StatusBadRequest)
+		return
+	}
+
+	// Token was revoked or expired
+	if rt.RevokedAt != nil || time.Now().After(rt.ExpiresAt) {
+		oauthError(w, "invalid_grant", http.StatusBadRequest)
+		return
+	}
+
+	// Claim the token. Losing the claim means someone else redeemed it, even if
+	// they did so a moment ago in a concurrent request.
+	claimed, err := a.ks.UseRefreshToken(ctx, rt.ID)
+	if err != nil {
+		a.lg.Error("refresh token claim failed", "error", err)
+		oauthError(w, "server_error", http.StatusInternalServerError)
+		return
+	}
+	if rt.UsedAt != nil || !claimed {
+		a.lg.Warn("refresh token reuse, revoking family", "user", rt.UserID, "client", svc.ID, "family", rt.FamilyID)
+		a.revokeFamily(ctx, rt.FamilyID)
+		oauthError(w, "invalid_grant", http.StatusBadRequest)
+		return
+	}
+
+	// Load the user fresh, so disabling an account or changing roles takes effect on refresh
+	usr, err := a.getUserByID(ctx, rt.UserID)
+	if err != nil || usr.DisabledAt != nil {
+		a.revokeFamily(ctx, rt.FamilyID)
+		oauthError(w, "invalid_grant", http.StatusBadRequest)
+		return
+	}
+
+	// Rotate: new tokens in the same family, keeping how the user logged in
+	a.issueUserTokens(w, r, usr, svc.ID, rt.FamilyID, rt.AMR, refreshExpiry(rt.AMR, rt))
+}
+
+// Revoke a session family, logging rather than failing the request if it errors
+func (a *Auth) revokeFamily(ctx context.Context, family string) {
+	if err := a.ks.RevokeRefreshFamily(ctx, family); err != nil {
+		a.lg.Error("failed to revoke refresh token family", "family", family, "error", err)
+	}
+}
