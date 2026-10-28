@@ -47,7 +47,8 @@ cors:
   allowed-origins:
     - https://app.example.com
   allowed-headers:
-    - X-API-Key
+    - Authorization
+    - X-OhCrud-User
     - Content-Type
     - X-User-Note
   allow-credentials: true
@@ -66,7 +67,7 @@ token-lifetime: 10m
 | Key | Meaning |
 |-----|---------|
 | `cors.allowed-origins` | Origins allowed to call the API from a browser. Matched exactly, including scheme and port |
-| `cors.allowed-headers` | Request headers browsers may send. Include `X-API-Key` and `Content-Type` for frontends |
+| `cors.allowed-headers` | Request headers browsers may send. Include `Authorization`, `X-OhCrud-User` and `Content-Type` for frontends |
 | `cors.allow-credentials` | Sets `Access-Control-Allow-Credentials` |
 | `rbac.admin-role` | Users with this role pass every permission check |
 | `rbac.default-user-role`, `rbac.custom-roles` | Documents the roles in use. Not enforced |
@@ -182,6 +183,7 @@ fields:
 |-----|---------|
 | `end-points-allowed` | Which operations exist, and which roles may use them (3.3) |
 | `admin-roles` | Roles allowed to use `/{end-point}/admin/pending` and `/admin/approve` |
+| `access` | Who may call the model's routes: `require-user` (service calls must act for a user) and `allow-direct` (accept a user token with no service). Both default to `false`. See `auth.md` 1.2 |
 
 **Keys and events**
 

@@ -14,7 +14,6 @@ import (
 	"lotusforge.au/api-server/events"
 	"lotusforge.au/api-server/handlers"
 	"lotusforge.au/api-server/logging"
-	"lotusforge.au/api-server/middleware"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/monitors"
 	"lotusforge.au/api-server/queue"
@@ -102,8 +101,8 @@ func main() {
 	// ---------------------------------------------------------------
 	//                Middleware
 	// ---------------------------------------------------------------
-	authMiddleware := middleware.RequireAuth(pool)
 	oauthHandler := auth.AuthHandler(pool, server_conf, logger, ks)
+	authMiddleware := handlers.ModelAuth(oauthHandler.ForModel)   // Bearer tokens, then each model's access rule
 
 
 	// ---------------------------------------------------------------

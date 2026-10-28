@@ -71,19 +71,43 @@ func GetLogger(ctx context.Context) (*slog.Logger, bool) {
 	return logger, ok
 }
 
-func SetRoles(ctx context.Context, user_roles []string) context.Context {
-	return context.WithValue(ctx, userRolesKey, user_roles)
+// CallerRoles holds the roles of each party to a request. A request can come from a
+// service, a user, or a service acting for a user.
+type CallerRoles struct {
+	Service    []string
+	User       []string
+	HasService bool
+	HasUser    bool
 }
 
+func SetCallerRoles(ctx context.Context, c CallerRoles) context.Context {
+	return context.WithValue(ctx, userRolesKey, c)
+}
+
+// SetRoles sets the roles of a request made by a user alone
+func SetRoles(ctx context.Context, user_roles []string) context.Context {
+	return SetCallerRoles(ctx, CallerRoles{User: user_roles, HasUser: true})
+}
+
+// CheckUserHasAllowedRole reports whether every party to the request holds an allowed
+// role or the admin role. A service acting for a user needs both to pass, so neither
+// can reach further than the other is allowed to.
 func CheckUserHasAllowedRole(ctx context.Context, allowed_roles []string, svr_cfg *models.ServerConfig) bool {
-	user_roles, ok := ctx.Value(userRolesKey).([]string)
-	if ok {
-		// Check if user is an admin
-		if svr_cfg.RBAC != nil && slices.Contains(user_roles, svr_cfg.RBAC.Admin_role) { return true }
-		// Check if user can access this end point
-		for _, role := range allowed_roles {
-			if slices.Contains(user_roles, role) { return true }
-		}
-  }
+	c, ok := ctx.Value(userRolesKey).(CallerRoles)
+	if !ok || (!c.HasService && !c.HasUser) { return false }
+
+	admin_role := ""
+	if svr_cfg.RBAC != nil { admin_role = svr_cfg.RBAC.Admin_role }
+
+	if c.HasService && !roleAllowed(c.Service, allowed_roles, admin_role) { return false }
+	if c.HasUser && !roleAllowed(c.User, allowed_roles, admin_role) { return false }
+	return true
+}
+
+func roleAllowed(have []string, allowed_roles []string, admin_role string) bool {
+	if admin_role != "" && slices.Contains(have, admin_role) { return true }
+	for _, role := range allowed_roles {
+		if slices.Contains(have, role) { return true }
+	}
 	return false
 }

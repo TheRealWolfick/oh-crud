@@ -2,7 +2,6 @@ package monitors
 
 import (
 	"context"
-	"net/http"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -15,7 +14,7 @@ import (
 	"lotusforge.au/api-server/schematools"
 )
 
-func ModelsMonitor(handlerRegistry *registry.HandlerRegistry, modelRegistry *registry.ModelRegistry, auth func(http.Handler) http.Handler, qm *queue.QueueManager, gate *schematools.PendingApprovalGate, server_conf *models.SwappableServerConfig, evh *events.EventManager) {
+func ModelsMonitor(handlerRegistry *registry.HandlerRegistry, modelRegistry *registry.ModelRegistry, auth handlers.ModelAuth, qm *queue.QueueManager, gate *schematools.PendingApprovalGate, server_conf *models.SwappableServerConfig, evh *events.EventManager) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		qm.Logger.Error("Failed to load watcher, config will not update live", "error", err)

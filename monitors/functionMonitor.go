@@ -1,7 +1,6 @@
 package monitors
 
 import (
-	"net/http"
 
 	"github.com/fsnotify/fsnotify"
 	"lotusforge.au/api-server/datamodel"
@@ -21,7 +20,7 @@ func FunctionsMonitor(
 	handlerRegistry *registry.HandlerRegistry,
 	modelRegistry *registry.ModelRegistry,
 	functionRegistry *registry.FunctionRegistry,
-	auth func(http.Handler) http.Handler,
+	auth handlers.ModelAuth,
 	qm *queue.QueueManager,
 	server_conf *models.SwappableServerConfig,
 	evh *events.EventManager,

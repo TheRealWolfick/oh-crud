@@ -129,6 +129,9 @@ func (tb *authTables) exec(sql string, args []any) (pgconn.CommandTag, error) {
 		}
 		return pgconn.NewCommandTag(fmt.Sprintf("UPDATE %d", n)), nil
 
+	case strings.Contains(sql, "INSERT INTO users"):
+		return pgconn.NewCommandTag("INSERT 0 1"), nil
+
 	case strings.Contains(sql, "UPDATE users SET password_hash"):
 		for _, u := range tb.users {
 			if u.ID == args[1] && u.PasswordHash == args[2] {

@@ -63,7 +63,7 @@ func newTestQueueManager(db *fakeDB) *queue.QueueManager {
 // handlers read via reqctx.GetUser / CheckUserHasAllowedRole.
 func requestWithRoles(target string, roles []string) *http.Request {
 	req := httptest.NewRequest(http.MethodGet, target, nil)
-	ctx := reqctx.SetUser(req.Context(), &models.User{UserInfoResponse: models.UserInfoResponse{Username: "tester"}})
+	ctx := reqctx.SetUser(req.Context(), &models.User{Username: "tester"})
 	ctx = reqctx.SetRoles(ctx, roles)
 	return req.WithContext(ctx)
 }

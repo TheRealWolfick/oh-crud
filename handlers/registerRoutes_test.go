@@ -11,7 +11,9 @@ import (
 	"lotusforge.au/api-server/schematools"
 )
 
-func noopAuth(h http.Handler) http.Handler { return h }
+func noopAuth(*models.DataModel) func(http.Handler) http.Handler {
+	return func(h http.Handler) http.Handler { return h }
+}
 
 // TestRegisterRoutes_NilDiffCfg_NoPanic covers the case where a resource model sets
 // allow-diff: true but the diffs model failed to load (diff_cfg == nil) — e.g. because

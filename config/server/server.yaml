@@ -8,7 +8,7 @@ cors:
     - http://127.0.0.1:8080
   allowed-headers:
     - X-Username
-    - X-API-Key
+    - X-OhCrud-User
     - Content-Type
     - Authorization
     - X-User-Note

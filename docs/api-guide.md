@@ -8,8 +8,8 @@ and diff workflows, and author declarative functions.
 
 Related docs:
 
-- `auth.md`: API keys, roles, and service tokens. **Read first**: every data
-  endpoint needs an `X-API-Key` header.
+- `auth.md`: tokens, user login and roles. **Read first**: every data
+  endpoint needs a bearer token.
 - `websockets.md` and `events.md`: live updates after writes.
 - `config-instructions.md`: how models, fields and permissions are configured.
 
@@ -25,7 +25,7 @@ what each model looks like:
 | Method | Path | Auth | Returns |
 |--------|------|------|---------|
 | GET | `/openapi.json` | None | OpenAPI 3.0.3 spec of every model endpoint and declarative function, with request/response schemas |
-| GET | `/{endpoint}/fn/schema` | API key | The model's fields, types, rules, keys and foreign keys (section 6.2). Use it to build tables and forms |
+| GET | `/{endpoint}/fn/schema` | Bearer token | The model's fields, types, rules, keys and foreign keys (section 6.2). Use it to build tables and forms |
 | GET | `/health` | None | `OK` |
 
 A typical frontend loads `/openapi.json` once to list the models, then calls
@@ -35,10 +35,12 @@ A typical frontend loads `/openapi.json` once to list the models, then calls
 
 ```http
 GET /asset/data?page_size=50 HTTP/1.1
-X-API-Key: <user key>
+Authorization: Bearer <service token>
+X-OhCrud-User: <user token>
 ```
 
-- Send `X-API-Key` on every data request (`auth.md`).
+- Send the service token on every data request, and the user token when acting
+  for a user (`auth.md` 1.1).
 - Send JSON bodies with `Content-Type: application/json`.
 - Optionally send `X-User-Note: <text>` on writes. It is stored with the task
   and appears as `note` in events and diffs.
@@ -125,7 +127,7 @@ include them.
 | Status | Body | When |
 |--------|------|------|
 | `400` | Plain text, or a JSON write result (section 8) | Bad URL parameters, bad body, or no valid rows |
-| `401` | Plain text | Bad/missing API key, or the user's roles don't allow the operation (`auth.md`) |
+| `401` | Plain text | Bad/missing token, or a party's roles don't allow the operation (`auth.md`) |
 | `404` | Plain text | Unknown route |
 | `405` | `Not allowed` | Operation not enabled on this model. `Allow` header lists enabled operations |
 | `500` | Plain text | Server or query error |

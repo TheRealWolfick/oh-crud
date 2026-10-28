@@ -22,7 +22,7 @@ recommended.
    [Atlas](https://atlasgo.io). Non-destructive changes apply automatically. Destructive
    ones (drops, type narrowing) are held in an approval gate until someone approves them
    through the admin endpoints.
-3. **Serve** — Routes are registered per model, wrapped in CORS and API key auth.
+3. **Serve** — Routes are registered per model, wrapped in CORS and bearer token auth.
 4. **Queue** — Every create/update/delete is enqueued and returns a `task_id` immediately.
    Workers run the generated SQL and emit events as the job progresses.
 5. **Watch** — File monitors reload models, declarative functions, and the server config
@@ -133,9 +133,11 @@ sorting (`sort_by=field~desc`), and per-field filtering with comparison prefixes
 
 ### Authentication
 
-Requests carry an API key in the `X-API-Key` header, which resolves to a user record
-holding that user's roles. Access is checked per table, and the admin role — set by
-`rbac.admin-role` in `config/server/server.yaml` — gates the schema approval endpoints.
+Every client is a registered service that proves who it is with a signed client
+assertion, and calls with its access token in `Authorization: Bearer`, plus the
+user's token in `X-OhCrud-User` when acting for a user. Roles are checked per table
+for both, and the admin role — set by `rbac.admin-role` in
+`config/server/server.yaml` — gates the schema approval endpoints. See `docs/auth.md`.
 
 ### Async writes
 
@@ -161,7 +163,7 @@ Docs can be found inside the /docs folder. These include:
 | `models/`      | `DataModel`, type coercion (JSON↔Go↔PostgreSQL), diffs, hot-swap       |
 | `tools/`       | Queue manager, config loading, query builder, events, registries       |
 | `schematools/` | Atlas HCL generation, schema diffing, destructive-change approval gate |
-| `middleware/`  | API key auth, user context, CORS                                       |
+| `middleware/`  | CORS                                                                   |
 | `monitors/`    | fsnotify watchers for models, functions, and server config             |
 | `config/`      | YAML model definitions, declarative functions, server config, schemas  |
 

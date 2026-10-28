@@ -121,6 +121,13 @@ type End_pointsAllowed struct {
 	DIFF         []string `yaml:"DIFF"`
 }
 
+// Access is who may call a model's routes, alongside the roles in end-points-allowed.
+// The zero value requires a service and lets it act with or without a user.
+type Access struct {
+	RequireUser bool `yaml:"require-user"` // Reject service calls that do not act for a user
+	AllowDirect bool `yaml:"allow-direct"` // Accept a user token with no service in front of it
+}
+
 // DataModel is the top-level representation of a YAML config file.
 type DataModel struct {
 	// Model metadata
@@ -145,6 +152,7 @@ type DataModel struct {
 	Indexes              map[string]Index          `yaml:"indexes"`
 	Fields               map[string]DataModelField `yaml:"fields"`
 	Admin_roles          []string                  `yaml:"admin-roles"`
+	Access               Access                    `yaml:"access"`
 	Filepath             *string                   `yaml:"-"`
 }
 

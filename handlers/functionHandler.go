@@ -28,7 +28,7 @@ func RegisterFunctionRoutes(
 	fn *models.FunctionDef,
 	model_reg *registry.ModelRegistry,
 	handler_reg *registry.HandlerRegistry,
-	auth func(http.Handler) http.Handler,
+	model_auth ModelAuth,
 	qm *queue.QueueManager,
 	server_conf *models.SwappableServerConfig,
 	evh *events.EventManager,
@@ -46,13 +46,14 @@ func RegisterFunctionRoutes(
 
 	// Resolve once for the model lookup at construction time. The handler
 	// will look up live each request to honour hot-reloads.
-	if _, ok := model_reg.ByEndpoint(*fn.Bound_to); !ok {
+	bound, ok := model_reg.ByEndpoint(*fn.Bound_to)
+	if !ok {
 		qm.Logger.Warn("Bound model not found at registration; route registered but will 503 until model loads",
 			"function", *fn.Name, "bound-to", *fn.Bound_to)
 	}
 
 	handler := getFunctionResource(fn, model_reg, qm, server_conf)
-	handler_reg.Register(route, auth(handler), *fn.Version)
+	handler_reg.Register(route, model_auth(bound)(handler), *fn.Version)
 }
 
 // getFunctionResource builds the per-request handler for a function. It applies

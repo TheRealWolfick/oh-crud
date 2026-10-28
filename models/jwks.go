@@ -16,5 +16,7 @@ type Claims struct {
 	Roles     []string  `json:"roles,omitempty"`
 	SID       string    `json:"sid,omitempty"`  // login session - user ID
 	AMR       []string  `json:"amr,omitempty"`  // How the user authenticated
+	Username  string    `json:"preferred_username,omitempty"` // Recorded against writes made with a user token
+	ClientID  string    `json:"client_id,omitempty"`          // The client a user token was issued to
 	jwt.RegisteredClaims
 }

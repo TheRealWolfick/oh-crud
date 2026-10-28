@@ -130,11 +130,18 @@ func (a *Auth) ClientCredentials(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Writes made by the service are recorded against its own user row
+	if err := a.ensureServiceUser(r.Context(), svc.ID); err != nil {
+		a.lg.Error("could not create the user row for a service", "service", svc.ID, "error", err)
+		oauthError(w, "server_error", http.StatusInternalServerError)
+		return
+	}
+
 	// Issue a new token to the service
 	signed, err := a.ks.Issue(models.Claims{
 		TokenUse: "service",
 		Roles: []string{svc.Role},
-		RegisteredClaims: jwt.RegisteredClaims{Subject: "svc:"+svc.ID},
+		RegisteredClaims: jwt.RegisteredClaims{Subject: serviceUserPrefix+svc.ID},
 	}, cfg.Token_lifetime)
 
 	// Handle a key that wasn't signed
@@ -148,6 +155,19 @@ func (a *Auth) ClientCredentials(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON_nostore(w, map[string]any{"access_token": signed, "token_type": "Bearer", "expires_in": int(cfg.Token_lifetime.Seconds())})
 }
 
+
+// serviceUserPrefix starts the subject of service tokens, and the id and username of
+// the user row each service writes as
+const serviceUserPrefix = "svc:"
+
+// ensureServiceUser gives a service a user row to record its writes against, since
+// history, diffs and events reference users.username. The row has no password or
+// roles, so it can never log in or be used to widen access.
+func (a *Auth) ensureServiceUser(ctx context.Context, svcID string) error {
+	sql := `INSERT INTO users (id, username, display_name, roles) VALUES ($1, $1, $2, '{}') ON CONFLICT DO NOTHING`
+	_, err := a.ks.db.Exec(ctx, sql, serviceUserPrefix+svcID, svcID)
+	return err
+}
 
 // A standin function to serve as an in memory redis database until an actual
 // redis instance is implemented
@@ -348,6 +368,8 @@ func (a *Auth) issueUserTokens(
 		Roles: u.Roles,
 		SID: family,
 		AMR: amr,
+		Username: u.Username,
+		ClientID: clientID,
 		RegisteredClaims: jwt.RegisteredClaims{Subject: u.ID},
 	}, 15*time.Minute)
 

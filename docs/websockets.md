@@ -23,19 +23,20 @@ For example `wss://api.example.com/ws/asset/data`.
 The upgrade request goes through the same checks as any data endpoint
 (`auth.md`):
 
-- An `X-API-Key` header with a valid key is required.
-- The user needs a role in the model's **`end-points-allowed.POST`** list, or
-  the admin role. (`GET` must also be enabled on the model for the route to
+- A service token in `Authorization: Bearer`, plus the user's token in
+  `X-OhCrud-User` when acting for a user, is required (`auth.md` 1.1).
+- Every party needs a role in the model's **`end-points-allowed.POST`** list,
+  or the admin role. (`GET` must also be enabled on the model for the route to
   exist.)
 
 Failures return the normal HTTP errors (`401`, `405`) before the upgrade.
 
-**Browsers cannot set `X-API-Key` on a websocket.** The browser `WebSocket`
-API does not allow custom headers. Until token-based auth is added, a browser
-frontend has two options:
+**Browsers cannot set these headers on a websocket.** The browser
+`WebSocket` API does not allow custom headers. A browser frontend has two
+options:
 
 1. Connect through a backend (backend-for-frontend or reverse proxy) that adds
-   the `X-API-Key` header to the upgrade request.
+   the `Authorization` and `X-OhCrud-User` headers to the upgrade request.
 2. Run the websocket from a non-browser client (server, desktop, mobile) that
    can set headers.
 
@@ -43,7 +44,7 @@ frontend has two options:
 // Node.js, using the "ws" package
 import WebSocket from "ws";
 const sock = new WebSocket("wss://api.example.com/ws/asset/data", {
-  headers: { "X-API-Key": apiKey },
+  headers: { Authorization: `Bearer ${serviceToken}`, "X-OhCrud-User": userToken },
 });
 ```
 
@@ -187,7 +188,7 @@ table, or correlate on `task_id` (returned by the write request).
 ## 4. Typical client flow
 
 ```js
-const sock = new WebSocket(url /* via a proxy that adds X-API-Key */);
+const sock = new WebSocket(url /* via a proxy that adds the token headers */);
 
 sock.onopen = () => {
   // Already subscribed to everything on table:asset/data. Narrow it down:

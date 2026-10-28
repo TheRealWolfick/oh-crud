@@ -28,11 +28,15 @@ import (
 	"lotusforge.au/api-server/tools"
 )
 
+// ModelAuth builds the auth middleware for one model's routes, so each model's access
+// rule applies and follows it through hot reloads
+type ModelAuth func(cfg *models.DataModel) func(http.Handler) http.Handler
+
 func RegisterRoutes(
 	cfg *models.DataModel,
 	diff_cfg *models.DataModel,
 	handlerRegistry *registry.HandlerRegistry,
-	auth func(http.Handler) http.Handler,
+	model_auth ModelAuth,
 	qm *queue.QueueManager,
 	server_conf *models.SwappableServerConfig,
 	evh *events.EventManager,
@@ -41,6 +45,7 @@ func RegisterRoutes(
 ) {
 	var err error
 	qm.Logger.Debug("Dynamic end point generating", "data-model", *cfg.Name)
+	auth := model_auth(cfg)
 
 	// Perform error check OPTIONS handler and soft cancel on error
 	err = handlerRegistry.Register(fmt.Sprintf("OPTIONS /%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(emptyResponse()), *cfg.Version)
@@ -77,7 +82,7 @@ func RegisterRoutes(
 	// routes after an approved schema change is committed.
 	onApplied := func(applied *models.DataModel) {
 		modelRegistry.Register(applied)
-		RegisterRoutes(applied, diff_cfg, handlerRegistry, auth, qm, server_conf, evh, gate, modelRegistry)
+		RegisterRoutes(applied, diff_cfg, handlerRegistry, model_auth, qm, server_conf, evh, gate, modelRegistry)
 	}
 	// Register admin end points
 	handlerRegistry.Register(fmt.Sprintf("GET /%s/admin/pending", *cfg.End_point), middleware.CorsAdmin(cfg, server_conf)(auth(handlePendingChanges(gate, qm, cfg, server_conf))), *cfg.Version)
