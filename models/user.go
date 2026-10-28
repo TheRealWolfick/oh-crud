@@ -1,19 +1,25 @@
 package models
 
-type UserInfoResponse struct {
-	Username string `json:"username" db:"username"`
-	Email    string `json:"email" db:"email"`
-	Mobile   string `json:"mobile" db:"mobile"`
-}
+import "time"
 
 type User struct {
-	UserInfoResponse
-	Api_Access bool   `json:"api_access" db:"api_access"`
-	Api_Key    string `json:"api_key" db:"api_key"`
-	Roles      string `json:"roles" db:"roles"`
+	ID            string     `json:"id" db:"id"`
+	Username      string     `json:"username" db:"username"`
+	Displayname   string     `json:"display_name" db:"display_name"`
+	PasswordHash  string     `json:"password_hash" db:"password_hash"`
+	TotpSecret    []byte     `json:"totp_secret" db:"totp_secret"`
+	CreatedAt     time.Time  `json:"create_at" db:"created_at"`
+	DisabledAt    *time.Time `json:"disabled_at" db:"disabled_at"`
+	Roles         []string   `json:"roles" db:"roles"`
 }
 
-type UserRequest struct {
-	Username  string `json:"username" db:"username"`
-	Api_Key   string `json:"api_key" db:"api_key"`
+type RefreshToken struct {
+	ID         int        `json:"id" db:"id"`
+	TokenHash  string     `json:"token_hash" db:"token_hash"`
+	UserID     string     `json:"user_id" db:"user_id"`
+	ClientID   string     `json:"client_id" db:"client_id"`
+	FamilyID   string     `json:"family_id" db:"family_id"`
+	ExpiresAt  time.Time  `json:"expires_at" db:"expires_at"`
+	UsedAt     *time.Time `json:"used_at" db:"used_at"`
+	RevokedAt  *time.Time `json:"revoked_at" db:"revoked_at"`
 }

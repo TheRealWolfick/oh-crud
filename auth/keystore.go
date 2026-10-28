@@ -12,6 +12,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/secrets"
 )
@@ -320,4 +321,28 @@ func (ks *KeyStore) RefreshKeys(ctx context.Context) error {
 	ks.all, ks.active = all, active
 	ks.mu.Unlock()
 	return nil
+}
+
+
+// Save a new refresh token
+func (ks *KeyStore) SaveRefreshToken(ctx context.Context, rt *models.RefreshToken) error {
+	sql := `INSERT INTO refresh_tokens (token_hash, user_id, client_id, family_id, expires_at) VALUES ($1, $2, $3, $4, $5)`
+
+	// Add the token to the database
+	cmd, err := ks.db.Exec(ctx, sql, rt.TokenHash, rt.UserID, rt.ClientID, rt.FamilyID, rt.ExpiresAt)
+	if err != nil || cmd.RowsAffected() == 0 { return err }
+
+	return nil
+}
+
+// Read a refresh token
+func (ks *KeyStore) RefreshTokenbyHash(ctx context.Context, hash string) (*models.RefreshToken, error) {
+	sql := `SELECT id, token_hash, user_id, client_id, family_id, expires_at, used_at, revoked_at
+	FROM refresh_tokens WHERE token_hash = $1 LIMIT 1`
+
+	// Get the refresh token
+	rows, err := ks.db.Query(ctx, sql, hash)
+	if err != nil { return nil, err }
+
+	return pgx.CollectOneRow(rows, pgx.RowToAddrOfStructByName[models.RefreshToken])
 }

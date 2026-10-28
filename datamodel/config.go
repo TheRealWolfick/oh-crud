@@ -850,23 +850,6 @@ func ValidateDataModel(m models.DataModel) error {
 	return nil
 }
 
-// ── User validation ───────────────────────────────────────────────────────────
-
-// ValidateUserRequest validates and sanitizes a UserRequest, ensuring username is present
-// and within the allowed length.
-func ValidateUserRequest(r *models.UserRequest) error {
-	r.Username = strings.TrimSpace(r.Username)
-	r.Api_Key = strings.TrimSpace(r.Api_Key)
-
-	if r.Username == "" {
-		return errors.New("A username must be supplied.")
-	}
-	if len(r.Username) > 20 {
-		return errors.New("Username too long")
-	}
-	return nil
-}
-
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 func ptrStr(s *string, fallback string) string {
