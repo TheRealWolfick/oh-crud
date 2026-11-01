@@ -271,6 +271,7 @@ func listenAddr() string {
 	return ":8080"
 }
 
+// This function loads in all moders from the given directory, supporting recursive searching with a flag
 func loadModelsFromDir(dir string, recursive bool, logger interface{ Warn(string, ...any); Error(string, ...any) }) []models.DataModel {
 	result := make([]models.DataModel, 0)
 

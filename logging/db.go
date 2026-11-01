@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"lotusforge.au/api-server/safe"
 )
 
 // logTable holds the application log, partitioned by day (UTC), so old days are
@@ -73,7 +74,7 @@ func AttachDB(ctx context.Context, db DB, settings func() Settings) (*Sink, erro
 	dbSlot.level.Store(int64(parseLogLevel(s.Level)))
 	dbSlot.sink.Store(sink)
 
-	go func() {
+	safe.Go(fallback(), "attach db", func() {
 		t := time.NewTicker(maintainEvery)
 		defer t.Stop()
 		for {
@@ -91,7 +92,7 @@ func AttachDB(ctx context.Context, db DB, settings func() Settings) (*Sink, erro
 				}
 			}
 		}
-	}()
+	})
 	return sink, nil
 }
 
@@ -149,14 +150,22 @@ func partitionDay(name string) (time.Time, bool) {
 // Yesterday is made too (if retention keeps it), so a record stamped just before
 // midnight on a fresh database still has somewhere to go.
 func partitionPlan(now time.Time, existing []string, retentionDays int) (create []time.Time, drop []string) {
+	// Round up retentionDays to at least one
 	if retentionDays < 1 { retentionDays = 1 }
+
+	// Round to the hour to get todays time
 	today := now.UTC().Truncate(24 * time.Hour)
+
+	// Track the oldest permissable table for tracking
 	oldestKept := today.AddDate(0, 0, -(retentionDays - 1))
 
+	// Read each existing partition
 	have := map[time.Time]bool{}
 	for _, name := range existing {
+		// Extract the day the partition is for
 		day, ok := partitionDay(name)
 		if !ok { continue }
+		// If it's too old, drop it
 		if day.Before(oldestKept) {
 			drop = append(drop, name)
 			continue
@@ -164,9 +173,13 @@ func partitionPlan(now time.Time, existing []string, retentionDays int) (create 
 		have[day] = true
 	}
 
+	// Read yesterday as the first retention day
 	first := today.AddDate(0, 0, -1)
+	// If first date is before the oldest allowed date, update first to be the oldest date instead 
 	if first.Before(oldestKept) { first = oldestKept }
+	// For every day between first and 3 days later 
 	for d := first; !d.After(today.AddDate(0, 0, daysAhead)); d = d.AddDate(0, 0, 1) {
+		// If it doesn't exist, append it to the create list
 		if !have[d] { create = append(create, d) }
 	}
 	slices.Sort(drop)
