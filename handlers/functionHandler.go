@@ -12,6 +12,7 @@ import (
 	"lotusforge.au/api-server/datamodel"
 	"lotusforge.au/api-server/events"
 	"lotusforge.au/api-server/httpx"
+	"lotusforge.au/api-server/middleware"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/querybuilder"
 	"lotusforge.au/api-server/queue"
@@ -34,15 +35,12 @@ func RegisterFunctionRoutes(
 	evh *events.EventManager,
 ) {
 	if fn.Bound_to == nil || fn.Name == nil || fn.Version == nil {
-		qm.Logger.Warn("Skipping function with missing required fields", "function", fn.Name)
-		return
+		qm.Logger.Warn("Skipping function with missing required fields", "function", fn.Name); return 
 	}
 
+	// Define route
 	route := fmt.Sprintf("GET /%s/fn/%s", *fn.Bound_to, *fn.Name)
 	qm.Logger.Debug("Registering declarative function", "route", route, "version", *fn.Version)
-
-	// Enable the function in the eventhandler
-	evh.RegisterFunction(*fn.Bound_to, fmt.Sprintf("func:%s", *fn.Name), fn.Webhooks)
 
 	// Resolve once for the model lookup at construction time. The handler
 	// will look up live each request to honour hot-reloads.
@@ -51,9 +49,12 @@ func RegisterFunctionRoutes(
 		qm.Logger.Warn("Bound model not found at registration; route registered but will 503 until model loads",
 			"function", *fn.Name, "bound-to", *fn.Bound_to)
 	}
+	// Enable the function in the eventhandler
+	evh.RegisterFunction(*fn.Bound_to, fmt.Sprintf("func:%s", *fn.Name), fn.Webhooks, bound)
 
-	handler := getFunctionResource(fn, model_reg, qm, server_conf)
-	handler_reg.Register(route, model_auth(bound)(handler), *fn.Version)
+
+	handler_reg.Register(fmt.Sprintf("OPTIONS /%s/fn/%s", *fn.Bound_to, *fn.Name), middleware.CorsFunction(server_conf)(emptyResponse()), *fn.Version)
+	handler_reg.Register(route, middleware.CorsFunction(server_conf)(model_auth(bound)(getFunctionResource(fn, model_reg, qm, server_conf))) , *fn.Version)
 }
 
 // getFunctionResource builds the per-request handler for a function. It applies
@@ -69,8 +70,8 @@ func getFunctionResource(
 		task_type := "Get Function"
 		req_ip := httpx.GetIP(r)
 		req_id, _ := secrets.RandomString(32)
-		req_username := reqctx.Username(r.Context())
-		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", *fn.Name, "end_point", *fn.Bound_to, "request_id", req_id)
+		req_actor := reqctx.Actor(r.Context())
+		log := qm.Logger.With("actor", req_actor, "IP", req_ip, "function", *fn.Name, "end_point", *fn.Bound_to, "request_id", req_id)
 		ctx := reqctx.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -96,7 +97,7 @@ func getFunctionResource(
 			}
 			allowed = cfg.End_points_allowed.GET
 		}
-		if !reqctx.CheckUserHasAllowedRole(ctx, allowed, server_conf.Get()) {
+		if !reqctx.CheckActorHasAllowedRole(ctx, allowed, server_conf.Get()) {
 			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission")
 			http.Error(w, "User role does not have access to this function", http.StatusUnauthorized)
 			return

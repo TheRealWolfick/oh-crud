@@ -2,6 +2,7 @@ package queue
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 )
@@ -14,12 +15,26 @@ type publishedEvent struct {
 }
 
 type fakePublisher struct {
+	mu     sync.Mutex
 	events []publishedEvent
 }
 
 func (f *fakePublisher) Publish(_ context.Context, action string, status string, _ time.Time, topic string, payload map[string]any, _ int) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.events = append(f.events, publishedEvent{action: action, status: status, topic: topic, payload: payload})
 	return nil
+}
+
+// statuses returns the status of every event published so far, in order
+func (f *fakePublisher) statuses() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := []string{}
+	for _, e := range f.events {
+		out = append(out, e.status)
+	}
+	return out
 }
 
 func TestNewQueue_NilPublisherIsNoop(t *testing.T) {

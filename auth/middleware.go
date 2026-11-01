@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"slices"
 	"strings"
 
 	"lotusforge.au/api-server/models"
@@ -75,8 +76,7 @@ func (a *Auth) Middleware(next http.Handler) http.Handler {
 		}
 
 		ctx := context.WithValue(r.Context(), principalKey{}, p)
-		ctx = reqctx.SetCallerRoles(ctx, p.callerRoles())
-		ctx = reqctx.SetUser(ctx, p.actor())
+		ctx = reqctx.SetActor(ctx, p.actor(), p.callerRoles())
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -103,6 +103,32 @@ func (a *Auth) ForModel(cfg *models.DataModel) func(http.Handler) http.Handler {
 			}
 		}))
 	}
+}
+
+// This function checks a user object against a datamodel to check if they are authorized.
+// A nil user or model, such as a function bound to a model that has not loaded, is denied.
+func (a *Auth) CheckUserAgainstConfig(usr *models.User, cfg *models.DataModel, end_point string) bool {
+	if usr == nil || cfg == nil { return false }
+
+	// Check the admin roles across every role first, so role order does not matter
+	for _, role := range usr.Roles {
+		if slices.Contains(cfg.Admin_roles, role) { return true }
+	}
+
+	// Check against the end point
+	if cfg.End_points_allowed == nil { return false }
+	var allowed []string
+	switch strings.ToLower(end_point) {
+	case "get":    allowed = cfg.End_points_allowed.GET
+	case "create": allowed = cfg.End_points_allowed.POST
+	case "update": allowed = cfg.End_points_allowed.PUT
+	case "delete": allowed = cfg.End_points_allowed.DELETE
+	case "diff":   allowed = cfg.End_points_allowed.DIFF
+	}
+	for _, role := range usr.Roles {
+		if slices.Contains(allowed, role) { return true }
+	}
+	return false
 }
 
 // authenticate accepts Oh CRUD access tokens

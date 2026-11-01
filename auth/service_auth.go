@@ -7,9 +7,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,16 +19,16 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pquerna/otp/totp"
 	"lotusforge.au/api-server/httpx"
 	"lotusforge.au/api-server/models"
+	"lotusforge.au/api-server/safe"
 	"lotusforge.au/api-server/secrets"
 	"lotusforge.au/api-server/store"
 )
 
 type Auth struct {
-	Auth      store.Services
+	Auth      *store.Services
 	Limiter   *Limiter
 	svr_conf  *models.SwappableServerConfig
 	Replay    models.ReplayCache
@@ -40,9 +42,9 @@ type ReplayMemory struct {
 }
 
 // Returns a new authhandler object for middleware authentication handling
-func AuthHandler(db *pgxpool.Pool, svr_conf *models.SwappableServerConfig, lg *slog.Logger, ks *KeyStore) *Auth {
+func AuthHandler(db models.DBExecQuery, svr_conf *models.SwappableServerConfig, lg *slog.Logger, ks *KeyStore) *Auth {
 	return &Auth{
-		Auth: *store.NewServices(db),
+		Auth: store.NewServices(db),
 		Limiter: newLimiter(10, 15*time.Minute),
 		svr_conf: svr_conf,   // server config with the values auth uses.
 		Replay: ReplayService(),
@@ -50,6 +52,7 @@ func AuthHandler(db *pgxpool.Pool, svr_conf *models.SwappableServerConfig, lg *s
 		ks: ks,
 	}
 }
+
 
 // oauthError uses the standard OAuth error body. Keep messages generic:
 // "invalid_grant" for every login failure, never "unknown user" vs "wrong password".
@@ -111,7 +114,9 @@ func (a *Auth) AuthenticateService(r *http.Request) (*models.Service, error) {
 	}
 	
 	// Touch the key
-	go a.Auth.TouchServiceKey(context.WithoutCancel(r.Context()), kid)
+	safe.Go(a.lg, "touch service key", func() {
+		if err := a.Auth.TouchServiceKey(context.WithoutCancel(r.Context()), kid); err != nil { a.lg.Warn("Failed to record service key use", "kid", kid, "error", err) }
+	})
 
 	// The token at this point is valid
 	return svc, nil
@@ -266,6 +271,35 @@ func (a *Auth) updatePasswordHash(ctx context.Context, userID string, oldHash st
 	sql := `UPDATE users SET password_hash = $1 WHERE id = $2 AND password_hash = $3`
 	_, err := a.ks.db.Exec(ctx, sql, newHash, userID, oldHash)
 	return err
+}
+
+// userIDLength is the length of a generated user id
+const userIDLength = 32
+
+// CreateUser adds a user with a random id and returns it. An empty password leaves the
+// user unable to log in with a password. The svc: prefix is reserved for service rows.
+func (a *Auth) CreateUser(ctx context.Context, username string, display_name string, password string, roles []string) (*models.User, error) {
+	if username == "" || len(username) > 64 { return nil, errors.New("username must be between 1 and 64 characters") }
+	if strings.HasPrefix(username, serviceUserPrefix) { return nil, fmt.Errorf("username cannot start with %q", serviceUserPrefix) }
+	if roles == nil { roles = []string{} }
+
+	id, err := secrets.RandomString(userIDLength)
+	if err != nil { return nil, err }
+
+	// A NULL hash, not an empty one, marks a user with no password
+	var hash *string
+	if password != "" {
+		h, err := secrets.HashPassword(password)
+		if err != nil { return nil, err }
+		hash = &h
+	}
+
+	sql := `INSERT INTO users (id, username, display_name, password_hash, roles) VALUES ($1, $2, $3, $4, $5)`
+	if _, err := a.ks.db.Exec(ctx, sql, id, username, display_name, hash, roles); err != nil { return nil, err }
+
+	user := &models.User{ID: id, Username: username, Displayname: display_name, Roles: roles}
+	if hash != nil { user.PasswordHash = *hash }
+	return user, nil
 }
 
 // The password grant for a user login. The client must assert who it is.

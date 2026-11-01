@@ -1,5 +1,5 @@
 name: batch_numbers
-version: 1.1.0
+version: 1.1.1
 table-name: batch_numbers
 end-point: ""
 
@@ -39,5 +39,5 @@ fields:
     json: batched_date
   generated_by:
     type: string
-    db-type: character varying(30)
+    db-type: character varying(64)
     json: generated_by

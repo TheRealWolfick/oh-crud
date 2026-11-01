@@ -1,5 +1,5 @@
 name: users
-version: 2.0.0
+version: 2.1.0
 table-name: users
 end-point: user
 primary-key: username
@@ -8,6 +8,10 @@ unique-keys:
   uk_users_username:
     unique-key-fields:
       - username
+  # id is the token subject and refresh token owner, so it must identify one user
+  uk_users_id:
+    unique-key-fields:
+      - id
 
 end-points-allowed:
   GET: []
@@ -29,7 +33,7 @@ fields:
     json: username
     json-alias:
       - user
-    db-type: character varying(20)
+    db-type: character varying(64)
     nullable: false
   display_name:
     type: string

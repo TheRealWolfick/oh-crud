@@ -14,10 +14,12 @@ import (
 	"lotusforge.au/api-server/events"
 	"lotusforge.au/api-server/handlers"
 	"lotusforge.au/api-server/logging"
+	"lotusforge.au/api-server/middleware"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/monitors"
 	"lotusforge.au/api-server/queue"
 	"lotusforge.au/api-server/registry"
+	"lotusforge.au/api-server/safe"
 	"lotusforge.au/api-server/schematools"
 )
 
@@ -52,18 +54,6 @@ func main() {
 		os.Exit(1)
 	}
 	logger.Info("Database connection made")
-
-
-	// ---------------------------------------------------------------
-	//                Event Manager
-	// ---------------------------------------------------------------
-	evh := events.NewEventManager(27, 10, pool)
-
-
-	// ---------------------------------------------------------------
-	//                Queue Manager
-	// ---------------------------------------------------------------
-	qm := queue.NewQueue(pool, 5, logger, evh)                                       // evh satisfies queue.Publisher
 
 
 	// ---------------------------------------------------------------
@@ -106,6 +96,18 @@ func main() {
 
 
 	// ---------------------------------------------------------------
+	//                Event Manager
+	// ---------------------------------------------------------------
+	evh := events.NewEventManager(27, 10, pool, oauthHandler)
+
+
+	// ---------------------------------------------------------------
+	//                Queue Manager
+	// ---------------------------------------------------------------
+	qm := queue.NewQueue(pool, 5, logger, evh)                                       // evh satisfies queue.Publisher
+
+
+	// ---------------------------------------------------------------
 	//                Server - Setup
 	// ---------------------------------------------------------------
 	mux := http.NewServeMux()
@@ -120,9 +122,7 @@ func main() {
 	//                Server - System tables
 	// ---------------------------------------------------------------
 	for _, dm := range default_models {
-		modelRegister.Register(&dm)
-		if dm.End_point == nil || *dm.End_point == "" { logger.Debug(fmt.Sprintf("Skipping end point for: %s", *dm.Name)); continue }
-		
+		if err := modelRegister.Register(&dm); err != nil { logger.Error("Failed to load model", "data-model", *dm.Name, "error", err); continue }
 		handlers.RegisterRoutes(&dm, nil, handlerRegister, authMiddleware, qm, server_conf, evh, gate, modelRegister)
 	}
 
@@ -138,8 +138,7 @@ func main() {
 	// ---------------------------------------------------------------
 	diff_model, _ := modelRegister.ByTableName("diffs")
 	for _, dm := range base_models {
-		modelRegister.Register(&dm)
-		if dm.End_point == nil || *dm.End_point == "" { logger.Debug(fmt.Sprintf("Skipping end point for: %s", *dm.Name)); continue }
+		if err := modelRegister.Register(&dm); err != nil { logger.Error("Failed to load model", "data-model", *dm.Name, "error", err); continue }
 		handlers.RegisterRoutes(&dm, diff_model, handlerRegister, authMiddleware, qm, server_conf, evh, gate, modelRegister)
 	}
 
@@ -167,9 +166,9 @@ func main() {
 	// ---------------------------------------------------------------
 	//                File Watchers (asycronous)
 	// ---------------------------------------------------------------
-	go monitors.ModelsMonitor(handlerRegister, modelRegister, authMiddleware, qm, gate, server_conf, evh)
-	go monitors.FunctionsMonitor(handlerRegister, modelRegister, functionRegister, authMiddleware, qm, server_conf, evh)
-	go monitors.ServerConfigMonitor(server_conf, logger)
+	safe.Go(logger, "models monitor", func() { monitors.ModelsMonitor(handlerRegister, modelRegister, authMiddleware, qm, gate, server_conf, evh) })
+	safe.Go(logger, "functions monitor", func() { monitors.FunctionsMonitor(handlerRegister, modelRegister, functionRegister, authMiddleware, qm, server_conf, evh) })
+	safe.Go(logger, "server config monitor", func() { monitors.ServerConfigMonitor(server_conf, logger) })
 
 
 	// ---------------------------------------------------------------
@@ -191,7 +190,7 @@ func main() {
 	// ---------------------------------------------------------------
 	srv := &http.Server{
 		Addr:        ":8080",
-		Handler:     mux,
+		Handler:     middleware.Recover(logger)(mux),
 		IdleTimeout: 120 * time.Second,
 		ReadTimeout: 30 * time.Second,
 		WriteTimeout: 60 * time.Second,
@@ -229,12 +228,12 @@ func loadModelsFromDir(dir string, logger interface{ Warn(string, ...any); Error
 			continue
 		}
 		data.Filepath = &fp
-		result = append(result, *data)
 		if err := datamodel.ValidateDataModel(*data); err != nil {
 			logger.Warn(fmt.Sprintf("Config file failed validation: %s", info.Name()), "error", err)
 			continue
 		}
 		datamodel.ProcessModelAdditionalFields(data)
+		result = append(result, *data)
 	}
 
 	return result

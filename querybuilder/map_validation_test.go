@@ -192,7 +192,7 @@ func TestValidate_SliceOfMaps_AgainstConfig(t *testing.T) {
 		if len(invalid) != 1 {
 			t.Errorf("Expected one values to be invalid. Valid: %v\nInvalid: %v", valid, invalid)
 		}
-		if !strings.Contains(invalid[0]["reasons"].(string), "Data too large for byte size") {
+		if !strings.Contains(strings.Join(invalid[0]["reasons"].([]string), "; "), "Data too large for byte size") {
 			t.Errorf("Expected invalid data error to be 'Too large for byte size'. Invalid: %s", logging.PrettyJSON(invalid))
 		}
 

@@ -165,7 +165,7 @@ fields:
 | `description` | No | Free text. Returned by the `schema` function |
 | `meta` | No | Free-form map, returned as-is by the `schema` function. Use it for frontend hints (labels, grouping) |
 | `table-name` | Yes | Database table to create/use |
-| `end-point` | No | URL path for the API, e.g. `asset/data` → `/asset/data`. Omit or leave empty for a table with no API |
+| `end-point` | No | URL path for the API, e.g. `asset/data` → `/asset/data`. Omit or leave empty for a table with no API. Segments of letters, digits, `-` or `_`, with no leading or trailing `/`. Cannot start with `ws`, `oauth` or `health`, or be used by another model |
 
 **Flags**
 
@@ -236,9 +236,8 @@ web-hooks:
 | `on-get` | `get` (reads publish no events, so never fires) |
 | `on-any` | Not currently supported. Do not use |
 
-Status keys: `queued`, `start`, `success`, `warn`, `fail`, `error`, `all`.
-Currently only `queued`, `start`, `success`, `warn` and `error` deliver. `fail`
-and `all` are accepted but never fire.
+Status keys: `queued`, `start`, `success`, `warn`, `failed`, `error`, `all`.
+These match the event statuses. `all` is accepted but never fires.
 
 ### 3.5 `unique-keys`
 
@@ -397,9 +396,9 @@ A model is rejected (logged, not loaded) if:
 - `primary-key` is missing, not a field, or nullable.
 - A field has a missing or unknown `type` or `db-type`, an unknown
   `migration`, or is named `deleted_flag`.
-
-`end-point` is optional here, but `config/schemas/datamodel.json` marks it
-required, so editors using that schema will flag models without one.
+- `end-point` is set but is not a clean path (segments of letters, digits,
+  `-` or `_` split by single `/`), or starts with `ws`, `oauth` or `health`.
+  Leaving it empty is fine: the model loads with no API.
 - A foreign key has no target table, empty field lists, lists of different
   lengths, a field that doesn't exist, or an unknown on-update/on-delete action.
 - A unique key is empty or names a field that doesn't exist.
@@ -407,6 +406,9 @@ required, so editors using that schema will flag models without one.
   `index-type`, or shares its name with a unique key.
 - `allow-diff` is true without a valid `diff-comparator`, or no field has
   `include-in-diff: true`.
+
+A model whose `end-point` is already used by another model loads, but its
+routes are not registered and an error is logged.
 
 ---
 

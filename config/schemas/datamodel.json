@@ -2,13 +2,17 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "DataModel",
   "type": "object",
-  "required": ["name", "version", "table-name", "end-point", "primary-key", "fields"],
+  "required": ["name", "version", "table-name", "primary-key", "fields"],
   "additionalProperties": false,
   "properties": {
     "name":       { "type": "string" },
     "version":    { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
     "table-name": { "type": "string" },
-    "end-point":  { "type": "string" },
+    "end-point":  {
+      "type": "string",
+      "description": "URL path for the model's API, e.g. asset/data. Empty or omitted means the model has no API. Cannot start with ws, oauth or health.",
+      "pattern": "^$|^[A-Za-z0-9][A-Za-z0-9_-]*(/[A-Za-z0-9][A-Za-z0-9_-]*)*$"
+    },
     "track-history": { "type": "boolean" },
     "track-history-field": { "type": "string" },
     "soft-delete": { "type": "boolean" },

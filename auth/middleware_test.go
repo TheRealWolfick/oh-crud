@@ -25,7 +25,7 @@ func (s *seen) handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s.called = true
 		s.principal = PrincipalFrom(r.Context())
-		s.actor, _ = reqctx.GetUser(r.Context())
+		s.actor, _ = reqctx.GetActor(r.Context())
 		s.ctx = r
 		w.WriteHeader(http.StatusOK)
 	})
@@ -236,7 +236,7 @@ func TestMiddlewareRolesReachHandlers(t *testing.T) {
 			if w.Code != http.StatusOK {
 				t.Fatalf("Expected the request through, got %d", w.Code)
 			}
-			if got := reqctx.CheckUserHasAllowedRole(s.ctx.Context(), tc.allowed, svr); got != tc.want {
+			if got := reqctx.CheckActorHasAllowedRole(s.ctx.Context(), tc.allowed, svr); got != tc.want {
 				t.Errorf("CheckUserHasAllowedRole = %v, expected %v", got, tc.want)
 			}
 		})

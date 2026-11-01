@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -251,6 +252,11 @@ func NewDataModel() *models.DataModel {
 	return &models.DataModel{}
 }
 
+// FieldErrors lists every problem found in a row, one message per field or rule
+type FieldErrors []string
+
+func (e FieldErrors) Error() string { return fmt.Sprintf("ERRORS:: %s", strings.Join(e, "; ")) }
+
 // DecodeAndCoerceFromUser type-coerces a raw JSON map against the DataModel config.
 // Returns a new map keyed by YAML field name (= DB column name).
 func DecodeAndCoerceFromUser(raw map[string]any, cfg *models.DataModel) (map[string]any, error) {
@@ -316,7 +322,7 @@ func DecodeAndCoerceFromUser(raw map[string]any, cfg *models.DataModel) (map[str
 		}
 
 	}
-	if len(errors) > 0 { return nil, fmt.Errorf("ERRORS:: %s", strings.Join(errors, "; ")) }
+	if len(errors) > 0 { return nil, FieldErrors(errors) }
 	return row_data, nil
 }
 
@@ -672,6 +678,12 @@ func parseVersion(v string) ([3]int, error) {
 
 // ValidateDataModel checks a fully loaded DataModel config for structural correctness.
 // Call this after YAML unmarshalling and before any DB or handler registration.
+// endpointPattern is one or more path segments, with no leading, trailing or repeated '/'
+var endpointPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]*(/[A-Za-z0-9][A-Za-z0-9_-]*)*$`)
+
+// reservedEndpointPrefixes are first path segments the server registers routes under
+var reservedEndpointPrefixes = []string{"ws", "oauth", "health"}
+
 func ValidateDataModel(m models.DataModel) error {
 	var errs []string
 	reserved_fields := []string{"deleted_flag"}
@@ -687,9 +699,16 @@ func ValidateDataModel(m models.DataModel) error {
 	if m.Table_name == nil || strings.TrimSpace(*m.Table_name) == "" {
 		errs = append(errs, "table-name is required")
 	}
-	//if m.End_point == nil || strings.TrimSpace(*m.End_point) == "" {
-	//	errs = append(errs, "end-point is required")
-	//}
+	// end-point is optional, as a model without one has no API, but must be a clean path when set
+	if m.End_point != nil {
+		if end_point := strings.TrimSpace(*m.End_point); end_point != "" {
+			if !endpointPattern.MatchString(end_point) {
+				errs = append(errs, fmt.Sprintf("end-point %q must be path segments of letters, digits, '-' or '_', separated by single '/' with none leading or trailing", end_point))
+			} else if first, _, _ := strings.Cut(end_point, "/"); slices.Contains(reservedEndpointPrefixes, first) {
+				errs = append(errs, fmt.Sprintf("end-point %q cannot start with %q, which the server uses", end_point, first))
+			}
+		}
+	}
 	if len(m.Fields) == 0 {
 		errs = append(errs, "at least one field is required")
 	}
@@ -918,6 +937,11 @@ func ConvertFieldJsonSelect(cfg *models.DataModelField) (string, bool) {
 // ── Model transformers ────────────────────────────────────────────────────────────
 
 func ProcessModelAdditionalFields(m *models.DataModel) {
+	// Normalise the end-point so it is never nil. Empty means the model has no API
+	end_point := ""
+	if m.End_point != nil { end_point = strings.TrimSpace(*m.End_point) }
+	m.End_point = &end_point
+
 	// Add soft delete field
 	if m.Soft_delete != nil && *m.Soft_delete {
 		m.Fields["deleted_flag"] = *models.GetSoftDeleteConfig()

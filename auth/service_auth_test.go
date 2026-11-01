@@ -41,7 +41,7 @@ func newTestServiceAuth(t *testing.T) (*Auth, *modelstest.FakeDB, ed25519.Privat
 		ExecTag: pgconn.NewCommandTag("UPDATE 1"),
 	}
 	a := &Auth{
-		Auth: *store.NewServices(fake_db),
+		Auth: store.NewServices(fake_db),
 		svr_conf: models.NewSwappableServerConfig(&models.ServerConfig{
 			Token_url:      testTokenURL,
 			Token_lifetime: testTokenLifetime,
@@ -346,7 +346,7 @@ func TestTokenEndpointErrors(t *testing.T) {
 	a, priv := newTestTokenAuth(t)
 
 	badClient := assertionRequest(testAssertionType, signAssertion(t, priv, "unknown-kid", validAssertionClaims()))
-	a.Auth = *store.NewServices(&modelstest.FakeDB{}) // no keys at all
+	a.Auth = store.NewServices(&modelstest.FakeDB{}) // no keys at all
 
 	form := url.Values{"grant_type": {"implicit"}}
 	badGrant := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader(form.Encode()))

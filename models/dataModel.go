@@ -32,7 +32,7 @@ type EventStatus struct {
 	Start   []string `yaml:"start"`
 	Success []string `yaml:"success"`
 	Warn    []string `yaml:"warn"`
-	Fail    []string `yaml:"fail"`
+	Failed  []string `yaml:"failed"`
 	Error   []string `yaml:"error"`
 	All     []string `yaml:"all"`
 }
@@ -186,3 +186,7 @@ func GetSoftDeleteConfig() *DataModelField {
     Include_in_diff: ptr(false),
 	}
 }
+
+// HasEndpoint reports whether the model is served over the API. A model with an empty
+// end-point, like most system tables, is only used internally.
+func (m *DataModel) HasEndpoint() bool { return m.End_point != nil && *m.End_point != "" }

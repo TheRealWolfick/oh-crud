@@ -267,7 +267,7 @@ func tableHistoryBlock(m *models.DataModel) string {
 	sb.WriteString(            "    }\n\n")
 
 	sb.WriteString(fmt.Sprintf("    column %q {\n", "changed_by"))
-	sb.WriteString(fmt.Sprintf("      type = %s\n", hclType("character varying(20)")))
+	sb.WriteString(fmt.Sprintf("      type = %s\n", hclType("character varying(64)")))
 	sb.WriteString(            "    }\n\n")
 
 	sb.WriteString(fmt.Sprintf("    column %q {\n", "changed_at"))

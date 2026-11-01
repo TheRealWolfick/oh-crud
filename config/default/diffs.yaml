@@ -1,5 +1,5 @@
 name: diffs
-version: 1.2.0
+version: 1.2.1
 table-name: diffs
 end-point: ""
 primary-key: diff_id
@@ -63,7 +63,7 @@ fields:
       treat-as: int
   generated_by_user:
     type: string
-    db-type: character varying(20)
+    db-type: character varying(64)
     json: generated_by_user
     required-on-insert: true
   checksum:

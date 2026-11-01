@@ -55,16 +55,15 @@ func diffModelCfg() *models.DataModel {
 	}
 }
 
-func newTestQueueManager(db *fakeDB) *queue.QueueManager {
+func newTestQueueManager(db models.DBExecQuery) *queue.QueueManager {
 	return queue.NewQueue(db, 1, logging.Basic(), nil)
 }
 
 // requestWithRoles builds a GET request carrying the user/roles context the diff
-// handlers read via reqctx.GetUser / CheckUserHasAllowedRole.
+// handlers read via reqctx.GetActor / CheckActorHasAllowedRole.
 func requestWithRoles(target string, roles []string) *http.Request {
 	req := httptest.NewRequest(http.MethodGet, target, nil)
-	ctx := reqctx.SetUser(req.Context(), &models.User{Username: "tester"})
-	ctx = reqctx.SetRoles(ctx, roles)
+	ctx := reqctx.SetUserActor(req.Context(), &models.User{Username: "tester", Roles: roles})
 	return req.WithContext(ctx)
 }
 

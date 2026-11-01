@@ -165,12 +165,12 @@ key). `updated_values` are the fields that were set.
 
 ```json
 "success_items": [
-  { "WhereFields": { "asset_no": "CL001" } }
+  { "where_fields": { "asset_no": "CL001" } }
 ]
 ```
 
-Note the key is `WhereFields` here (not `where_fields`). For a `soft-delete`
-model the row is kept and its `deleted_flag` set to `true`.
+`where_fields` is the key used to find the row, as for updates. For a
+`soft-delete` model the row is kept and its `deleted_flag` set to `true`.
 
 ### failed_items (all actions)
 

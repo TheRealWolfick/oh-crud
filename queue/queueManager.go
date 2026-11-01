@@ -12,6 +12,7 @@ import (
 	"lotusforge.au/api-server/logging"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/reqctx"
+	"lotusforge.au/api-server/safe"
 )
 
 // -----------------------------------------------------------------
@@ -97,7 +98,7 @@ func (qm *QueueManager) createTask(ctx context.Context, sql string, note string,
 		Note:      note,
 		Sql:       sql,
 		Cfg:       *task.Cfg,
-		Topic:     fmt.Sprintf("table:%s", *task.Cfg.End_point),
+		Topic:     task.Topic,
 	}
 	return t, nil
 }
@@ -120,7 +121,7 @@ func (qm *QueueManager) createFunctionTask(ctx context.Context, function func(co
 		Args:      args,
 		Function:  function,
 		Cfg:       *task.Cfg,
-		Topic:     fmt.Sprintf("table:%s", *task.Cfg.End_point),
+		Topic:     task.Topic,
 	}
   qm.Logger.Debug("Function task created", "details", logging.PrettyJSON(t))
 	return t, nil
@@ -159,6 +160,8 @@ func (qm *QueueManager) getTaskPosUnsafe(identifer string) (int, bool) {
 
 // Get the status of a current task
 func (qm *QueueManager) GetTaskStatus(identifier string) (string, bool) {
+	qm.mu.Lock()
+	defer qm.mu.Unlock()
 	task_pos, exists := qm.getTaskPosUnsafe(identifier)
 	if exists {
 		return qm.tasks[task_pos].Status, true
@@ -184,8 +187,7 @@ func (qm *QueueManager) reportWork(w *Worker, status string, res map[string]any,
 		if fail {
 			w.TaskActioning.Status = "failed"
 		} else {
-			failed_count, ieok := res["failed_count"]
-			if ieok && failed_count.(int) > 0 {
+			if intValue(res, "failed_count") > 0 {
 				w.TaskActioning.Status = "warn"
 			} else {
 				w.TaskActioning.Status = "success"
@@ -195,6 +197,17 @@ func (qm *QueueManager) reportWork(w *Worker, status string, res map[string]any,
 
 	// Publish notification
 	qm.publish(w)
+}
+
+// intValue reads a count from a task response. Counts come back as int or, straight from
+// pgx, as int64, so both are accepted. A missing or non-integer value is 0.
+func intValue(res map[string]any, key string) int {
+	switch v := res[key].(type) {
+	case int:   return v
+	case int32: return int(v)
+	case int64: return int(v)
+	}
+	return 0
 }
 
 func (qm *QueueManager) getReportableTaskInfo(w *Worker) (map[string]any, int) {
@@ -218,7 +231,7 @@ func (qm *QueueManager) getReportableTaskInfo(w *Worker) (map[string]any, int) {
 			"note":          w.TaskActioning.Note,
 			"task_status":   w.TaskActioning.Status,
 			"task_response": w.TaskActioning.Response,
-		}, w.TaskActioning.Response["success_count"].(int)
+		}, intValue(w.TaskActioning.Response, "success_count")
 	case "start":
 		return map[string]any{
 			"task_id":       w.TaskActioning.TaskID,
@@ -239,73 +252,19 @@ func (qm *QueueManager) getReportableTaskInfo(w *Worker) (map[string]any, int) {
 
 // This is an internal helper function to publish an event
 func (qm *QueueManager) publish(w *Worker) {
+	defer safe.Recover(qm.Logger, "queue publish", nil)
 
 	payload, success_count := qm.getReportableTaskInfo(w)
 	qm.publisher.Publish(w.TaskActioning.Ctx, w.TaskActioning.TaskType, w.TaskActioning.Status, time.Now(), w.TaskActioning.Topic, payload, success_count)
 }
-// This is an internal helper function for publishing an event when there is no worker assigned, 
-// instead utilizing the task directly
-func (qm *QueueManager) publishTask(t *Task) {
-	qm.publisher.Publish(t.Ctx, t.TaskType, t.Status, time.Now(), t.Topic, map[string]any{
-		"task_id":       t.TaskID,
-		"task_type":     t.TaskType,
-		"task_start":    t.StartTime,
-		"task_status":   t.Status,
-	}, 0)
-}
+
+// This is a seperate task publishing as it does not have a worker as of yet
 func (qm *QueueManager) publishTaskQueued(t *Task) {
+	defer safe.Recover(qm.Logger, "queue publish", nil)
 	qm.publisher.Publish(t.Ctx, t.TaskType, t.Status, time.Now(), t.Topic, map[string]any{
 		"task_id":       t.TaskID,
 		"task_type":     t.TaskType,
 		"task_status":   t.Status,
-	}, 0)
-}
-func (qm *QueueManager) publishTaskStart(t *Task) {
-	qm.publisher.Publish(t.Ctx, t.TaskType, t.Status, time.Now(), t.Topic, map[string]any{
-		"task_id":       t.TaskID,
-		"task_type":     t.TaskType,
-		"task_status":   t.Status,
-		"start_time":    t.StartTime.String(),
-	}, 0)
-}
-func (qm *QueueManager) publishTaskSuccess(t *Task) {
-	qm.publisher.Publish(t.Ctx, t.TaskType, t.Status, t.CompleteTime, t.Topic, map[string]any{
-		"task_id":       t.TaskID,
-		"task_type":     t.TaskType,
-		"start_time":    t.StartTime.String(),
-		"task_status":   t.Status,
-		"complete_time": t.CompleteTime.String(),
-		"success_items": t.Response["success_items"],
-	}, t.Response["success_count"].(int))
-}
-func (qm *QueueManager) publishTaskWarn(t *Task) {
-	qm.publisher.Publish(t.Ctx, t.TaskType, t.Status, t.CompleteTime, t.Topic, map[string]any{
-		"task_id":       t.TaskID,
-		"task_type":     t.TaskType,
-		"task_status":   t.Status,
-		"start_time":    t.StartTime.String(),
-		"complete_time": t.CompleteTime.String(),
-		"success_items": t.Response["success_items"],
-		"failed_items":  t.Response["failed_items"],
-	}, t.Response["success_count"].(int))
-}
-func (qm *QueueManager) publishTaskFail(t *Task) {
-	qm.publisher.Publish(t.Ctx, t.TaskType, t.Status, t.CompleteTime, t.Topic, map[string]any{
-		"task_id":       t.TaskID,
-		"task_type":     t.TaskType,
-		"task_status":   t.Status,
-		"start_time":    t.StartTime.String(),
-		"complete_time": t.CompleteTime.String(),
-		"failed_items":  t.Response["failed_items"],
-	}, 0)
-}
-func (qm *QueueManager) publishTaskError(t *Task) {
-	qm.publisher.Publish(t.Ctx, t.TaskType, t.Status, time.Now(), t.Topic, map[string]any{
-		"task_id":       t.TaskID,
-		"task_type":     t.TaskType,
-		"task_status":   t.Status,
-		"start_time":    t.StartTime.String(),
-		"complete_time": t.CompleteTime.String(),
 	}, 0)
 }
 
@@ -323,6 +282,21 @@ func (qm *QueueManager) work(w *Worker) {
 		qm.mu.Unlock()
 		return
 	}
+	qm.mu.Unlock()
+
+	// However the task ends, even in a panic, the worker takes the next task or is freed
+	defer qm.next(w)
+	qm.run(w)
+}
+
+// Run the worker's task. A panic is reported as a task error, so one bad task cannot
+// crash the server. The stack goes to the log, not to the event.
+func (qm *QueueManager) run(w *Worker) {
+	defer safe.Recover(qm.Logger, "queue task", func(err error) {
+		qm.reportWork(w, "error", map[string]any{"error": "internal error while running the task"}, true)
+	})
+
+	qm.mu.Lock()
 
 	ctx := w.TaskActioning.Ctx
 	sql := w.TaskActioning.Sql
@@ -365,18 +339,19 @@ func (qm *QueueManager) work(w *Worker) {
 			}
 		} else {
 			qm.Logger.Debug("function success", "response", func_response)
-			suc_count, ok := func_response["success_count"].(int)
-			qm.reportWork(w, "complete", func_response, !ok || suc_count == 0)
+			qm.reportWork(w, "complete", func_response, intValue(func_response, "success_count") == 0)
 		}
 	}
+}
 
-
+// Give the worker the next queued task, or free it when there is none
+func (qm *QueueManager) next(w *Worker) {
 	t := qm.lookForTask()
 	if t == nil {
 		qm.mu.Lock()
+		defer qm.mu.Unlock()
 		qm.active_workers--
 		w.free()
-		qm.mu.Unlock()
 		return
 	}
 	qm.assignWorker(w, t)
@@ -429,11 +404,11 @@ func (qm *QueueManager) getFreeWorker() (w *Worker) {
 // Assigns a task to a worker and splits of a goroutines to complete it.
 func (qm *QueueManager) assignWorker(w *Worker, t *Task) {
 	qm.mu.Lock()
-	w.TaskActioning = nil
 	w.TaskActioning = t
 	t.Status = "start"
-	qm.publish(w)
 	qm.mu.Unlock()
+
+	qm.publish(w)
 	go qm.work(w)
 }
 

@@ -18,7 +18,7 @@ type UpdateSuccessItem struct {
 }
 
 type DeleteSuccessItem struct {
-	WhereFields map[string]any
+	WhereFields map[string]any `json:"where_fields"`
 }
 
 type BatchInsertResult struct {

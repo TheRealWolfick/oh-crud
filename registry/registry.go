@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"fmt"
 	"net/http"
 	"sync"
 
@@ -83,14 +84,24 @@ func NewModelRegistry() *ModelRegistry {
 	return &ModelRegistry{models: make(map[string]*models.DataModel)}
 }
 
-// Register adds or replaces the model for its table. Safe to call concurrently.
-func (r *ModelRegistry) Register(m *models.DataModel) {
+// Register adds or replaces the model for its table. Safe to call concurrently. A model
+// whose end-point another table already uses is refused, so it cannot take over that
+// table's routes, nor block the owner from reloading.
+func (r *ModelRegistry) Register(m *models.DataModel) error {
 	if m.Table_name == nil {
-		return
+		return fmt.Errorf("model has no table name")
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if m.End_point != nil && *m.End_point != "" {
+		for table, other := range r.models {
+			if table != *m.Table_name && other.End_point != nil && *other.End_point == *m.End_point {
+				return fmt.Errorf("end-point %q is already used by table %q", *m.End_point, table)
+			}
+		}
+	}
 	r.models[*m.Table_name] = m
+	return nil
 }
 
 // All returns a snapshot of all currently registered models.
@@ -111,6 +122,18 @@ func (r *ModelRegistry) ByEndpoint(end_point string) (*models.DataModel, bool) {
 	defer r.mu.RUnlock()
 	for _, m := range r.models {
 		if m.End_point != nil && *m.End_point == end_point {
+			return m, true
+		}
+	}
+	return nil, false
+}
+
+// OtherByEndpoint returns a model, other than the one for table_name, that claims end_point
+func (r *ModelRegistry) OtherByEndpoint(end_point string, table_name string) (*models.DataModel, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for table, m := range r.models {
+		if table != table_name && m.End_point != nil && *m.End_point == end_point {
 			return m, true
 		}
 	}

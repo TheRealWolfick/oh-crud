@@ -1,6 +1,7 @@
 package datamodel
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -123,7 +124,11 @@ func Validate_SliceOfMaps_AgainstConfig(cfg *models.DataModel, rows []map[string
 			// Decode and coerce the row values
 			coerced_vals, err := DecodeAndCoerceFromUser(row, cfg)
 			if err != nil {
-				invalid_structs = append(invalid_structs, map[string]any{"data": row, "reasons": err.Error()})
+				// Reasons are always a list, one per problem
+				reasons := []string{err.Error()}
+				var field_errs FieldErrors
+				if errors.As(err, &field_errs) { reasons = field_errs }
+				invalid_structs = append(invalid_structs, map[string]any{"data": row, "reasons": reasons})
 			} else {
 				valid_structs = append(valid_structs, coerced_vals)
 			}

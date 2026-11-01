@@ -55,7 +55,7 @@ func createDiff(
 
 	comparatorKey := datamodel.GetDiffComparatorKey(cfg)
 	if comparatorKey == "" {
-		return "create_diff", nil, fmt.Errorf("no diff comparator field found in config for table %s", *cfg.Table_name)
+		return "create", nil, fmt.Errorf("no diff comparator field found in config for table %s", *cfg.Table_name)
 	}
 	excludeKeys := datamodel.BuildExcludeKeysFromConfig(cfg)
 
@@ -70,11 +70,11 @@ func createDiff(
 
 	rows, err := db.Query(ctx, query)
 	if err != nil {
-		return "create_diff", nil, fmt.Errorf("error reading rows in createDiff_Dynamic: %w", err)
+		return "create", nil, fmt.Errorf("error reading rows in createDiff_Dynamic: %w", err)
 	}
 	stored, err := pgx.CollectRows(rows, pgx.RowToMap)
 	if err != nil {
-		return "create_diff", nil, fmt.Errorf("error collecting rows in createDiff_Dynamic: %w", err)
+		return "create", nil, fmt.Errorf("error collecting rows in createDiff_Dynamic: %w", err)
 	}
 	coerced_stored := []map[string]any{}
 	for _, row := range stored {
@@ -87,10 +87,10 @@ func createDiff(
 
 	diff_struct := tools.DiffMapSlices(supplied, coerced_stored, comparatorKey, excludeKeys)
 	if diff_struct == nil {
-		log.Debug("Supplied[0:10]", "data", supplied[0:10])
-		log.Debug("Stored[0:10]", "data", stored[0:10])
-		log.Debug("Coerced[0:10]", "data", coerced_stored[0:10])
-		return "create_diff", map[string]any{
+		log.Debug("Supplied[0:10]", "data", supplied[:min(10, len(supplied))])
+		log.Debug("Stored[0:10]", "data", stored[:min(10, len(stored))])
+		log.Debug("Coerced[0:10]", "data", coerced_stored[:min(10, len(coerced_stored))])
+		return "create", map[string]any{
 			"table_name": 		*cfg.Table_name,
 			"total_count": 		1,
 			"success_count": 	0,
@@ -101,7 +101,7 @@ func createDiff(
 
 	totalDiffs := len(diff_struct.Diffs) + len(diff_struct.MissingFromSupplied) + len(diff_struct.MissingFromStored)
 	if totalDiffs == 0 {
-		return "create_diff", map[string]any{
+		return "create", map[string]any{
 			"table_name": 		*cfg.Table_name,
 			"total_count": 		1,
 			"success_count": 	0,
@@ -111,7 +111,7 @@ func createDiff(
 	}
 
 	h := md5.New()
-	user, userOk := reqctx.GetUser(ctx)
+	user, userOk := reqctx.GetActor(ctx)
 	if !userOk {
 		user = &models.User{}
 	}
@@ -138,7 +138,7 @@ func createDiff(
 	ret_map := map[string]any{
 		"table_name": 		*cfg.Table_name,
 		"total_count": 		1,
-		"success_count": 	cmdtag.RowsAffected(),
+		"success_count": 	int(cmdtag.RowsAffected()),
 		"success_items": 	nil,
 		"failed_count": 	0,
 		"failed_items": 	nil,
@@ -147,9 +147,9 @@ func createDiff(
 
 	if err != nil {
 		ret_map["error"] = err.Error()
-		return "create_diff", ret_map, err
+		return "create", ret_map, err
 	}
-	return "create_diff", ret_map, nil
+	return "create", ret_map, nil
 }
 
 // SingleUpdate is just basically a wrapper for MultiUpdate
@@ -245,7 +245,7 @@ func recursiveBatchInsertProcess(
 		// If this table tracks changes via a history, insert into the history table
 		if cfg.Track_history != nil && *cfg.Track_history {
 			qb_history := querybuilder.NewQueryBuilder(log)                                                // Use a new querybuilder
-			user, _ := reqctx.GetUser(ctx) 																								// Get the user
+			user, _ := reqctx.GetActor(ctx) 																								// Get the user
 			query_history := qb_history.BuildMultiInsertHistory(cfg, items, user.Username)		// Build the insert
 			_, err := db.Exec(ctx, query_history, qb_history.GetArgs()...)										// Execute the insert
 			if err != nil {
@@ -394,7 +394,7 @@ func multiUpdate(
 			// If this has history tacking, also save the changed values to the history table
 			if log_history {
 				qb_history := querybuilder.NewQueryBuilder(log)                                                                  // Use a new querybuilder
-				user, _ := reqctx.GetUser(ctx) 																								                  // Get the user
+				user, _ := reqctx.GetActor(ctx) 																								                  // Get the user
 				query_history := qb_history.BuildUpdateHistory(cfg, existing_data, row, user.Username)	            // Build the insert
 				if query_history != "" {
 					_, err := db.Exec(ctx, query_history, qb_history.GetArgs()...)												              // Execute the insert
@@ -499,7 +499,7 @@ func multiDelete(
 
 			if log_history && soft_delete { 
 				qb_history := querybuilder.NewQueryBuilder(log)                                                                  // Use a new querybuilder
-				user, _ := reqctx.GetUser(ctx) 																								                  // Get the user
+				user, _ := reqctx.GetActor(ctx) 																								                  // Get the user
 				query_history := qb_history.BuildUpdateHistory(cfg, existing_data, map[string]any{"deleted_flag": true}, user.Username)	            // Build the insert
 				if query_history != "" {
 					_, err := db.Exec(ctx, query_history, qb_history.GetArgs()...)												              // Execute the insert

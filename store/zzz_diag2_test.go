@@ -96,7 +96,7 @@ func TestDiag2BuildingRecordField(t *testing.T) {
 
 	db := &diag2DB{}
 	ctx := reqctx.SetLogger(context.Background(), slog.Default())
-	ctx = reqctx.SetUser(ctx, &models.User{})
+	ctx = reqctx.SetUserActor(ctx, &models.User{})
 
 	// Exactly the user's reported group-update payload shape: identify by "building",
 	// update "building_suburb", building value unchanged (== current DB value).

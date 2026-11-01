@@ -6,6 +6,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"lotusforge.au/api-server/datamodel"
 	"lotusforge.au/api-server/models"
+	"lotusforge.au/api-server/safe"
 )
 
 
@@ -24,14 +25,20 @@ func ServerConfigMonitor(server_conf *models.SwappableServerConfig, log *slog.Lo
 				if !ok {
 					return
 				}
-				if event.Has(fsnotify.Write) {
-					updated_config, err := datamodel.LoadYAMLIntoModel[models.ServerConfig](event.Name)
-					if err != nil {
-					  log.Error("Updated YAML failed to load. Skipping updating routes", "error", err)
-					} else {
-						server_conf.Swap(updated_config)
+				// Handle each event on its own, so a panic from one bad file is logged and
+				// the watcher keeps running
+				func() {
+					defer safe.Recover(log, "server config monitor", nil)
+					if event.Has(fsnotify.Write) {
+						updated_config, err := datamodel.LoadYAMLIntoModel[models.ServerConfig](event.Name)
+						if err != nil {
+						  log.Error("Updated YAML failed to load. Skipping updating routes", "error", err)
+						} else {
+							server_conf.Swap(updated_config)
+						}
 					}
-				}
+				}()
+
 			case err, ok := <-watcher.Errors:
 				if !ok {
 					return

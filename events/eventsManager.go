@@ -12,9 +12,11 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"lotusforge.au/api-server/auth"
 	"lotusforge.au/api-server/logging"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/reqctx"
+	"lotusforge.au/api-server/safe"
 	"lotusforge.au/api-server/tools"
 )
 
@@ -22,7 +24,7 @@ import (
 //            Package variables
 // -----------------------------------------------------------------
 
-var ValidActions  = []string{"get", "create", "update", "delete"}
+var ValidActions  = []string{"get", "create", "update", "delete", "any"}
 var ValidStatuses = []string{"queued", "start", "success", "warn", "failed", "error"}
 
 // -----------------------------------------------------------------
@@ -39,6 +41,7 @@ type EventManager struct {
 	timeout_sec int
 	upgrader     websocket.Upgrader
 	db           models.DBExecQuery
+	auth         *auth.Auth
 }
 
 
@@ -48,6 +51,8 @@ type Instructions struct {
 	clients        instruct_action
 	functions      function_references
 	is_func        bool
+	config         *models.DataModel
+	permission     string             // The model permission a client needs to subscribe
 }
 
 type client_topic map[string]client_action
@@ -69,7 +74,33 @@ type Client struct {
 	ping_sec int
 	timeout_write_sec int
 	timeout_read_sec int
+	actor *models.User
 	done chan struct{}
+	closeOnce sync.Once
+}
+
+// webhookClient posts webhooks. The timeout stops a slow receiver from holding a
+// goroutine open forever.
+var webhookClient = &http.Client{Timeout: 10 * time.Second}
+
+// Stop the client's write loop and close its connection, which also ends its read loop.
+// Safe to call more than once and from any goroutine.
+func (c *Client) close() {
+	c.closeOnce.Do(func() {
+		close(c.done)
+		c.conn.Close()
+	})
+}
+
+// Queue a message for the client without blocking. A client whose buffer is full is not
+// reading, so it is closed instead of stalling every publish behind it.
+func (c *Client) trySend(msg []byte) {
+	select {
+	case c.send <- msg:
+	default:
+		logging.Basic().Warn("Closing websocket client that is not reading its messages")
+		c.close()
+	}
 }
 
 // Returns a new event manager. It will build a registry of all websockets upon registering
@@ -83,7 +114,7 @@ type Client struct {
 //
 // Events are categorized by action (insert, update etc) and status (start, success, fail etc).
 // An event must have a valid action and status to be published
-func NewEventManager(ping_sec int, timeout_sec int, db models.DBExecQuery) *EventManager {
+func NewEventManager(ping_sec int, timeout_sec int, db models.DBExecQuery, auth *auth.Auth) *EventManager {
 	return &EventManager{
 		clients: map[*Client]client_topic{},
 		targets: map[string]*Instructions{},
@@ -97,6 +128,7 @@ func NewEventManager(ping_sec int, timeout_sec int, db models.DBExecQuery) *Even
 			CheckOrigin: func(r *http.Request) bool { return true },
 		},
 		db: db,
+		auth: auth,
 	}
 }
 
@@ -110,7 +142,10 @@ func (h *EventManager) CurrentTargets() map[string]*Instructions { return h.targ
 // This function is used for registering a function. It will enable the function as a topic and
 // also reference it in the table topic. If the table is not a valid topic, which should never 
 // happen, the function will not register and will log an error.
-func (h *EventManager) RegisterFunction(table string, topic string, hooks *models.EventAction) {
+func (h *EventManager) RegisterFunction(table string, topic string, hooks *models.EventAction, cfg *models.DataModel) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
   table_topic := fmt.Sprintf("table:%s", table)
 	_, valid := h.validTopics[table_topic]
 	if !valid {
@@ -119,13 +154,28 @@ func (h *EventManager) RegisterFunction(table string, topic string, hooks *model
 		return
 	}
 
-	h.EnableTopic(topic, hooks, false)
+	h.enableTopicUnsafe(topic, hooks, false, cfg)
 	h.targets[topic].is_func = true
 	h.targets[table_topic].functions = append(h.targets[table_topic].functions, topic)
 }
 
 // Add a topic as a valid topic
-func (h *EventManager) EnableTopic(topic string, hooks *models.EventAction, persist_to_db bool) {
+func (h *EventManager) EnableTopic(topic string, hooks *models.EventAction, persist_to_db bool, cfg *models.DataModel) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.enableTopicUnsafe(topic, hooks, persist_to_db, cfg)
+}
+// Add a topic for a model's diffs. Diff events persist to the db, and subscribing needs
+// the model's DIFF role, the same as reading its diffs. The model's webhooks are for
+// table changes, so none are attached.
+func (h *EventManager) EnableDiffTopic(topic string, cfg *models.DataModel) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.enableTopicUnsafe(topic, nil, true, cfg)
+	h.targets[topic].permission = "diff"
+}
+// Add a topic as a valid topic UNSAFE
+func (h *EventManager) enableTopicUnsafe(topic string, hooks *models.EventAction, persist_to_db bool, cfg *models.DataModel) {
 	h.validTopics[topic] = true
 
 	// Register instructions for topics
@@ -135,6 +185,8 @@ func (h *EventManager) EnableTopic(topic string, hooks *models.EventAction, pers
 		clients: instruct_action{},
 		functions: function_references{},
 		is_func: false,
+		config: cfg,
+		permission: "get",
 	}
 
 	i := h.targets[topic]
@@ -177,39 +229,38 @@ func (h *EventManager) EnableTopic(topic string, hooks *models.EventAction, pers
 
 // Upgrade and manage a new websocket based on the topic and action. 
 // Websock registers for all statuses of the passed in topic
-func (h *EventManager) RegiterTopicAction(w http.ResponseWriter, r *http.Request, topic string, action []string) error {
+func (h *EventManager) RegisterTopicAction(ctx context.Context, w http.ResponseWriter, r *http.Request, topic string, action []string) error {
 	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil { return err }
 
-	go h.handleClientTopicAction(conn, topic, action)
+	if actor, ok := reqctx.GetActor(ctx); ok { go h.handleClientTopicAction(conn, actor, topic, action) } else { conn.Close() }
 
 	return nil
 }
 // Upgrade and manage a new websocket based on the topic.
 // Websock register for the specified statuses and actions.
-func (h *EventManager) RegiterTopicStatusAction(w http.ResponseWriter, r *http.Request, topic string, action []string, status []string) error {
+func (h *EventManager) RegisterTopicStatusAction(ctx context.Context, w http.ResponseWriter, r *http.Request, topic string, action []string, status []string) error {
 	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil { return err }
 
-	go h.handleClientTopicStatusAction(conn, topic, action, status)
+	if actor, ok := reqctx.GetActor(ctx); ok { go h.handleClientTopicStatusAction(conn, actor, topic, action, status) } else { conn.Close() }
 
 	return nil
 }
 // Upgrade and manage a new websocket based on the topic and status, it registers for all actions
-func (h *EventManager) RegiterTopicStatus(w http.ResponseWriter, r *http.Request, topic string, status []string) error {
+func (h *EventManager) RegisterTopicStatus(ctx context.Context, w http.ResponseWriter, r *http.Request, topic string, status []string) error {
 	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil { return err }
 
-	go h.handleClientTopicStatus(conn, topic, status)
+	if actor, ok := reqctx.GetActor(ctx); ok { go h.handleClientTopicStatus(conn, actor, topic, status) } else { conn.Close() }
 
 	return nil
 }
 // Upgrade and manage a new websocket based on the topic. It registers for all actions and statuses
-func (h *EventManager) RegiterTopicOnly(w http.ResponseWriter, r *http.Request, topic string) error {
+func (h *EventManager) RegisterTopicOnly(ctx context.Context, w http.ResponseWriter, r *http.Request, topic string) error {
 	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil { return err }
-
-	go h.HandleClientTopic(conn, topic)
+	if actor, ok := reqctx.GetActor(ctx); ok { go h.HandleClientTopic(conn, actor, topic) } else { conn.Close() }
 
 	return nil
 }
@@ -219,25 +270,27 @@ func (h *EventManager) RegiterTopicOnly(w http.ResponseWriter, r *http.Request, 
 // -----------------------------------------------------------------
 
 // Register a new client connection to specific topic
-func (h *EventManager) HandleClientTopic(conn *websocket.Conn, topic string) {
-	if !h.validTopics[topic] { return }
-	h.handleClient(conn, topic, ValidActions, ValidStatuses)
+func (h *EventManager) HandleClientTopic(conn *websocket.Conn, actor *models.User, topic string) {
+	h.mu.RLock()
+	valid := h.validTopics[topic]
+	h.mu.RUnlock()
+	if !valid { conn.Close(); return }
+	h.handleClient(conn, actor, topic, ValidActions, ValidStatuses)
 }
 // Register a new client connection to specific topic statuses
-func (h *EventManager) handleClientTopicStatus(conn *websocket.Conn, topic string, status []string) {
-	h.handleClient(conn, topic, ValidActions, status)
+func (h *EventManager) handleClientTopicStatus(conn *websocket.Conn, actor *models.User, topic string, status []string) {
+	h.handleClient(conn, actor, topic, ValidActions, status)
 }
 // Register a new client connection to specific topic actions
-func (h *EventManager) handleClientTopicAction(conn *websocket.Conn, topic string, action []string) {
-	h.handleClient(conn, topic, action, ValidStatuses)
+func (h *EventManager) handleClientTopicAction(conn *websocket.Conn, actor *models.User, topic string, action []string) {
+	h.handleClient(conn, actor, topic, action, ValidStatuses)
 }
 // Register a new client connection to specific topic actions and statuses. Statuses apply over all actions
-func (h *EventManager) handleClientTopicStatusAction(conn *websocket.Conn, topic string, action []string, status []string) {
-	h.handleClient(conn, topic, action, status)
+func (h *EventManager) handleClientTopicStatusAction(conn *websocket.Conn, actor *models.User, topic string, action []string, status []string) {
+	h.handleClient(conn, actor, topic, action, status)
 }
 // Register a new client connection. It is expected to call this via a go function
-func (h *EventManager) handleClient(conn *websocket.Conn, topic string, action []string, status []string) {
-	h.mu.Lock()
+func (h *EventManager) handleClient(conn *websocket.Conn, actor *models.User, topic string, action []string, status []string) {
 	// Create the client
 	client := &Client{
 		conn: conn,
@@ -246,7 +299,13 @@ func (h *EventManager) handleClient(conn *websocket.Conn, topic string, action [
 		timeout_write_sec: h.timeout_sec,
 		timeout_read_sec: int(float64(h.ping_sec) * 2.1),
 		done: make(chan struct{}),
+		actor: actor,
 	}
+
+	// However the client ends, even in a panic, remove it so events stop queuing for it.
+	// Deferred calls run last first, so the panic is recovered before the clean up.
+	defer h.unhandleClient(client)
+	defer safe.Recover(logging.Basic(), "websocket client", nil)
 
 	// Set the pong handler I guess
 	conn.SetPongHandler(func(appData string) error {
@@ -255,35 +314,33 @@ func (h *EventManager) handleClient(conn *websocket.Conn, topic string, action [
 	})
 
 	// Register the client into the register first
-	for _, a := range action {
-		for _, s := range status {
-			h.registerUnsafe(client, topic, a, s)
-		}
-	}
-	h.mu.Unlock()
+	h.registerClient(client, topic, action, status)
 
-	// Write loop, handles sending data to the client, including ping-pong initiation. Called via go
-	go client.writeLoop()
+	// Write loop, handles sending data to the client, including ping-pong initiation
+	safe.Go(logging.Basic(), "websocket write", client.writeLoop)
 
 	// Read loop, handles reads from the client
 	h.readLoop(client)
-
-	// Unregister the client
-	h.unhandleClient(client)
 }
 
-// Register the client in the eventhub safely
-func (h *EventManager) register(c *Client, topic string, action string, status string) {
+// Register a new client against each action and status of its topic
+func (h *EventManager) registerClient(c *Client, topic string, action []string, status []string) {
 	h.mu.Lock()
-	h.registerUnsafe(c, topic, action, status)
-	h.mu.Unlock()
+	defer h.mu.Unlock()
+	for _, a := range action {
+		for _, s := range status {
+			h.registerUnsafe(c, topic, a, s)
+		}
+	}
 }
+
 // Register the client in the eventhub UNSAFE
 func (h *EventManager) registerUnsafe(c *Client, topic string, action string, status string) {
 	// Ensure topic, action and status are valid
 	_, valid_topic := h.targets[topic]
 	valid_action := action == "" || action == "any" || action == "all" || slices.Contains(ValidActions, action)
 	valid_status := status == "" || status == "any" || status == "all" || slices.Contains(ValidStatuses, status)
+
 	if valid_topic == false || valid_action == false || valid_status == false {
 		c.NotifyJson(map[string]any{"subscribe": false, "reason": "invalid subscription request", "is_topic_valid": valid_topic, "is_action_valid": valid_action, "is_status_valid": valid_status})
 		return
@@ -338,8 +395,8 @@ func (h *EventManager) registerUnsafe(c *Client, topic string, action string, st
 // Register the client in the eventhub safely
 func (h *EventManager) unregister(c *Client, topic string, action string, status string) {
 	h.mu.Lock()
+	defer h.mu.Unlock()
 	h.unregisterUnsafe(c, topic, action, status)
-	h.mu.Unlock()
 }
 // Register the client in the eventhub UNSAFE
 func (h *EventManager) unregisterUnsafe(c *Client, topic string, action string, status string) {
@@ -471,7 +528,7 @@ func (h *EventManager) unhandleClient(client *Client) error {
 	// Remove client for the clients list
 	delete(h.clients, client)
 
-	client.conn.Close()
+	client.close()
 
 	return nil
 }
@@ -480,6 +537,9 @@ func (h *EventManager) unhandleClient(client *Client) error {
 func (c *Client) writeLoop() {
 	// Ticker for sending a connection test
 	ticker := time.NewTicker(time.Second * time.Duration(c.ping_sec))
+	defer ticker.Stop()
+	// A failed write means the connection is gone, so close it rather than waiting for the read timeout
+	defer c.close()
 	var err error
 
 	for {
@@ -498,9 +558,8 @@ func (c *Client) writeLoop() {
 		case <- c.done:
 			return
 		}
-		if err != nil { break }
+		if err != nil { logging.BasicDebug().Debug(err.Error()); return }
 	}
-	ticker.Stop()
 }
 
 func (h *EventManager) readLoop(c *Client) {
@@ -521,7 +580,7 @@ func (h *EventManager) readLoop(c *Client) {
 		// Process the user request
 		switch cm.Instruction {
 		case "sub":
-			h.register(c, cm.Topic, cm.Action, cm.Status)
+			h.subscribe(c, cm)
 		case "unsub":
 			h.unregister(c, cm.Topic, cm.Action, cm.Status)
 		}
@@ -529,7 +588,18 @@ func (h *EventManager) readLoop(c *Client) {
 		// msg actions currently unimplemented
 		logging.BasicDebug().Debug("Received message from client", "msg", cm)
 	}
-	close(c.done)
+	c.close()
+}
+
+// Subscribe a client to a topic its actor is allowed to see. The look up and register
+// happen under one lock, so a hot-reload cannot swap the topic in between.
+func (h *EventManager) subscribe(c *Client, cm models.ClientMessage) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	inst, ok := h.targets[cm.Topic]
+	if ok && h.auth.CheckUserAgainstConfig(c.actor, inst.config, inst.permission) {
+		h.registerUnsafe(c, cm.Topic, cm.Action, cm.Status)
+	}
 }
 
 // -----------------------------------------------------------------
@@ -538,13 +608,13 @@ func (h *EventManager) readLoop(c *Client) {
 
 // Send a bytes array to the client
 func (c *Client) Notify(msg string) {
-	c.send <- []byte(msg)
+	c.trySend([]byte(msg))
 }
 
 // Send a bytes array to the client
 func (c *Client) NotifyJson(msg map[string]any) {
 	j, err := json.Marshal(msg)
-	if err == nil { c.send <- []byte(j) }
+	if err == nil { c.trySend(j) }
 }
 
 // Broadcase a bytes array across all clients
@@ -552,23 +622,28 @@ func (h *EventManager) Broadcast(i *Instructions, action string, status string, 
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	for c, _ := range i.clients[action][status] {
-		c.send <- data
+	for c := range i.clients[action][status] {
+		c.trySend(data)
 	}
 }
 
 // This is a function that handles webhooks. Currently, it only supports webhooks as per the config file,
 // but maybe user / frontend defined in the future via an api function call?
 func (h *EventManager) Callback(topic string, action string, status string, data []byte) []error {
-	var res *http.Response
-	var err error
 	var errs []error
 
+	// Copy the urls under the lock, then post without holding it
+	h.mu.RLock()
+	var urls []string
+	if i, ok := h.targets[topic]; ok { urls = slices.Clone(i.webhook_url[action][status]) }
+	h.mu.RUnlock()
+
 	// Different reporting routes
-	for _, url := range h.targets[topic].webhook_url[action][status] {
-		res, err = http.Post(url, "application/json", bytes.NewReader(data))
-		if err != nil            { errs = append(errs, fmt.Errorf("Error (webhook) with topic {%s}, url {%s}, error: {%s}", topic, url, err.Error())); continue }
-		if res.StatusCode != 200 { errs = append(errs, fmt.Errorf("Error (webhook) with topic {%s}, url {%s}, error_status: {%s}", topic, url, res.Status)) }
+	for _, url := range urls {
+		res, err := webhookClient.Post(url, "application/json", bytes.NewReader(data))
+		if err != nil { errs = append(errs, fmt.Errorf("Error (webhook) with topic {%s}, url {%s}, error: {%s}", topic, url, err.Error())); continue }
+		res.Body.Close()
+		if res.StatusCode < 200 || res.StatusCode > 299 { errs = append(errs, fmt.Errorf("Error (webhook) with topic {%s}, url {%s}, error_status: {%s}", topic, url, res.Status)) }
 	}
 
 	if len(errs) > 0 { return errs }
@@ -604,7 +679,7 @@ func (h *EventManager) publish(ctx context.Context, action string, status string
 	// Validate the event status
 	if !ok {return fmt.Errorf("Invalid topic {%s} for an event", topic)}
 	if !slices.Contains(ValidStatuses, status) {return fmt.Errorf("Invalid status {%s} called for event", status)}
-	user, found := reqctx.GetUser(ctx)
+	user, found := reqctx.GetActor(ctx)
 	if !found { return fmt.Errorf("Publish called from a non user!") }
 
 	// Publish to the database
@@ -614,10 +689,12 @@ func (h *EventManager) publish(ctx context.Context, action string, status string
 	}
 
 	// Publish to webhooks
-	go h.Callback(topic, action, status, payload)
+	safe.Go(logging.Basic(), "webhook callback", func() {
+		for _, err := range h.Callback(topic, action, status, payload) { logging.Basic().Warn("WEBHOOK_FAILED", "error", err) }
+	})
 
 	// Publish to clients
-	go h.Broadcast(instructions, action, status, payload)
+	safe.Go(logging.Basic(), "websocket broadcast", func() { h.Broadcast(instructions, action, status, payload) })
 
 	// Publish to each function
 	if (len(instructions.functions) > 0 && success_count > 0) {
@@ -643,7 +720,9 @@ func (h *EventManager) publish(ctx context.Context, action string, status string
 
 			if err != nil {logging.BasicDebug().Error(fmt.Sprintf("Error parsing update_message for function {%s}\nError: {%s}", func_topic, err.Error()))}
 			// Publish this data
-			go h.publish(ctx, action, status, timestamp, func_topic, pl, success_count)
+			safe.Go(logging.Basic(), "function publish", func() {
+				if err := h.publish(ctx, action, status, timestamp, func_topic, pl, success_count); err != nil { logging.Basic().Warn("Failed to publish function event", "function", func_topic, "error", err) }
+			})
 		}
 	}
 

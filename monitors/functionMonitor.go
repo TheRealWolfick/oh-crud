@@ -9,6 +9,7 @@ import (
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/queue"
 	"lotusforge.au/api-server/registry"
+	"lotusforge.au/api-server/safe"
 )
 
 // FunctionsMonitor watches config/functions/ for changes to declarative
@@ -37,22 +38,27 @@ func FunctionsMonitor(
 			select {
 			case event, ok := <-watcher.Events:
 				if !ok { return }
-				if !event.Has(fsnotify.Write) { continue }
+				// Handle each event on its own, so a panic from one bad file is logged and
+				// the watcher keeps running
+				func() {
+					defer safe.Recover(qm.Logger, "functions monitor", nil)
+					if !event.Has(fsnotify.Write) { return }
 
-				fn, err := datamodel.LoadYAMLIntoModel[models.FunctionDef](event.Name)
-				if err != nil {
-					qm.Logger.Error("Updated function YAML failed to load; skipping",
-						"file", event.Name, "error", err)
-					continue
-				}
-				if errs := registry.ValidateFunction(fn, modelRegistry); len(errs) > 0 {
-					qm.Logger.Error("Updated function YAML failed validation; skipping",
-						"file", event.Name, "errors", errs)
-					continue
-				}
-				qm.Logger.Debug("Function update detected", "name", *fn.Name, "bound-to", *fn.Bound_to)
-				functionRegistry.Register(fn)
-				handlers.RegisterFunctionRoutes(fn, modelRegistry, handlerRegistry, auth, qm, server_conf, evh)
+					fn, err := datamodel.LoadYAMLIntoModel[models.FunctionDef](event.Name)
+					if err != nil {
+						qm.Logger.Error("Updated function YAML failed to load; skipping",
+							"file", event.Name, "error", err)
+						return
+					}
+					if errs := registry.ValidateFunction(fn, modelRegistry); len(errs) > 0 {
+						qm.Logger.Error("Updated function YAML failed validation; skipping",
+							"file", event.Name, "errors", errs)
+						return
+					}
+					qm.Logger.Debug("Function update detected", "name", *fn.Name, "bound-to", *fn.Bound_to)
+					functionRegistry.Register(fn)
+					handlers.RegisterFunctionRoutes(fn, modelRegistry, handlerRegistry, auth, qm, server_conf, evh)
+				}()
 
 			case err, ok := <-watcher.Errors:
 				if !ok { return }

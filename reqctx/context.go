@@ -2,6 +2,7 @@ package reqctx
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"slices"
 
@@ -16,6 +17,7 @@ type TaskContext struct {
 	Id string
 	Type string
 	Cfg *models.DataModel
+	Topic string        // The event topic the task publishes on
 }
 
 var (
@@ -25,25 +27,48 @@ var (
 	userRolesKey     = ctxKey{"roles"}
 )
 
-func SetUser(ctx context.Context, user *models.User) context.Context {
-	return context.WithValue(ctx, userContextKey, user)
+// SetActor records who the request acts as, which writes are recorded against, along with
+// the roles of every party to the request. They are set together so neither is missing.
+func SetActor(ctx context.Context, actor *models.User, roles CallerRoles) context.Context {
+	ctx = context.WithValue(ctx, userContextKey, actor)
+	return context.WithValue(ctx, userRolesKey, roles)
 }
 
-func GetUser(ctx context.Context) (*models.User, bool) {
+// SetUserActor sets a user acting alone as the actor, taking the roles from the user
+func SetUserActor(ctx context.Context, user *models.User) context.Context {
+	var roles []string
+	if user != nil { roles = user.Roles }
+	return SetActor(ctx, user, CallerRoles{User: roles, HasUser: true})
+}
+
+func GetActor(ctx context.Context) (*models.User, bool) {
 	user, ok := ctx.Value(userContextKey).(*models.User)
 	return user, ok
 }
 
+func Actor(ctx context.Context) string {
+	user, ok := GetActor(ctx)
+	if !ok || user == nil { return "" }
+	return user.ID
+}
+
 // Username returns the username of the user in the context, or "" if there is none
 func Username(ctx context.Context) string {
-	user, ok := GetUser(ctx)
+	user, ok := GetActor(ctx)
 	if !ok || user == nil { return "" }
 	return user.Username
 }
 
-func StartTask(ctx context.Context, task_type string, cfg *models.DataModel) context.Context {
+// Start a task with a valid task type. Valid types are based off event actions: create, read, update, delete
+// The task's events publish on the model's table topic
+func StartTask(ctx context.Context, action string, cfg *models.DataModel) context.Context {
+	return StartTaskOnTopic(ctx, action, cfg, fmt.Sprintf("table:%s", *cfg.End_point))
+}
+
+// Start a task whose events publish on topic instead of the model's table topic
+func StartTaskOnTopic(ctx context.Context, action string, cfg *models.DataModel, topic string) context.Context {
 	id, _ := secrets.RandomString(32)
-	task := TaskContext{Id: id, Type: task_type, Cfg: cfg}
+	task := TaskContext{Id: id, Type: action, Cfg: cfg, Topic: topic}
 	return context.WithValue(ctx, taskContextKey, task)
 }
 
@@ -62,6 +87,7 @@ func GetTask(ctx context.Context) (TaskContext, bool) {
 	return task, false
 }
 
+// Set the logger within the context
 func SetLogger(ctx context.Context, logger *slog.Logger) context.Context {
 	return context.WithValue(ctx, loggerContextKey, logger)
 } 
@@ -80,20 +106,17 @@ type CallerRoles struct {
 	HasUser    bool
 }
 
-func SetCallerRoles(ctx context.Context, c CallerRoles) context.Context {
-	return context.WithValue(ctx, userRolesKey, c)
+// GetCallerRoles returns the roles of every party to the request, set by SetActor
+func GetCallerRoles(ctx context.Context) (CallerRoles, bool) {
+	c, ok := ctx.Value(userRolesKey).(CallerRoles)
+	return c, ok
 }
 
-// SetRoles sets the roles of a request made by a user alone
-func SetRoles(ctx context.Context, user_roles []string) context.Context {
-	return SetCallerRoles(ctx, CallerRoles{User: user_roles, HasUser: true})
-}
-
-// CheckUserHasAllowedRole reports whether every party to the request holds an allowed
+// CheckActorHasAllowedRole reports whether every party to the request holds an allowed
 // role or the admin role. A service acting for a user needs both to pass, so neither
 // can reach further than the other is allowed to.
-func CheckUserHasAllowedRole(ctx context.Context, allowed_roles []string, svr_cfg *models.ServerConfig) bool {
-	c, ok := ctx.Value(userRolesKey).(CallerRoles)
+func CheckActorHasAllowedRole(ctx context.Context, allowed_roles []string, svr_cfg *models.ServerConfig) bool {
+	c, ok := GetCallerRoles(ctx)
 	if !ok || (!c.HasService && !c.HasUser) { return false }
 
 	admin_role := ""

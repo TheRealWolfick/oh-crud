@@ -98,6 +98,7 @@ ignored.
 |-------|----------------|---------|
 | `table:{end-point}` | A write task on that model changes state | `table:asset/data` |
 | `func:{function-name}` | A write on the function's bound model succeeds | `func:assets-by-building` |
+| `diff:{end-point}` | A diff task on that model changes state. Needs the model's `DIFF` role to subscribe | `diff:asset/data` |
 
 The table topic uses the model's **end-point**, not its table name.
 

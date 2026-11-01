@@ -31,14 +31,14 @@ func adminAuthorised(
 ) (context.Context, bool) {
 	req_ip := httpx.GetIP(r)
 	req_id, _ := secrets.RandomString(32)
-	req_username := reqctx.Username(r.Context())
-	log := qm.Logger.With("user", req_username, "IP", req_ip, "function", function, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
+	req_actor := reqctx.Actor(r.Context())
+	log := qm.Logger.With("actor", req_actor, "IP", req_ip, "function", function, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
 	ctx := reqctx.SetLogger(r.Context(), log)
 
 	log.Info("REQUEST_RECEIVED")
 	w.Header().Set("Content-Type", "application/json")
 
-	if !reqctx.CheckUserHasAllowedRole(ctx, cfg.Admin_roles, svr_cfg.Get()) {
+	if !reqctx.CheckActorHasAllowedRole(ctx, cfg.Admin_roles, svr_cfg.Get()) {
 		log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to administrate this end point")
 		http.Error(w, "User role does not have access to administrate this end point", http.StatusUnauthorized)
 		return ctx, false

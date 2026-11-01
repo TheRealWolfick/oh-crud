@@ -44,6 +44,17 @@ func RegisterRoutes(
 	modelRegistry *registry.ModelRegistry,
 ) {
 	var err error
+
+	// A model without an end-point has no API, and two models cannot share routes
+	if !cfg.HasEndpoint() {
+		qm.Logger.Debug("Skipping end point for model with no end-point", "data-model", *cfg.Name)
+		return
+	}
+	if other, taken := modelRegistry.OtherByEndpoint(*cfg.End_point, *cfg.Table_name); taken {
+		qm.Logger.Error("Failed to load model: end-point is already used by another model", "data-model", *cfg.Name, "end_point", *cfg.End_point, "used_by", *other.Name)
+		return
+	}
+
 	qm.Logger.Debug("Dynamic end point generating", "data-model", *cfg.Name)
 	auth := model_auth(cfg)
 
@@ -53,6 +64,10 @@ func RegisterRoutes(
 		qm.Logger.Error("Failed to load model", "error", err)
 		return
 	}
+
+	// Browsers preflight every cross-origin path, not just the base end point
+	handlerRegistry.Register(fmt.Sprintf("OPTIONS /%s/group", *cfg.End_point), middleware.Cors(cfg, server_conf)(emptyResponse()), *cfg.Version)
+	handlerRegistry.Register(fmt.Sprintf("OPTIONS /%s/fn/{function}", *cfg.End_point), middleware.Cors(cfg, server_conf)(emptyResponse()), *cfg.Version)
 
 	// Standard set of handlers
 	handlerRegistry.Register(fmt.Sprintf("GET /%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleGet(cfg, qm, server_conf))), *cfg.Version)
@@ -68,6 +83,8 @@ func RegisterRoutes(
 		if diff_cfg == nil {
 			qm.Logger.Error("Cannot register diff routes: diffs model was not loaded", "data-model", *cfg.Name)
 		} else {
+			evh.EnableDiffTopic(fmt.Sprintf("diff:%s", *cfg.End_point), cfg)
+			handlerRegistry.Register(fmt.Sprintf("OPTIONS /%s/diff", *cfg.End_point), middleware.Cors(cfg, server_conf)(emptyResponse()), *cfg.Version)
 			handlerRegistry.Register(fmt.Sprintf("GET /%s/diff", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleGetDiff(cfg, diff_cfg, qm, server_conf))), *cfg.Version)
 			handlerRegistry.Register(fmt.Sprintf("POST /%s/diff", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(dynamicCreateDiff(cfg, qm, server_conf.Get()))), *cfg.Version)
 			handlerRegistry.Register(fmt.Sprintf("PUT /%s/diff", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(dynamicActionDiff(cfg, qm, server_conf.Get()))), *cfg.Version)
@@ -81,10 +98,15 @@ func RegisterRoutes(
 	// Built-in admin endpoints for this end point. onApplied re-registers a model's
 	// routes after an approved schema change is committed.
 	onApplied := func(applied *models.DataModel) {
-		modelRegistry.Register(applied)
+		if err := modelRegistry.Register(applied); err != nil {
+			qm.Logger.Error("Applied model not loaded, routes not updated", "data-model", *applied.Name, "error", err)
+			return
+		}
 		RegisterRoutes(applied, diff_cfg, handlerRegistry, model_auth, qm, server_conf, evh, gate, modelRegistry)
 	}
 	// Register admin end points
+	handlerRegistry.Register(fmt.Sprintf("OPTIONS /%s/admin/pending", *cfg.End_point), middleware.CorsAdmin(cfg, server_conf)(emptyResponse()), *cfg.Version)
+	handlerRegistry.Register(fmt.Sprintf("OPTIONS /%s/admin/approve", *cfg.End_point), middleware.CorsAdmin(cfg, server_conf)(emptyResponse()), *cfg.Version)
 	handlerRegistry.Register(fmt.Sprintf("GET /%s/admin/pending", *cfg.End_point), middleware.CorsAdmin(cfg, server_conf)(auth(handlePendingChanges(gate, qm, cfg, server_conf))), *cfg.Version)
 	handlerRegistry.Register(fmt.Sprintf("POST /%s/admin/approve", *cfg.End_point), middleware.CorsAdmin(cfg, server_conf)(auth(handleApproveChange(gate, qm, cfg, server_conf, modelRegistry, onApplied))), *cfg.Version)
 
@@ -92,15 +114,12 @@ func RegisterRoutes(
 	// Path shape mirrors /fn/{function} so a literal segment sits at the same
 	// position, avoiding ambiguity with /{key}/history vs /fn/{function}.
 	if cfg.Track_history != nil && *cfg.Track_history {
-		handlerRegistry.Register(
-			fmt.Sprintf("GET /%s/history/{key}", *cfg.End_point),
-			middleware.Cors(cfg, server_conf)(auth(handleGetHistory(cfg, qm, server_conf))),
-			*cfg.Version,
-		)
+		handlerRegistry.Register(fmt.Sprintf("OPTIONS /%s/history/{key}", *cfg.End_point), middleware.Cors(cfg, server_conf)(emptyResponse()), *cfg.Version)
+		handlerRegistry.Register( fmt.Sprintf("GET /%s/history/{key}", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleGetHistory(cfg, qm, server_conf))), *cfg.Version )
 	}
 
 	// Enable the table for websockets and register end point
-	evh.EnableTopic(fmt.Sprintf("table:%s", *cfg.End_point), cfg.Webhooks, true)
+	evh.EnableTopic(fmt.Sprintf("table:%s", *cfg.End_point), cfg.Webhooks, true, cfg)
 	//qm.Logger.Debug("event handler status", "enabled_topics", evh.ValidTopics(), "instructions", evh.CurrentTargets())
 	handlerRegistry.Register(fmt.Sprintf("GET /ws/%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleWebsocket(cfg, qm, server_conf, fmt.Sprintf("table:%s", *cfg.End_point), evh))), *cfg.Version)
 }
@@ -182,14 +201,13 @@ func addNewResource(
 	svr_cfg *models.ServerConfig,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		
+		// Define data for logging and save it into the context
 		task_type := "Add Resource"
-		function := "create"
 		req_ip := httpx.GetIP(r)
 		req_id, err := secrets.RandomString(32)
-		req_username := reqctx.Username(r.Context())
+		req_actor := reqctx.Actor(r.Context())
 		note := r.Header.Get("X-User-Note")
-		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", function, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
+		log := qm.Logger.With("actor", req_actor, "IP", req_ip, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
 		ctx := reqctx.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -199,9 +217,9 @@ func addNewResource(
 		w.Header().Set("Content-Type", "application/json")
 
 		// Check that a user is allowed to inteface with this command
-		if !reqctx.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.POST, svr_cfg) {
-			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
-			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
+		if !reqctx.CheckActorHasAllowedRole(ctx, cfg.End_points_allowed.POST, svr_cfg) {
+			log.Warn("REQUEST_UNAUTHORISED", "error", "requester role does not have permission to access this end point")
+			http.Error(w, "requester role does not have access to this end point", http.StatusUnauthorized)
 			return
 		}
 
@@ -219,7 +237,6 @@ func addNewResource(
 			return
 		}
 
-		log.Debug("Decoding and coercing raw data", "data", fmt.Sprint(raw))
 		valid_resources, invalid_resources := datamodel.Validate_Map_AgainstConfig(cfg, raw, false, true)
 		if len(valid_resources) < 1 {
 			log.Warn("Request with no valid resources")
@@ -235,7 +252,7 @@ func addNewResource(
 		}
 
 		// Extract context and queue action
-		ctx_preserve := context.WithoutCancel(reqctx.StartTask(ctx, function, cfg))
+		ctx_preserve := context.WithoutCancel(reqctx.StartTask(ctx, "create", cfg))
 		task_id, err := qm.QueueFunction(ctx_preserve, store.SingleInsert(ctx_preserve, qm.Db, cfg, valid_resources[0]), note)
 
 		if err != nil {
@@ -259,12 +276,11 @@ func addNewResources_Group(
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Add Bulk Resources"
-		function := "create"
 		req_ip := httpx.GetIP(r)
 		req_id, err := secrets.RandomString(32)
-		req_username := reqctx.Username(r.Context())
+		req_actor := reqctx.Actor(r.Context())
 		note := r.Header.Get("X-User-Note")
-		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", function, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
+		log := qm.Logger.With("actor", req_actor, "IP", req_ip, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
 		ctx := reqctx.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -274,7 +290,7 @@ func addNewResources_Group(
 		w.Header().Set("Content-Type", "application/json")
 
 		// Check that a user is allowed to inteface with this command
-		if !reqctx.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.POST_GROUP, svr_cfg) {
+		if !reqctx.CheckActorHasAllowedRole(ctx, cfg.End_points_allowed.POST_GROUP, svr_cfg) {
 			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
 			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
 			return
@@ -305,7 +321,7 @@ func addNewResources_Group(
 			return
 		}
 
-		ctx_preserve := context.WithoutCancel(reqctx.StartTask(ctx, function, cfg))
+		ctx_preserve := context.WithoutCancel(reqctx.StartTask(ctx, "create", cfg))
 		task_id, err := qm.QueueFunction(ctx_preserve, store.RecursiveBatchInsert(ctx_preserve, qm.Db, cfg, valid_resources), note)
 		if err != nil {
 			qm.Logger.Error("TASK_ERROR", "error", err)
@@ -333,11 +349,10 @@ func getResource(
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Get Resource"
-		function := "get"
 		req_ip := httpx.GetIP(r)
 		req_id, _ := secrets.RandomString(32)
-		req_username := reqctx.Username(r.Context())
-		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", function, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
+		req_actor := reqctx.Actor(r.Context())
+		log := qm.Logger.With("actor", req_actor, "IP", req_ip, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
 		ctx := reqctx.SetLogger(context.WithoutCancel(r.Context()), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -347,7 +362,7 @@ func getResource(
 		response := map[string]any{"task_type": task_type}
 
 		// Check that a user is allowed to inteface with this command
-		if !reqctx.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.GET, svr_cfg) {
+		if !reqctx.CheckActorHasAllowedRole(ctx, cfg.End_points_allowed.GET, svr_cfg) {
 			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
 			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
 			return
@@ -358,7 +373,7 @@ func getResource(
 	  qb.SetDefaults(cfg, r)
 
 		if err := qb.ProcessURLParams(r, cfg); err != nil {
-			log.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", err)
+			log.Error("REQUEST_ERROR", "error", err)
 			http.Error(w, fmt.Sprintf("Error in parsing where clauses: %v", err.Error()), http.StatusBadRequest)
 			return
 		}
@@ -431,11 +446,10 @@ func getDiff(
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Get Diff"
-		function := "get"
 		req_ip := httpx.GetIP(r)
 		req_id, _ := secrets.RandomString(32)
-		req_username := reqctx.Username(r.Context())
-		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", function, "task_type", task_type, "end_point", fmt.Sprintf("%s/diff",*cfg.End_point), "table", *diff_cfg.Table_name, "request_id", req_id)
+		req_actor := reqctx.Actor(r.Context())
+		log := qm.Logger.With("actor", req_actor, "IP", req_ip, "task_type", task_type, "end_point", fmt.Sprintf("%s/diff",*cfg.End_point), "table", *diff_cfg.Table_name, "request_id", req_id)
 		ctx := reqctx.SetLogger(context.WithoutCancel(r.Context()), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -445,7 +459,7 @@ func getDiff(
 		response := map[string]any{"task_type": task_type}
 
 		// Check that a user is allowed to inteface with this command
-		if !reqctx.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.DIFF, svr_cfg) {
+		if !reqctx.CheckActorHasAllowedRole(ctx, cfg.End_points_allowed.DIFF, svr_cfg) {
 			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
 			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
 			return
@@ -458,7 +472,7 @@ func getDiff(
 	  qb.SetDefaults(diff_cfg, r)
 
 		if err := qb.ProcessURLParamsNoFunc(r, diff_cfg); err != nil {
-			log.Error("REQUEST_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", err)
+			log.Error("REQUEST_ERROR", "error", err)
 			http.Error(w, fmt.Sprintf("Error in parsing where clauses: %v", err.Error()), http.StatusBadRequest)
 			return
 		}
@@ -528,11 +542,10 @@ func getResourceHistory(
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Get Resource History"
-		function := "get"
 		req_ip := httpx.GetIP(r)
 		req_id, _ := secrets.RandomString(32)
-		req_username := reqctx.Username(r.Context())
-		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", function, "task_type", task_type, "end_point", *cfg.End_point, "table", historyTable, "request_id", req_id)
+		req_actor := reqctx.Actor(r.Context())
+		log := qm.Logger.With("actor", req_actor, "IP", req_ip, "task_type", task_type, "end_point", *cfg.End_point, "table", historyTable, "request_id", req_id)
 		ctx := reqctx.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -542,7 +555,7 @@ func getResourceHistory(
 		response := map[string]any{"task_type": task_type}
 
 		// Check that a user is allowed to inteface with this command
-		if !reqctx.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.GET, svr_cfg) {
+		if !reqctx.CheckActorHasAllowedRole(ctx, cfg.End_points_allowed.GET, svr_cfg) {
 			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
 			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
 			return
@@ -656,12 +669,11 @@ func updateResource(
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Update Resource"
-		function := "update"
 		req_ip := httpx.GetIP(r)
 		req_id, err := secrets.RandomString(32)
-		req_username := reqctx.Username(r.Context())
+		req_actor := reqctx.Actor(r.Context())
 		note := r.Header.Get("X-User-Note")
-		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", function, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
+		log := qm.Logger.With("actor", req_actor, "IP", req_ip, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
 		ctx := reqctx.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -671,7 +683,7 @@ func updateResource(
 		w.Header().Set("Content-Type", "application/json")
 
 		// Check that a user is allowed to inteface with this command
-		if !reqctx.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.PUT, svr_cfg) {
+		if !reqctx.CheckActorHasAllowedRole(ctx, cfg.End_points_allowed.PUT, svr_cfg) {
 			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
 			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
 			return
@@ -702,10 +714,10 @@ func updateResource(
 		}
 
 		// Queue the query
-		ctx_preserve := context.WithoutCancel(reqctx.StartTask(ctx, function, cfg))
+		ctx_preserve := context.WithoutCancel(reqctx.StartTask(ctx, "update", cfg))
 		task_id, err := qm.QueueFunction(ctx_preserve, store.MultiUpdate(ctx_preserve, qm.Db, cfg, valid_resources), note)
 		if err != nil {
-			qm.Logger.Error("TASK_ERROR", "user", req_username, "IP", req_ip, "req_id", req_id, "function", task_type, "error", err)
+			qm.Logger.Error("TASK_ERROR", "actor", req_actor, "IP", req_ip, "req_id", req_id, "task_type", task_type, "error", err)
 			http.Error(w, fmt.Sprintf("Error creating update task\nError: %v", err), http.StatusInternalServerError)
 			return
 		}
@@ -730,12 +742,11 @@ func updateResource_Group(
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Update Multiple Resources"
-		function := "update"
 		req_ip := httpx.GetIP(r)
 		req_id, err := secrets.RandomString(32)
-		req_username := reqctx.Username(r.Context())
+		req_actor := reqctx.Actor(r.Context())
 		note := r.Header.Get("X-User-Note")
-		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", function, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
+		log := qm.Logger.With("actor", req_actor, "IP", req_ip, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
 		ctx := reqctx.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -745,7 +756,7 @@ func updateResource_Group(
 		w.Header().Set("Content-Type", "application/json")
 
 		// Check that a user is allowed to inteface with this command
-		if !reqctx.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.PUT_GROUP, svr_cfg) {
+		if !reqctx.CheckActorHasAllowedRole(ctx, cfg.End_points_allowed.PUT_GROUP, svr_cfg) {
 			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
 			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
 			return
@@ -775,7 +786,7 @@ func updateResource_Group(
 		}
 
 		// Queue the query
-		ctx_preserve := context.WithoutCancel(reqctx.StartTask(ctx, function, cfg))
+		ctx_preserve := context.WithoutCancel(reqctx.StartTask(ctx, "update", cfg))
 		task_id, err := qm.QueueFunction(ctx_preserve, store.MultiUpdate(ctx_preserve, qm.Db, cfg, valid_resources), note)
 		if err != nil {
 			log.Error("TASK_ERROR", "error", err)
@@ -803,13 +814,12 @@ func dynamicCreateDiff(
 	svr_cfg *models.ServerConfig,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		task_type := "create_diff"
-		function := "create_diff"
+		task_type := "Create Diff"
 		req_ip := httpx.GetIP(r)
 		req_id, err := secrets.RandomString(32)
-		req_username := reqctx.Username(r.Context())
+		req_actor := reqctx.Actor(r.Context())
 		note := r.Header.Get("X-User-Note")
-		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", function, "task_type", task_type, "table", *cfg.Table_name, "request_id", req_id)
+		log := qm.Logger.With("actor", req_actor, "IP", req_ip, "task_type", task_type, "table", *cfg.Table_name, "request_id", req_id)
 		ctx := reqctx.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -817,7 +827,7 @@ func dynamicCreateDiff(
 		w.Header().Set("Content-Type", "application/json")
 
 		// Check that a user is allowed to inteface with this command
-		if !reqctx.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.POST, svr_cfg) {
+		if !reqctx.CheckActorHasAllowedRole(ctx, cfg.End_points_allowed.POST, svr_cfg) {
 			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
 			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
 			return
@@ -850,7 +860,8 @@ func dynamicCreateDiff(
 			return
 		}
 
-		ctx_preserve := context.WithoutCancel(reqctx.StartTask(ctx, function, cfg))
+		// Diffs publish on their own topic, so the table's subscribers and functions only hear of table changes
+		ctx_preserve := context.WithoutCancel(reqctx.StartTaskOnTopic(ctx, "create", cfg, fmt.Sprintf("diff:%s", *cfg.End_point)))
 		task_id, err := qm.QueueFunction(ctx_preserve, store.CreateDiff(ctx_preserve, qm.Db, cfg, valid_resources, note), note)
 		if err != nil {
 			log.Error("TASK_ERROR", "error", err)
@@ -875,18 +886,17 @@ func dynamicActionDiff(
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Action Diff"
-		function := "action_diff"
 		req_ip := httpx.GetIP(r)
 		req_id, _ := secrets.RandomString(32)
-		req_username := reqctx.Username(r.Context())
-		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", function, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
+		req_actor := reqctx.Actor(r.Context())
+		log := qm.Logger.With("actor", req_actor, "IP", req_ip, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
 		ctx := reqctx.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
 		w.Header().Set("Content-Type", "application/json")
 
 		// Check that a user is allowed to inteface with this command
-		if !reqctx.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.PUT, svr_cfg) {
+		if !reqctx.CheckActorHasAllowedRole(ctx, cfg.End_points_allowed.PUT, svr_cfg) {
 			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
 			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
 			return
@@ -949,7 +959,7 @@ func dynamicActionDiff(
 			UPDATE diffs
 			SET batched = true, batch_number = generate_batch_number($1, 'Asset Data', $2), batched_date = now()
 			WHERE diff_type = $1 AND checksum = $3 AND batched = false
-			RETURNING batch_number`, *cfg.Table_name, req_username, checksum)
+			RETURNING batch_number`, *cfg.Table_name, reqctx.Username(r.Context()), checksum)
 		if err := claimRow.Scan(&batchNumber); err != nil {
 			if !errors.Is(err, pgx.ErrNoRows) {
 				log.Error("BATCH_CODE_ERROR", "error", err)
@@ -997,12 +1007,11 @@ func deleteResource(
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Delete Resource"
-		function := "delete"
 		req_ip := httpx.GetIP(r)
 		req_id, err := secrets.RandomString(32)
-		req_username := reqctx.Username(r.Context())
+		req_actor := reqctx.Actor(r.Context())
 		note := r.Header.Get("X-User-Note")
-		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", function, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
+		log := qm.Logger.With("actor", req_actor, "IP", req_ip, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
 		ctx := reqctx.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -1011,7 +1020,7 @@ func deleteResource(
 		w.Header().Set("Content-Type", "application/json")
 
 		// Check that a user is allowed to inteface with this command
-		if !reqctx.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.DELETE, svr_cfg) {
+		if !reqctx.CheckActorHasAllowedRole(ctx, cfg.End_points_allowed.DELETE, svr_cfg) {
 			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
 			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
 			return
@@ -1042,7 +1051,7 @@ func deleteResource(
 			return
 		}
 
-		ctx_preserve := context.WithoutCancel(reqctx.StartTask(ctx, function, cfg))
+		ctx_preserve := context.WithoutCancel(reqctx.StartTask(ctx, "delete", cfg))
 		task_id, err := qm.QueueFunction(ctx_preserve, store.MultiDelete(ctx_preserve, qm.Db, cfg, valid_resources), note)
 		if err != nil {
 			log.Error("TASK_ERROR", "error", err)
@@ -1069,12 +1078,11 @@ func deleteResource_Group(
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Delete Multiple Resources"
-		function := "delete"
 		req_ip := httpx.GetIP(r)
 		req_id, err := secrets.RandomString(32)
-		req_username := reqctx.Username(r.Context())
+		req_actor := reqctx.Actor(r.Context())
 		note := r.Header.Get("X-User-Note")
-		log := qm.Logger.With("user", req_username, "IP", req_ip, "function", function, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
+		log := qm.Logger.With("actor", req_actor, "IP", req_ip, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
 		ctx := reqctx.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -1083,7 +1091,7 @@ func deleteResource_Group(
 		w.Header().Set("Content-Type", "application/json")
 
 		// Check that a user is allowed to inteface with this command
-		if !reqctx.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.DELETE_GROUP, svr_cfg) {
+		if !reqctx.CheckActorHasAllowedRole(ctx, cfg.End_points_allowed.DELETE_GROUP, svr_cfg) {
 			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
 			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
 			return
@@ -1112,7 +1120,7 @@ func deleteResource_Group(
 			return
 		}
 
-		ctx_preserve := context.WithoutCancel(reqctx.StartTask(ctx, function, cfg))
+		ctx_preserve := context.WithoutCancel(reqctx.StartTask(ctx, "delete", cfg))
 		task_id, err := qm.QueueFunction(ctx_preserve, store.MultiDelete(ctx_preserve, qm.Db, cfg, valid_resources), note)
 		if err != nil {
 			log.Error("TASK_ERROR", "error", err)
@@ -1173,14 +1181,14 @@ func websocketRegister(
 	return func(w http.ResponseWriter, r *http.Request) {
 		task_type := "Open Websocket"
 		req_ip := httpx.GetIP(r)
-		req_username := reqctx.Username(r.Context())
-		log := logger.With("user", req_username, "IP", req_ip, "function", task_type, "topic", topic)
+		req_actor := reqctx.Actor(r.Context())
+		log := logger.With("actor", req_actor, "IP", req_ip, "task_type", task_type, "topic", topic)
 		ctx := reqctx.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
 
 		// Check that a user is allowed to inteface with this command
-		if !reqctx.CheckUserHasAllowedRole(ctx, cfg.End_points_allowed.POST, svr_cfg) {
+		if !reqctx.CheckActorHasAllowedRole(ctx, cfg.End_points_allowed.GET, svr_cfg) {
 			log.Warn("REQUEST_UNAUTHORISED", "error", "user role does not have permission to access this end point")
 			http.Error(w, "User role does not have access to this end point", http.StatusUnauthorized)
 			return
@@ -1199,9 +1207,9 @@ func websocketRegister(
 		// Upgrade connection
 		var err error
 		if len(request.Status) == 0 {
-			err = evh.RegiterTopicOnly(w, r, topic)
+			err = evh.RegisterTopicOnly(ctx, w, r, topic)
 		} else {
-			err = evh.RegiterTopicStatus(w, r, topic, []string{request.Status})
+			err = evh.RegisterTopicStatus(ctx, w, r, topic, []string{request.Status})
 		}
 		if err != nil { 
 			http.Error(w, fmt.Sprintf("Error: %s", err.Error()), http.StatusInternalServerError)

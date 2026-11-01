@@ -566,8 +566,8 @@ unique constraint) and are reported in the task's `warn`/`failed` event.
 ]
 ```
 
-`data` is the row as sent. `reasons` is a list of strings for missing
-required/key fields, or a single string for type and rule failures.
+`data` is the row as sent. `reasons` is always a list of strings, one per
+missing field, type error or rule failure.
 
 | Outcome | Status |
 |---------|--------|
