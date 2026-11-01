@@ -44,3 +44,4 @@ cluster:
 admin:
   services: []
   idle-days: 30        # a service whose keys signed nothing for this long shows as idle
+  step-up-minutes: 0   # above 0: admin changes need an OTP login within this many minutes

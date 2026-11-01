@@ -76,7 +76,8 @@ live URL `/inventory/asset/data`. Two services may use the same end-point. Each 
 | GET    | `/{service}/{endpoint}/ws` | Websocket (`websockets.md`) | `POST` |
 
 System models belong to the `ohc` service and are exposed the same way:
-`/ohc/events` (event log, `events.md`) and `/ohc/user` (user management, admin only).
+`/ohc/events` (event log, `events.md`). Users and services are managed through the
+admin API (`admin-api.md`), not a generic data route.
 
 ---
 

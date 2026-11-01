@@ -283,6 +283,12 @@ const userIDLength = 32
 // CreateUser adds a user with a random id and returns it. An empty password leaves the
 // user unable to log in with a password. The svc: prefix is reserved for service rows.
 func (a *Auth) CreateUser(ctx context.Context, username string, display_name string, password string, roles []string) (*models.User, error) {
+	return a.CreateUserWith(ctx, a.ks.db, username, display_name, password, roles)
+}
+
+// CreateUserWith is CreateUser through db, which may be a transaction, so the user and
+// its audit entry commit together
+func (a *Auth) CreateUserWith(ctx context.Context, db models.DBExecutor, username string, display_name string, password string, roles []string) (*models.User, error) {
 	if username == "" || len(username) > 64 { return nil, errors.New("username must be between 1 and 64 characters") }
 	if strings.HasPrefix(username, serviceUserPrefix) { return nil, fmt.Errorf("username cannot start with %q", serviceUserPrefix) }
 	if roles == nil { roles = []string{} }
@@ -299,7 +305,7 @@ func (a *Auth) CreateUser(ctx context.Context, username string, display_name str
 	}
 
 	sql := `INSERT INTO ohc_users (id, username, display_name, password_hash, roles) VALUES ($1, $2, $3, $4, $5)`
-	if _, err := a.ks.db.Exec(ctx, sql, id, username, display_name, hash, roles); err != nil { return nil, err }
+	if _, err := db.Exec(ctx, sql, id, username, display_name, hash, roles); err != nil { return nil, err }
 
 	user := &models.User{ID: id, Username: username, Displayname: display_name, Roles: roles}
 	if hash != nil { user.PasswordHash = *hash }
@@ -592,6 +598,26 @@ func (a *Auth) RefreshGrant(w http.ResponseWriter, r *http.Request) {
 
 	// Rotate: new tokens in the same family, keeping how and when the user logged in
 	a.issueUserTokens(w, r, usr, svc.ID, rt.FamilyID, rt.AMR, rt.AuthTime, refreshExpiry(rt.AMR, rt))
+}
+
+// EndSession ends one login session: see endSession
+func (a *Auth) EndSession(ctx context.Context, family string, reason string) { a.endSession(ctx, family, reason) }
+
+// RevokeAccessTokens refuses every access token issued to the user up to now, but keeps
+// their sessions: the next refresh issues new tokens, with the user's current roles.
+// It makes a role removal apply at once.
+func (a *Auth) RevokeAccessTokens(ctx context.Context, userID string, reason string) error {
+	if a.Blocks == nil { return nil }
+	_, err := a.Blocks.Revoke(ctx, userKey(userID), reason)
+	return err
+}
+
+// RevokeService refuses every token the service holds now. It must assert again for a
+// new one, which a disabled service or a revoked key can't.
+func (a *Auth) RevokeService(ctx context.Context, serviceID string, reason string) error {
+	if a.Blocks == nil { return nil }
+	_, err := a.Blocks.Revoke(ctx, serviceKey(serviceUserPrefix+serviceID), reason)
+	return err
 }
 
 // endSession ends one login session: its refresh tokens stop working at once, and its

@@ -3,7 +3,6 @@ package admin
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -77,22 +76,28 @@ type ServiceKey struct {
 	RevokedReason *string    `json:"revoked_reason" db:"revoked_reason"`
 }
 
-// GET /admin/v1/services/{id}: the service, its keys, and what its role can reach
-func (a *API) getService(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	rows, err := a.d.DB.Query(r.Context(), serviceSQL+` WHERE s.id = $1 GROUP BY s.id`, id)
-	if err != nil { a.serverError(w, r, "get service", err); return }
+// serviceView is a service as GET /services/{id} shows it: the service, its keys, and
+// what its role can reach
+func (a *API) serviceView(ctx context.Context, id string) (map[string]any, error) {
+	rows, err := a.d.DB.Query(ctx, serviceSQL+` WHERE s.id = $1 GROUP BY s.id`, id)
+	if err != nil { return nil, err }
 	s, err := pgx.CollectOneRow(rows, pgx.RowToStructByNameLax[Service])
-	if errors.Is(err, pgx.ErrNoRows) { problem(w, r, http.StatusNotFound, "No such service", fmt.Sprintf("No service %q.", id)); return }
-	if err != nil { a.serverError(w, r, "get service", err); return }
+	if errors.Is(err, pgx.ErrNoRows) { return nil, refuse(http.StatusNotFound, "No such service", "No service %q.", id) }
+	if err != nil { return nil, err }
 	a.finishService(&s)
 
-	rows, err = a.d.DB.Query(r.Context(), `SELECT kid, created_at, last_used_at, revoked_at, revoked_reason
+	rows, err = a.d.DB.Query(ctx, `SELECT kid, created_at, last_used_at, revoked_at, revoked_reason
 		FROM ohc_service_keys WHERE service_id = $1 ORDER BY created_at DESC`, id)
-	if err != nil { a.serverError(w, r, "list service keys", err); return }
+	if err != nil { return nil, err }
 	keys, err := pgx.CollectRows(rows, pgx.RowToStructByName[ServiceKey])
-	if err != nil { a.serverError(w, r, "list service keys", err); return }
+	if err != nil { return nil, err }
 	if keys == nil { keys = []ServiceKey{} }
+	return map[string]any{"service": s, "keys": keys, "reach": a.access(s.Role)}, nil
+}
 
-	writeJSON(w, map[string]any{"service": s, "keys": keys, "reach": a.access(s.Role)})
+// GET /admin/v1/services/{id}
+func (a *API) getService(w http.ResponseWriter, r *http.Request) {
+	v, err := a.serviceView(r.Context(), r.PathValue("id"))
+	if err != nil { a.fail(w, r, "get service", err); return }
+	writeJSON(w, v)
 }

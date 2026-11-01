@@ -195,7 +195,7 @@ func GetSoftDeleteConfig() *DataModelField {
 // end-point, like most system tables, is only used internally.
 func (m *DataModel) HasEndpoint() bool { return m.End_point != nil && *m.End_point != "" }
 
-// Path is where the model is served: its service, then its end-point, as in "ohc/user".
+// Path is where the model is served: its service, then its end-point, as in "ohc/events".
 // Routes and the end-point uniqueness check use it, so two services can each have an
 // end-point of the same name. It is "" for a model with no end-point or service.
 func (m *DataModel) Path() string {

@@ -1,8 +1,7 @@
 # Admin API
 
-`/admin/v1` is what the management platform reads to show Oh CRUD's users, services,
-sessions, audit log, logs and pending schema changes. These routes only read; the
-routes that change things come next.
+`/admin/v1` is what the management platform uses to show and manage Oh CRUD's users,
+services, sessions, audit log, logs and pending schema changes.
 
 ---
 
@@ -123,3 +122,47 @@ lists say.
 
 Logs have no id, so the cursor is the time of the last row shown; rows logged in the
 same microsecond as a page boundary can be skipped.
+
+---
+
+## 4. Changes
+
+Each change is written in one transaction with its audit entry (`auth.md` 5), so it
+never happens unrecorded. Anything that follows it, such as ending sessions or refusing
+tokens, runs once it has committed. Bodies are JSON; unknown fields are refused.
+
+| Route | Who | Does |
+|-------|-----|------|
+| `POST /admin/v1/services` | platform | Registers a service: `{"id", "role", "entra_client_id"?, "key"?: {"kid", "public_key"}}`. `201` |
+| `PATCH /admin/v1/services/{id}` | platform | `{"role"}`. The service's current tokens are refused, so the new role applies at once |
+| `POST /admin/v1/services/{id}/keys` | platform | Adds a key: `{"kid", "public_key"}`. `201` |
+| `POST /admin/v1/services/{id}/keys/{kid}/revoke` | platform | `{"reason"?}`. The key can't sign again, and every token the service holds now is refused (a leaked key may have got them); it asserts again with another key |
+| `POST /admin/v1/services/{id}/disable`, `/enable` | platform | Disabling refuses the service's tokens and stops it getting new ones |
+| `POST /admin/v1/users` | platform | `{"username", "display_name"?, "password"?, "roles"?}`. Without a password the user can't sign in with one. `201` |
+| `PUT /admin/v1/users/{id}/roles` | platform, or a service admin (below) | `{"roles": [...]}`, the whole list |
+| `POST /admin/v1/users/{id}/disable`, `/enable` | platform | Disabling ends every session and stops sign-in |
+| `POST /admin/v1/users/{id}/sessions/revoke` | platform | Ends every session the user has |
+| `POST /admin/v1/users/{id}/sessions/{session}/revoke` | platform | Ends one session (`session` from `GET /users/{id}`) |
+
+Each answers with the service or user as its `GET` route shows it.
+
+- **Service ids** follow the model rule: 2 to 32 lower case letters or digits, not
+  `ohc` or a reserved name. A `kid` is 1 to 32 of `A-Z a-z 0-9 . _ -`. A public key is
+  the 32 byte Ed25519 key in base64 (standard or URL, padded or not).
+- **Passwords** set here are at least 12 characters.
+- **Roles.** A platform admin can give or take any role. The admin of a service
+  (`<service>:admin`) can give or take only that service's roles (`<service>:...`),
+  including appointing other admins of it. Removing a role refuses the user's current
+  access tokens, so it applies at once; their next refresh carries the new list
+  without signing in again. A role change touching one service's roles is filed in the
+  audit log under that service, so its admins see it.
+- **Lock-out.** Nobody can disable themselves. The last active holder of an admin role
+  (the platform role or a `<service>:admin`) can't lose it or be disabled: `409`.
+- **Conflicts.** A service id, key id or username that already exists is a `409`.
+
+### 4.1 Step-up
+
+With `admin.step-up-minutes` above 0 (off by default), every change needs the user to
+have signed in with a one-time code within that many minutes. Otherwise it answers
+`401` with `WWW-Authenticate: Bearer error="insufficient_user_authentication",
+max_age=<seconds>` (RFC 9470): sign the user in again with their code, then retry.

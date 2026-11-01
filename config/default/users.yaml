@@ -1,8 +1,10 @@
 name: users
-version: 2.1.1
+version: 2.1.2
 table-name: users
 service: ohc
-end-point: user
+# No generic data API: users are managed through /admin/v1/users, where every change is
+# checked (role grants, the last admin) and audited
+end-point: ""
 primary-key: username
 
 unique-keys:
@@ -13,11 +15,6 @@ unique-keys:
   uk_users_id:
     unique-key-fields:
       - id
-
-end-points-allowed:
-  GET: []
-  PUT: []
-  POST: []
 
 fields:
   id:

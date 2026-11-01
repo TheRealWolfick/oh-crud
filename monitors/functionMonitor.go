@@ -37,6 +37,9 @@ func FunctionsMonitor(
 	// Functions may sit in any folder below config/functions
 	root := "./config/functions"
 
+	// Changes are staged per file until the file has been quiet for settleFor
+	settle := newSettler(settleFor, qm.Logger, "functions monitor")
+
 	// reload validates and re-registers the function in one YAML file
 	reload := func(path string) {
 		if filepath.Ext(path) != ".yaml" { return }
@@ -71,10 +74,13 @@ func FunctionsMonitor(
 							qm.Logger.Error("Failed to watch new function folder", "dir", event.Name, "error", err)
 						}
 						files, _ := datamodel.YAMLFiles(event.Name, true)
-						for _, f := range files { reload(f) }
+						for _, f := range files { settle.stage(f, func() { reload(f) }) }
 						return
 					}
-					if event.Has(fsnotify.Write) { reload(event.Name) }
+					if event.Has(fsnotify.Write) && filepath.Ext(event.Name) == ".yaml" {
+						qm.Logger.Debug("Function file change staged", "file", event.Name, "settle", settleFor)
+						settle.stage(event.Name, func() { reload(event.Name) })
+					}
 				}()
 
 			case err, ok := <-watcher.Errors:

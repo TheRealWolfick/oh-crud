@@ -35,6 +35,20 @@ const (
 	SessionRevoke        = "session.revoke"
 	UserLogout           = "user.logout"
 	UserLogoutAll        = "user.logout_all"
+
+	// Admin changes
+	ServiceCreate       = "service.create"
+	ServiceUpdate       = "service.update"
+	ServiceDisable      = "service.disable"
+	ServiceEnable       = "service.enable"
+	ServiceKeyAdd       = "service_key.add"
+	ServiceKeyRevoke    = "service_key.revoke"
+	UserCreate          = "user.create"
+	UserRolesUpdate     = "user.roles.update"
+	UserDisable         = "user.disable"
+	UserEnable          = "user.enable"
+	UserSessionsRevoke  = "user.sessions_revoke"
+	UserSessionRevoke   = "user.session_revoke"
 )
 
 // Event is one entry. Action, Target and Service are required; leave anything unknown empty.

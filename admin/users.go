@@ -1,8 +1,8 @@
 package admin
 
 import (
+	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"slices"
 	"time"
@@ -115,26 +115,26 @@ type Session struct {
 	State     string     `json:"state" db:"-"` // live, revoked or expired
 }
 
-// GET /admin/v1/users/{id}: the user, their sessions, and their recent audit entries
-func (a *API) getUser(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	rows, err := a.d.DB.Query(r.Context(), usersCTE+` SELECT * FROM u WHERE id = $1`, id)
-	if err != nil { a.serverError(w, r, "get user", err); return }
+// userView is a user as GET /users/{id} shows it: the user, their sessions, and their
+// recent audit entries
+func (a *API) userView(ctx context.Context, id string) (map[string]any, error) {
+	rows, err := a.d.DB.Query(ctx, usersCTE+` SELECT * FROM u WHERE id = $1`, id)
+	if err != nil { return nil, err }
 	u, err := pgx.CollectOneRow(rows, pgx.RowToStructByNameLax[User])
-	if errors.Is(err, pgx.ErrNoRows) { problem(w, r, http.StatusNotFound, "No such user", fmt.Sprintf("No user %q.", id)); return }
-	if err != nil { a.serverError(w, r, "get user", err); return }
+	if errors.Is(err, pgx.ErrNoRows) { return nil, refuse(http.StatusNotFound, "No such user", "No user %q.", id) }
+	if err != nil { return nil, err }
 	finishUser(&u)
 
-	rows, err = a.d.DB.Query(r.Context(), `
+	rows, err = a.d.DB.Query(ctx, `
 		SELECT family_id, client_id, COALESCE(min(amr), '{}') AS amr, -- one amr per session; min returns it as an array
 		       min(auth_time) AS started_at, max(expires_at) AS expires_at,
 		       bool_or(revoked_at IS NULL AND used_at IS NULL AND expires_at > now()) AS live,
 		       bool_or(revoked_at IS NOT NULL) AS revoked
 		  FROM ohc_refresh_tokens WHERE user_id = $1
 		 GROUP BY family_id, client_id ORDER BY max(expires_at) DESC LIMIT 50`, id)
-	if err != nil { a.serverError(w, r, "list sessions", err); return }
+	if err != nil { return nil, err }
 	sessions, err := pgx.CollectRows(rows, pgx.RowToStructByName[Session])
-	if err != nil { a.serverError(w, r, "list sessions", err); return }
+	if err != nil { return nil, err }
 	for i := range sessions {
 		s := &sessions[i]
 		switch {
@@ -148,10 +148,23 @@ func (a *API) getUser(w http.ResponseWriter, r *http.Request) {
 	}
 	if sessions == nil { sessions = []Session{} }
 
-	recent, err := a.audit(r.Context(), auditFilter{subject: id}, "", 20)
-	if err != nil { a.serverError(w, r, "recent activity", err); return }
+	recent, err := a.audit(ctx, auditFilter{subject: id}, "", 20)
+	if err != nil { return nil, err }
+	return map[string]any{"user": u, "sessions": sessions, "recent_activity": recent}, nil
+}
 
-	writeJSON(w, map[string]any{"user": u, "sessions": sessions, "recent_activity": recent})
+// GET /admin/v1/users/{id}
+func (a *API) getUser(w http.ResponseWriter, r *http.Request) {
+	v, err := a.userView(r.Context(), r.PathValue("id"))
+	if err != nil { a.fail(w, r, "get user", err); return }
+	writeJSON(w, v)
+}
+
+// writeUser answers with the user as GET /users/{id} shows it
+func (a *API) writeUser(w http.ResponseWriter, r *http.Request, status int, id string) {
+	v, err := a.userView(r.Context(), id)
+	if err != nil { a.fail(w, r, "read user back", err); return }
+	writeJSONStatus(w, status, v)
 }
 
 // hasAdminRole reports whether roles hold the platform admin role or any service's admin role

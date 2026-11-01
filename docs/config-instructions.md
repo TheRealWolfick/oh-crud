@@ -26,8 +26,11 @@ own folder. On startup each model is validated
 (section 5), its table is created or migrated to match, and its routes are
 registered.
 
-**Hot reload.** Saving a watched model or function file reloads it **only if
-its `version` is higher** than the loaded one. Changes that would destroy data
+**Hot reload.** A change to a watched model or function file is staged for 10
+seconds: each further change to the same file within that time restarts the wait and
+replaces it, so an editor that saves in several writes causes one reload of the final
+contents. Then the file is checked, and reloaded **only if its `version` is higher**
+than the loaded one. Changes that would destroy data
 are held for approval (section 6). Deleting a file is not picked up: restart to
 remove a model or function.
 
@@ -97,6 +100,7 @@ admin:
 | `cluster.peers` | Base URLs of the other Oh CRUD instances sharing this database. Each instance tells the others of revocations as they happen (`auth.md` 4.4). Empty for a single instance. Listing an instance's own URL is harmless |
 | `admin.services` | Services allowed to call the admin API for a user, such as the management platform (`admin-api.md`). A user can also call it directly with their own token |
 | `admin.idle-days` | A service whose keys have signed nothing for this many days shows as idle. Default 30 |
+| `admin.step-up-minutes` | Above 0, admin changes need a one-time-code sign-in within this many minutes (`admin-api.md` 4.1). Default 0, off |
 | `audit.min-retention-days` | Audit entries newer than this can never be pruned. Default 365. Applies once the admin API's prune endpoint exists |
 
 **Reloading.** The file is watched, but settings take effect at different

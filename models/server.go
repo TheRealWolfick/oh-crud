@@ -33,6 +33,13 @@ type ServerConfig struct {
 type AdminConfig struct {
 	Services  []string `yaml:"services"`   // services.id values allowed to call the admin API for a user, such as the management platform
 	Idle_days int      `yaml:"idle-days"`  // a service whose keys signed nothing for this long is idle. Default 30
+	Step_up_minutes int `yaml:"step-up-minutes"` // when above 0, changes need an OTP login within this many minutes. 0: off
+}
+
+// StepUpMinutes is how recent an OTP login an admin change needs; 0 means no check
+func (c *ServerConfig) StepUpMinutes() int {
+	if c == nil || c.Admin == nil || c.Admin.Step_up_minutes < 0 { return 0 }
+	return c.Admin.Step_up_minutes
 }
 
 // AdminServices are the services allowed to call the admin API on a user's behalf

@@ -29,6 +29,9 @@ func ModelsMonitor(handlerRegistry *registry.HandlerRegistry, modelRegistry *reg
 	recursive := []string{"./config/base-models"}
 	flat := []string{"./config/special-models", "./config/default"}
 
+	// Changes are staged per file until the file has been quiet for settleFor
+	settle := newSettler(settleFor, qm.Logger, "models monitor")
+
 	// reload validates, syncs and re-registers the model in one YAML file
 	reload := func(path string) {
 		if filepath.Ext(path) != ".yaml" { return }
@@ -82,10 +85,13 @@ func ModelsMonitor(handlerRegistry *registry.HandlerRegistry, modelRegistry *reg
 							qm.Logger.Error("Failed to watch new folder", "dir", event.Name, "error", err)
 						}
 						files, _ := datamodel.YAMLFiles(event.Name, true)
-						for _, f := range files { reload(f) }
+						for _, f := range files { settle.stage(f, func() { reload(f) }) }
 						return
 					}
-					if event.Has(fsnotify.Write) { reload(event.Name) }
+					if event.Has(fsnotify.Write) && filepath.Ext(event.Name) == ".yaml" {
+						qm.Logger.Debug("Model file change staged", "file", event.Name, "settle", settleFor)
+						settle.stage(event.Name, func() { reload(event.Name) })
+					}
 				}()
 
 			case err, ok := <-watcher.Errors:

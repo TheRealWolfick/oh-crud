@@ -9,6 +9,7 @@
 package admin
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"log/slog"
@@ -25,7 +26,7 @@ import (
 
 // Deps are what the admin API reads from
 type Deps struct {
-	DB        models.DBExecQuery
+	DB        models.DBTxBeginner
 	Auth      *auth.Auth
 	Config    *models.SwappableServerConfig
 	Models    *registry.ModelRegistry
@@ -54,6 +55,22 @@ func (a *API) Routes(mux *http.ServeMux) {
 	mux.Handle("GET /admin/v1/schema/pending", platform(a.pendingSchema))
 	mux.Handle("GET /admin/v1/services/{svc}/schema/pending", ofService(a.pendingSchema))
 	mux.Handle("GET /admin/v1/logs", platform(a.listLogs))
+
+	// Changes: each commits with its audit entry; admin.step-up-minutes can require a
+	// recent second factor for all of them
+	change := func(ok check, h http.HandlerFunc) http.Handler { return a.d.Auth.Middleware(a.require(ok, a.changes(h))) }
+	mux.Handle("POST /admin/v1/services", change(a.platformAdmin, a.createService))
+	mux.Handle("PATCH /admin/v1/services/{id}", change(a.platformAdmin, a.updateService))
+	mux.Handle("POST /admin/v1/services/{id}/keys", change(a.platformAdmin, a.addServiceKey))
+	mux.Handle("POST /admin/v1/services/{id}/keys/{kid}/revoke", change(a.platformAdmin, a.revokeServiceKey))
+	mux.Handle("POST /admin/v1/services/{id}/disable", change(a.platformAdmin, a.setServiceDisabled(true)))
+	mux.Handle("POST /admin/v1/services/{id}/enable", change(a.platformAdmin, a.setServiceDisabled(false)))
+	mux.Handle("POST /admin/v1/users", change(a.platformAdmin, a.createUser))
+	mux.Handle("PUT /admin/v1/users/{id}/roles", change(a.anyAdmin, a.setUserRoles)) // each role checked by canGrant
+	mux.Handle("POST /admin/v1/users/{id}/disable", change(a.platformAdmin, a.setUserDisabled(true)))
+	mux.Handle("POST /admin/v1/users/{id}/enable", change(a.platformAdmin, a.setUserDisabled(false)))
+	mux.Handle("POST /admin/v1/users/{id}/sessions/revoke", change(a.platformAdmin, a.revokeUserSessions))
+	mux.Handle("POST /admin/v1/users/{id}/sessions/{session}/revoke", change(a.platformAdmin, a.revokeUserSession))
 }
 
 // check decides whether the user may use a route
@@ -75,7 +92,10 @@ func (a *API) serviceAdmin(param string) check {
 // call must be listed in admin.services, and the user must pass ok
 func (a *API) require(ok check, next http.HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-Request-Id", audit.RequestID(r))
+		// One id for the request: the response header, its audit entries and its logs
+		id := audit.RequestID(r)
+		w.Header().Set("X-Request-Id", id)
+		r = r.WithContext(context.WithValue(r.Context(), requestIDKey{}, id))
 		p := auth.PrincipalFrom(r.Context())
 		switch {
 		case p == nil:
@@ -95,6 +115,14 @@ func (a *API) require(ok check, next http.HandlerFunc) http.Handler {
 	})
 }
 
+type requestIDKey struct{}
+
+// requestID is the id require chose for the request
+func requestID(r *http.Request) string {
+	id, _ := r.Context().Value(requestIDKey{}).(string)
+	return id
+}
+
 // problem writes an RFC 9457 problem detail
 func problem(w http.ResponseWriter, r *http.Request, status int, title string, detail string) {
 	body := map[string]any{"type": "about:blank", "title": title, "status": status, "instance": r.URL.Path,
@@ -112,9 +140,12 @@ func (a *API) serverError(w http.ResponseWriter, r *http.Request, what string, e
 	problem(w, r, http.StatusInternalServerError, "Something went wrong", "")
 }
 
-func writeJSON(w http.ResponseWriter, v any) {
+func writeJSON(w http.ResponseWriter, v any) { writeJSONStatus(w, http.StatusOK, v) }
+
+func writeJSONStatus(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(v)
 }
 
