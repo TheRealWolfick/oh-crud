@@ -49,6 +49,8 @@ const (
 	UserEnable          = "user.enable"
 	UserSessionsRevoke  = "user.sessions_revoke"
 	UserSessionRevoke   = "user.session_revoke"
+	SchemaApprove       = "schema.approve"
+	SchemaDeny          = "schema.deny"
 )
 
 // Event is one entry. Action, Target and Service are required; leave anything unknown empty.

@@ -125,3 +125,33 @@ func TestStepUp(t *testing.T) {
 		t.Errorf("a recent OTP login passes")
 	}
 }
+
+func TestTableAdmin(t *testing.T) {
+	a := testAPI(&modelstest.FakeDB{})
+	a.d.Gate.Record("inventory_building", "DROP COLUMN", &models.DataModel{Service: p("inventory"), Table_name: p("inventory_building"),
+		Admin_roles: []string{"buildings-team"}})
+	mux := http.NewServeMux()
+	var allowed bool
+	mux.HandleFunc("POST /admin/v1/schema/{table}/approve", func(w http.ResponseWriter, r *http.Request) {
+		allowed = a.tableAdmin(r, auth.PrincipalFrom(r.Context()).User)
+	})
+	try := func(table string, roles ...string) bool {
+		r := asUser(httptest.NewRequest("POST", "/admin/v1/schema/"+table+"/approve", nil), user(roles...))
+		mux.ServeHTTP(httptest.NewRecorder(), r)
+		return allowed
+	}
+	if !try("inventory_building", "administrator") || !try("inventory_building", "inventory:admin") {
+		t.Errorf("the platform admin and the table's service admin may decide")
+	}
+	if try("inventory_building", "permits:admin") || try("inventory_building", "inventory:editor") {
+		t.Errorf("another service's admin, or a non-admin, may not")
+	}
+	// Nothing pending: only a platform admin gets through (to a 404), so a service admin
+	// can't probe for other services' tables
+	if !try("inventory_building", "buildings-team") {
+		t.Errorf("a role in the model's admin-roles may decide")
+	}
+	if try("permits_permit", "inventory:admin") || !try("permits_permit", "administrator") {
+		t.Errorf("unexpected access to a table with nothing pending")
+	}
+}

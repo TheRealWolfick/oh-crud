@@ -71,8 +71,6 @@ live URL `/inventory/asset/data`. Two services may use the same end-point. Each 
 | GET    | `/{service}/{endpoint}/diff` | List stored diffs (if `allow-diff`) | `DIFF` |
 | POST   | `/{service}/{endpoint}/diff` | Create a diff against supplied rows | `POST` |
 | PUT    | `/{service}/{endpoint}/diff?checksum=…` | Action a diff | `PUT` |
-| GET    | `/{service}/{endpoint}/admin/pending` | Pending schema changes | model `admin-roles` |
-| POST   | `/{service}/{endpoint}/admin/approve` | Approve / deny a schema change | model `admin-roles` |
 | GET    | `/{service}/{endpoint}/ws` | Websocket (`websockets.md`) | `POST` |
 
 System models belong to the `ohc` service and are exposed the same way:
@@ -663,15 +661,8 @@ with normal writes.
 ## 10. Admin: schema changes
 
 When a model config changes in a way that would destroy data, the change is
-held for approval instead of applied. Users with a role in the model's
-`admin-roles` (or the admin role) can review and approve it:
-
-- `GET /{service}/{endpoint}/admin/pending` returns `table`, `has_changes_pending`,
-  `all_pending_tables`, and, when pending, `pending: {table, changes, approved}`.
-- `POST /{service}/{endpoint}/admin/approve` with `{"approve": true}` applies the change
-  (`applied: true`, or `202` with `applied: false` if it couldn't be applied
-  yet). `{"approve": false}` reverts the config to the last good version.
-  Returns `404` if nothing is pending.
+held for approval instead of applied. It is reviewed, approved and denied through the
+admin API: see `admin-api.md` 4.2.
 
 ---
 

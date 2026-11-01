@@ -427,7 +427,7 @@ func describeDestructive(changes []schema.Change) string {
 					if col.Change.Is(schema.ChangeType) && !isVarcharWidening(col.From, col.To) {
 						lines = append(lines,
 						fmt.Sprintf("ALTER COLUMN %q.%q TYPE (was %s, now %s)",
-						v.T.Name, col.From.Name, col.From.Type.Raw, col.To.Type.Raw))
+						v.T.Name, col.From.Name, typeName(col.From), typeName(col.To)))
 					}
 				case *schema.DropIndex:
 					lines = append(lines, fmt.Sprintf("DROP INDEX %q on %q", col.I.Name, v.T.Name))
@@ -444,6 +444,18 @@ func describeDestructive(changes []schema.Change) string {
 // isVarcharWidening returns true when both columns are character varying and the
 // new size is >= the old size. PostgreSQL can widen varchar in-place without a
 // table rewrite, so this is safe and should not require manual approval.
+// typeName is a column's type as an admin would write it. A column read from the
+// database keeps its raw type, but one parsed from the desired HCL doesn't, so that
+// side is formatted from its parsed type instead.
+func typeName(c *schema.Column) string {
+	if c == nil || c.Type == nil { return "unknown" }
+	if c.Type.Raw != "" { return c.Type.Raw }
+	if c.Type.Type != nil {
+		if s, err := postgres.FormatType(c.Type.Type); err == nil && s != "" { return s }
+	}
+	return "unknown"
+}
+
 func isVarcharWidening(from, to *schema.Column) bool {
 	ft, ok1 := from.Type.Type.(*schema.StringType)
 	tt, ok2 := to.Type.Type.(*schema.StringType)

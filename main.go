@@ -162,7 +162,7 @@ func main() {
 	// ---------------------------------------------------------------
 	for _, dm := range default_models {
 		if err := modelRegister.Register(&dm); err != nil { logger.Error("Failed to load model", "data-model", *dm.Name, "error", err); continue }
-		handlers.RegisterRoutes(&dm, nil, handlerRegister, authMiddleware, qm, server_conf, evh, gate, modelRegister)
+		handlers.RegisterRoutes(&dm, nil, handlerRegister, authMiddleware, qm, server_conf, evh, modelRegister)
 	}
 
 	// Check to ensure the required tables are available. Exit if any are false
@@ -178,7 +178,7 @@ func main() {
 	diff_model, _ := modelRegister.ByTableName("ohc_diffs")
 	for _, dm := range base_models {
 		if err := modelRegister.Register(&dm); err != nil { logger.Error("Failed to load model", "data-model", *dm.Name, "error", err); continue }
-		handlers.RegisterRoutes(&dm, diff_model, handlerRegister, authMiddleware, qm, server_conf, evh, gate, modelRegister)
+		handlers.RegisterRoutes(&dm, diff_model, handlerRegister, authMiddleware, qm, server_conf, evh, modelRegister)
 	}
 
 
@@ -204,9 +204,20 @@ func main() {
 	mux.Handle("POST "+cluster.Path, bus.Handler())
 
 	// Admin API: what the management platform reads (and later changes)
+	// Once an approved schema change is applied, its model takes over: register it and
+	// re-register its routes
+	onSchemaApplied := func(applied *models.DataModel) {
+		if err := modelRegister.Register(applied); err != nil {
+			logger.Error("Applied model not loaded, routes not updated", "data-model", *applied.Name, "error", err)
+			return
+		}
+		diff_model, _ := modelRegister.ByTableName("ohc_diffs")
+		handlers.RegisterRoutes(applied, diff_model, handlerRegister, authMiddleware, qm, server_conf, evh, modelRegister)
+	}
 	admin.New(admin.Deps{
 		DB: pool, Auth: oauthHandler, Config: server_conf, Models: modelRegister,
 		Functions: functionRegister, Gate: gate, Logger: logger,
+		Pool: pool, OnSchemaApplied: onSchemaApplied, Bus: bus,
 	}).Routes(mux)
 
 

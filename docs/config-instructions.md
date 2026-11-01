@@ -243,7 +243,7 @@ fields:
 | Key | Meaning |
 |-----|---------|
 | `end-points-allowed` | Which operations exist, and which roles may use them (3.3) |
-| `admin-roles` | Roles allowed to use `/{service}/{end-point}/admin/pending` and `/admin/approve` |
+| `admin-roles` | Roles that pass every permission check on this model, and may approve or deny its schema changes (`admin-api.md` 4.2) |
 | `access` | Who may call the model's routes: `require-user` (service calls must act for a user) and `allow-direct` (accept a user token with no service). Both default to `false`. See `auth.md` 1.2 |
 
 **Keys and events**
@@ -482,8 +482,7 @@ routes are not registered and an error is logged.
 When a model's fields change, Oh CRUD migrates its table. Changes that could
 lose data (dropping a table, column or index, or changing a column's type,
 except widening a `character varying`) are **not** applied automatically: they are held in a pending gate, the old routes keep serving,
-and an admin approves or denies them through `GET /{service}/{end-point}/admin/pending`
-and `POST /{service}/{end-point}/admin/approve` (`api-guide.md` section 10). Denying
+and an admin approves or denies them through the admin API (`admin-api.md` 4.2). Denying
 reverts the config file to its last good version.
 
 ### 6.1 Moving to `<service>_<table-name>`

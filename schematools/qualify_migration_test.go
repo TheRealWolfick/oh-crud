@@ -14,6 +14,7 @@ import (
 	"lotusforge.au/api-server/datamodel"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/models/modelstest"
+	"ariga.io/atlas/sql/schema"
 )
 
 func p[T any](v T) *T { return &v }
@@ -208,5 +209,23 @@ func TestMigrateToQualifiedNamesRollsBack(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(hclDir, "users.pg.hcl.version")); err != nil {
 		t.Errorf("expected the sidecar files to stay put after a failure")
+	}
+}
+
+// Admins see both sides of a type change: the desired side, parsed from HCL, has no
+// raw type, so it is formatted from the parsed type
+func TestDescribeDestructiveTypeChange(t *testing.T) {
+	from := &schema.Column{Name: "floors", Type: &schema.ColumnType{Raw: "integer", Type: &schema.IntegerType{T: "integer"}}}
+	cases := map[string]*schema.Column{
+		"text":                  {Name: "floors", Type: &schema.ColumnType{Type: &schema.StringType{T: "text"}}},
+		"character varying(40)": {Name: "floors", Type: &schema.ColumnType{Type: &schema.StringType{T: "character varying", Size: 40}}},
+		"bigint":                {Name: "floors", Type: &schema.ColumnType{Type: &schema.IntegerType{T: "bigint"}}},
+	}
+	for want, to := range cases {
+		got := describeDestructive([]schema.Change{&schema.ModifyTable{T: &schema.Table{Name: "inventory_building"},
+			Changes: []schema.Change{&schema.ModifyColumn{From: from, To: to, Change: schema.ChangeType}}}})
+		if !strings.Contains(got, "(was integer, now "+want+")") {
+			t.Errorf("want %q in %q", want, got)
+		}
 	}
 }

@@ -16,9 +16,13 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"sync"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"lotusforge.au/api-server/audit"
 	"lotusforge.au/api-server/auth"
+	"lotusforge.au/api-server/cluster"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/registry"
 	"lotusforge.au/api-server/schematools"
@@ -33,12 +37,26 @@ type Deps struct {
 	Functions *registry.FunctionRegistry
 	Gate      *schematools.PendingApprovalGate
 	Logger    *slog.Logger
+
+	// Schema approvals: the pool Atlas applies through, what to do with an applied model
+	// (register it and its routes), and the bus to tell peers of decisions (may be nil)
+	Pool            *pgxpool.Pool
+	OnSchemaApplied func(*models.DataModel)
+	Bus             *cluster.Bus
 }
 
 // API serves /admin/v1
-type API struct{ d Deps }
+type API struct {
+	d        Deps
+	schemaMu sync.Mutex // one schema decision at a time on this instance
+}
 
-func New(d Deps) *API { return &API{d: d} }
+// New makes the admin API, and listens for peers' schema decisions if there is a bus
+func New(d Deps) *API {
+	a := &API{d: d}
+	if d.Bus != nil { a.listenToPeers() }
+	return a
+}
 
 // Routes registers every admin route on mux
 func (a *API) Routes(mux *http.ServeMux) {
@@ -71,6 +89,9 @@ func (a *API) Routes(mux *http.ServeMux) {
 	mux.Handle("POST /admin/v1/users/{id}/enable", change(a.platformAdmin, a.setUserDisabled(false)))
 	mux.Handle("POST /admin/v1/users/{id}/sessions/revoke", change(a.platformAdmin, a.revokeUserSessions))
 	mux.Handle("POST /admin/v1/users/{id}/sessions/{session}/revoke", change(a.platformAdmin, a.revokeUserSession))
+	mux.Handle("POST /admin/v1/schema/{table}/approve", change(a.tableAdmin, a.approveSchema))
+	mux.Handle("POST /admin/v1/schema/{table}/deny", change(a.tableAdmin, a.denySchema))
+	mux.Handle("POST /admin/v1/services/{svc}/schema/approve", change(a.serviceAdmin("svc"), a.approveServiceSchema))
 }
 
 // check decides whether the user may use a route

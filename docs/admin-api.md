@@ -166,3 +166,28 @@ With `admin.step-up-minutes` above 0 (off by default), every change needs the us
 have signed in with a one-time code within that many minutes. Otherwise it answers
 `401` with `WWW-Authenticate: Bearer error="insufficient_user_authentication",
 max_age=<seconds>` (RFC 9470): sign the user in again with their code, then retry.
+
+### 4.2 Schema changes
+
+A destructive schema change (dropping a column, say) waits for a decision. List them
+with `GET /admin/v1/schema/pending`.
+
+| Route | Who | Does |
+|-------|-----|------|
+| `POST /admin/v1/schema/{table}/approve` | platform, the table's `<service>:admin`, or a role in the model's `admin-roles` | Approves and applies it |
+| `POST /admin/v1/schema/{table}/deny` | the same | `{"reason"?}`. Drops it and puts the model's file back to its last-good version |
+| `POST /admin/v1/services/{svc}/schema/approve` | platform or `<svc>:admin` | Approves everything pending for the service, applied together |
+
+Approving applies every approved change in one go, so changes that depend on each
+other go in together. If that fails (an approved change needs one still pending), the
+changes stay approved and queued, and the answer is `202` with `applied: false` and
+the reason. `table` is the database name, `<service>_<table-name>`.
+
+Each decision is recorded as `schema.approve` or `schema.deny`, filed under the
+table's service. Atlas applies the change in its own transaction, so the entry is
+written straight after it, saying whether it applied.
+
+With several instances, each holds its own pending changes and model files. The one
+that decides tells the others on the cluster bus (`auth.md` 4.4): on an approval they
+clear the change and load the new model; on a denial they revert their own copy of
+the file too.

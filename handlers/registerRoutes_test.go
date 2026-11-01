@@ -12,7 +12,6 @@ import (
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/models/modelstest"
 	"lotusforge.au/api-server/registry"
-	"lotusforge.au/api-server/schematools"
 )
 
 func noopAuth(*models.DataModel) func(http.Handler) http.Handler {
@@ -32,7 +31,6 @@ func TestRegisterRoutes_NilDiffCfg_NoPanic(t *testing.T) {
 	svr := models.NewSwappableServerConfig(&models.ServerConfig{})
 	oauth := auth.AuthHandler(db, svr, slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
 	evh := events.NewEventManager(0, 0, db, oauth)
-	gate := schematools.NewPendingApprovalGate()
 	modelRegistry := registry.NewModelRegistry()
 
 	defer func() {
@@ -41,7 +39,7 @@ func TestRegisterRoutes_NilDiffCfg_NoPanic(t *testing.T) {
 		}
 	}()
 
-	RegisterRoutes(cfg, nil, hr, noopAuth, qm, svr, evh, gate, modelRegistry)
+	RegisterRoutes(cfg, nil, hr, noopAuth, qm, svr, evh, modelRegistry)
 
 	// The base resource route must still be registered...
 	req := httptest.NewRequest(http.MethodGet, "/inventory/assets", nil)
@@ -66,10 +64,9 @@ func TestRegisterRoutes_WithDiffCfg_RegistersDiffRoutes(t *testing.T) {
 	svr := models.NewSwappableServerConfig(&models.ServerConfig{})
 	oauth := auth.AuthHandler(db, svr, slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
 	evh := events.NewEventManager(0, 0, db, oauth)
-	gate := schematools.NewPendingApprovalGate()
 	modelRegistry := registry.NewModelRegistry()
 
-	RegisterRoutes(cfg, diffCfg, hr, noopAuth, qm, svr, evh, gate, modelRegistry)
+	RegisterRoutes(cfg, diffCfg, hr, noopAuth, qm, svr, evh, modelRegistry)
 
 	for _, target := range []string{"/inventory/assets/diff"} {
 		req := httptest.NewRequest(http.MethodGet, target, nil)
@@ -90,11 +87,10 @@ func newRouteFixture(t *testing.T) (*http.ServeMux, func(cfg *models.DataModel) 
 	svr := models.NewSwappableServerConfig(&models.ServerConfig{})
 	oauth := auth.AuthHandler(db, svr, slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
 	evh := events.NewEventManager(0, 0, db, oauth)
-	gate := schematools.NewPendingApprovalGate()
 	modelRegistry := registry.NewModelRegistry()
 	register := func(cfg *models.DataModel) error {
 		if err := modelRegistry.Register(cfg); err != nil { return err }
-		RegisterRoutes(cfg, nil, hr, noopAuth, qm, svr, evh, gate, modelRegistry)
+		RegisterRoutes(cfg, nil, hr, noopAuth, qm, svr, evh, modelRegistry)
 		return nil
 	}
 	return mux, register
@@ -162,8 +158,6 @@ func TestRegisterRoutes_AllRoutesUnderServicePath(t *testing.T) {
 		{http.MethodOptions, "/inventory/assets"},
 		{http.MethodPut, "/inventory/assets/group"},
 		{http.MethodGet, "/inventory/assets/fn/aggregate"},
-		{http.MethodGet, "/inventory/assets/admin/pending"},
-		{http.MethodPost, "/inventory/assets/admin/approve"},
 		{http.MethodGet, "/inventory/assets/history/42"},
 		{http.MethodGet, "/inventory/assets/ws"},
 	}
@@ -177,6 +171,9 @@ func TestRegisterRoutes_AllRoutesUnderServicePath(t *testing.T) {
 		{http.MethodGet, "/assets"},
 		{http.MethodOptions, "/assets"},
 		{http.MethodGet, "/assets/admin/pending"},
+		// Schema approvals moved to the admin API
+		{http.MethodGet, "/inventory/assets/admin/pending"},
+		{http.MethodPost, "/inventory/assets/admin/approve"},
 		{http.MethodGet, "/assets/history/42"},
 		{http.MethodGet, "/ws/assets"},
 	}

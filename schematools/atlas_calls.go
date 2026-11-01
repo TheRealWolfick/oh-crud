@@ -684,6 +684,20 @@ func ApplyApproved(ctx context.Context, pool *pgxpool.Pool, allModels []models.D
 // RevertChange discards a pending change and restores the live config file from its
 // last-good snapshot. The file write re-triggers the monitor, which re-syncs (a no-op
 // against the DB) and re-registers the previous handler.
+// MarkApplied records that another instance applied the pending change for table: the
+// change is already in the database, so this instance saves the model's schema files
+// and last-good config as its own, and clears the gate. It returns the model, so the
+// caller can register its routes, or false if this instance had nothing pending.
+func MarkApplied(gate *PendingApprovalGate, table string, logger *slog.Logger) (*models.DataModel, bool) {
+	pc, ok := gate.Pending(table)
+	if !ok || pc.Model == nil { return nil, false }
+	writeHCLFiles([]*models.DataModel{pc.Model}, logger)
+	writeSnapshot(pc.Model, logger)
+	gate.Remove(table)
+	logger.Info("Schema change applied by another instance", "table", table, "version", versionStr(pc.Model))
+	return pc.Model, true
+}
+
 func RevertChange(gate *PendingApprovalGate, tableName string, logger *slog.Logger) error {
 	pc, ok := gate.Pending(tableName)
 	if !ok {

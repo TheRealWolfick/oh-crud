@@ -60,7 +60,7 @@ func ModelsMonitor(handlerRegistry *registry.HandlerRegistry, modelRegistry *reg
 						return
 					}
 					diff_model, _ := modelRegistry.ByTableName("ohc_diffs")
-					handlers.RegisterRoutes(updated_config, diff_model, handlerRegistry, auth, qm, server_conf, evh, gate, modelRegistry)
+					handlers.RegisterRoutes(updated_config, diff_model, handlerRegistry, auth, qm, server_conf, evh, modelRegistry)
 				} else {
 					qm.Logger.Info("Pending change waiting", "table", *updated_config.Table_name)
 				}

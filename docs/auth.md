@@ -82,7 +82,6 @@ operation:
 | `GET /{service}/{endpoint}/diff` | `DIFF` |
 | `POST /{service}/{endpoint}/diff` | `POST` |
 | `PUT /{service}/{endpoint}/diff` | `PUT` |
-| `GET /{service}/{endpoint}/admin/pending`, `POST /{service}/{endpoint}/admin/approve` | The model's `admin-roles` |
 | `GET /{service}/{endpoint}/ws` (websocket) | `POST` (see `websockets.md`) |
 
 | Failure | Status | Body (plain text) |

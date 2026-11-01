@@ -22,7 +22,6 @@ import (
 	"lotusforge.au/api-server/queue"
 	"lotusforge.au/api-server/registry"
 	"lotusforge.au/api-server/reqctx"
-	"lotusforge.au/api-server/schematools"
 	"lotusforge.au/api-server/secrets"
 	"lotusforge.au/api-server/store"
 	"lotusforge.au/api-server/tools"
@@ -40,7 +39,6 @@ func RegisterRoutes(
 	qm *queue.QueueManager,
 	server_conf *models.SwappableServerConfig,
 	evh *events.EventManager,
-	gate *schematools.PendingApprovalGate,
 	modelRegistry *registry.ModelRegistry,
 ) {
 	var err error
@@ -102,20 +100,7 @@ func RegisterRoutes(
 	// the aggregate handler; user-defined functions are registered separately.
 	handlerRegistry.Register(route("GET", "/fn/{function}"), middleware.Cors(cfg, server_conf)(auth(handleGet(cfg, qm, server_conf))), *cfg.Version)
 
-	// Built-in admin endpoints for this end point. onApplied re-registers a model's
-	// routes after an approved schema change is committed.
-	onApplied := func(applied *models.DataModel) {
-		if err := modelRegistry.Register(applied); err != nil {
-			qm.Logger.Error("Applied model not loaded, routes not updated", "data-model", *applied.Name, "error", err)
-			return
-		}
-		RegisterRoutes(applied, diff_cfg, handlerRegistry, model_auth, qm, server_conf, evh, gate, modelRegistry)
-	}
-	// Register admin end points
-	handlerRegistry.Register(route("OPTIONS", "/admin/pending"), middleware.CorsAdmin(cfg, server_conf)(emptyResponse()), *cfg.Version)
-	handlerRegistry.Register(route("OPTIONS", "/admin/approve"), middleware.CorsAdmin(cfg, server_conf)(emptyResponse()), *cfg.Version)
-	handlerRegistry.Register(route("GET", "/admin/pending"), middleware.CorsAdmin(cfg, server_conf)(auth(handlePendingChanges(gate, qm, cfg, server_conf))), *cfg.Version)
-	handlerRegistry.Register(route("POST", "/admin/approve"), middleware.CorsAdmin(cfg, server_conf)(auth(handleApproveChange(gate, qm, cfg, server_conf, modelRegistry, onApplied))), *cfg.Version)
+	// Schema approvals for this model are in the admin API (/admin/v1/schema/...)
 
 	// History route — only when the model opts in via track-history.
 	// Path shape mirrors /fn/{function} so a literal segment sits at the same
