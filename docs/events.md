@@ -185,7 +185,7 @@ key). `updated_values` are the fields that were set.
 
 ## 4. Function events
 
-Declarative functions (`func:{name}` topics) do not receive the data. When a
+Declarative functions (`func:{end-point}/{name}` topics) do not receive the data. When a
 write on the function's bound model finishes with `success` or `warn` (at
 least one row changed), every function bound to that model publishes:
 
@@ -193,7 +193,9 @@ least one row changed), every function bound to that model publishes:
 {
   "event_type": "data altered",
   "event_time": "2026-10-27T03:12:09.60Z",
-  "function_name": "func:assets-by-building",
+  "service": "inventory",
+  "topic": "func:asset/data/assets-by-building",
+  "function_name": "assets-by-building",
   "items_added": 0,
   "items_updated": 2,
   "items_removed": 0
@@ -230,11 +232,11 @@ table.
 ## 6. Reading past events
 
 Table-topic events are stored in the `events` model, exposed at
-`GET /events` (roles `user` and `report` by default). It supports the normal
+`GET /ohc/events` (roles `user` and `report` by default). It supports the normal
 filtering and paging (`api-guide.md`):
 
 ```text
-GET /events?topic=table:asset/data&status=warn&sort_by=event_id~desc
+GET /ohc/events?service=inventory&topic=table:asset/data&status=warn&sort_by=event_id~desc
 ```
 
 | Field | Notes |
@@ -242,7 +244,8 @@ GET /events?topic=table:asset/data&status=warn&sort_by=event_id~desc
 | `event_id` | Serial id |
 | `action` | `create`, `update`, `delete` |
 | `status` | One of the six statuses |
-| `topic` | e.g. `table:asset/data` |
+| `service` | The service that owns the topic, e.g. `inventory`. Empty on events recorded before topics belonged to a service |
+| `topic` | The topic within that service, e.g. `table:asset/data` |
 | `log` | The full event payload from section 2 |
 | `time` | Event time. Filter with `?event_time=…` |
 | `user` | Username that made the request. Filter with `?event_user=…` |

@@ -45,7 +45,7 @@ type authTables struct {
 }
 
 var userCols = []string{"id", "username", "display_name", "password_hash", "totp_secret", "created_at", "disabled_at", "roles"}
-var tokenCols = []string{"id", "token_hash", "user_id", "client_id", "family_id", "amr", "expires_at", "used_at", "revoked_at"}
+var tokenCols = []string{"id", "token_hash", "user_id", "client_id", "family_id", "amr", "expires_at", "auth_time", "used_at", "revoked_at"}
 
 func (tb *authTables) fakeDB() *modelstest.FakeDB {
 	db := &modelstest.FakeDB{}
@@ -56,7 +56,7 @@ func (tb *authTables) fakeDB() *modelstest.FakeDB {
 
 func (tb *authTables) query(sql string, args []any) (pgx.Rows, error) {
 	rows, err := tb.read(sql, args)
-	if tb.tokenReads != nil && strings.Contains(sql, "FROM refresh_tokens") {
+	if tb.tokenReads != nil && strings.Contains(sql, "FROM ohc_refresh_tokens") {
 		tb.tokenReads.Done()
 		tb.tokenReads.Wait()
 	}
@@ -68,7 +68,7 @@ func (tb *authTables) read(sql string, args []any) (pgx.Rows, error) {
 	defer tb.mu.Unlock()
 
 	switch {
-	case strings.Contains(sql, "FROM users WHERE username"), strings.Contains(sql, "FROM users WHERE id"):
+	case strings.Contains(sql, "FROM ohc_users WHERE username"), strings.Contains(sql, "FROM ohc_users WHERE id"):
 		byID := strings.Contains(sql, "WHERE id")
 		for _, u := range tb.users {
 			if (byID && u.ID == args[0]) || (!byID && u.Username == args[0]) {
@@ -77,11 +77,11 @@ func (tb *authTables) read(sql string, args []any) (pgx.Rows, error) {
 				}}}, nil
 			}
 		}
-	case strings.Contains(sql, "FROM refresh_tokens WHERE token_hash"):
+	case strings.Contains(sql, "FROM ohc_refresh_tokens WHERE token_hash"):
 		for _, rt := range tb.tokens {
 			if rt.TokenHash == args[0] {
 				return &modelstest.FakeRows{Cols: tokenCols, Data: [][]any{{
-					rt.ID, rt.TokenHash, rt.UserID, rt.ClientID, rt.FamilyID, rt.AMR, rt.ExpiresAt, rt.UsedAt, rt.RevokedAt,
+					rt.ID, rt.TokenHash, rt.UserID, rt.ClientID, rt.FamilyID, rt.AMR, rt.ExpiresAt, rt.AuthTime, rt.UsedAt, rt.RevokedAt,
 				}}}, nil
 			}
 		}
@@ -97,7 +97,7 @@ func (tb *authTables) exec(sql string, args []any) (pgconn.CommandTag, error) {
 	now := time.Now()
 
 	switch {
-	case strings.Contains(sql, "INSERT INTO refresh_tokens"):
+	case strings.Contains(sql, "INSERT INTO ohc_refresh_tokens"):
 		for _, rt := range tb.tokens {
 			if rt.FamilyID == args[3] && rt.RevokedAt != nil {
 				return pgconn.NewCommandTag("INSERT 0 0"), nil
@@ -106,7 +106,7 @@ func (tb *authTables) exec(sql string, args []any) (pgconn.CommandTag, error) {
 		tb.nextID++
 		tb.tokens = append(tb.tokens, &models.RefreshToken{
 			ID: tb.nextID, TokenHash: args[0].(string), UserID: args[1].(string), ClientID: args[2].(string),
-			FamilyID: args[3].(string), AMR: args[4].([]string), ExpiresAt: args[5].(time.Time),
+			FamilyID: args[3].(string), AMR: args[4].([]string), ExpiresAt: args[5].(time.Time), AuthTime: args[6].(*time.Time),
 		})
 		return pgconn.NewCommandTag("INSERT 0 1"), nil
 
@@ -129,10 +129,10 @@ func (tb *authTables) exec(sql string, args []any) (pgconn.CommandTag, error) {
 		}
 		return pgconn.NewCommandTag(fmt.Sprintf("UPDATE %d", n)), nil
 
-	case strings.Contains(sql, "INSERT INTO users"):
+	case strings.Contains(sql, "INSERT INTO ohc_users"):
 		return pgconn.NewCommandTag("INSERT 0 1"), nil
 
-	case strings.Contains(sql, "UPDATE users SET password_hash"):
+	case strings.Contains(sql, "UPDATE ohc_users SET password_hash"):
 		for _, u := range tb.users {
 			if u.ID == args[1] && u.PasswordHash == args[2] {
 				u.PasswordHash = args[0].(string)
@@ -349,14 +349,14 @@ func TestPasswordGrantRejects(t *testing.T) {
 		{name: "no client assertion", username: testUsername, password: testPassword, status: http.StatusUnauthorized, code: "invalid_client"},
 		{name: "unknown client key", svcID: testServiceID, username: testUsername, password: testPassword,
 			setup: func(f *grantFixture) { f.svcDB.Row = nil }, status: http.StatusUnauthorized, code: "invalid_client"},
-		{name: "wrong password", svcID: testServiceID, username: testUsername, password: "wrong", status: http.StatusUnauthorized},
-		{name: "unknown user", svcID: testServiceID, username: "mallory", password: testPassword, status: http.StatusUnauthorized},
+		{name: "wrong password", svcID: testServiceID, username: testUsername, password: "wrong", status: http.StatusBadRequest, code: "invalid_grant"},
+		{name: "unknown user", svcID: testServiceID, username: "mallory", password: testPassword, status: http.StatusBadRequest, code: "invalid_grant"},
 		{name: "user without a password", svcID: testServiceID, username: testUsername, password: "",
-			setup: func(f *grantFixture) { f.user.PasswordHash = "" }, status: http.StatusUnauthorized},
+			setup: func(f *grantFixture) { f.user.PasswordHash = "" }, status: http.StatusBadRequest, code: "invalid_grant"},
 		{name: "user without a password, guessing the dummy", svcID: testServiceID, username: testUsername, password: "fake-password",
-			setup: func(f *grantFixture) { f.user.PasswordHash = "" }, status: http.StatusUnauthorized},
+			setup: func(f *grantFixture) { f.user.PasswordHash = "" }, status: http.StatusBadRequest, code: "invalid_grant"},
 		{name: "disabled user", svcID: testServiceID, username: testUsername, password: testPassword,
-			setup: func(f *grantFixture) { now := time.Now(); f.user.DisabledAt = &now }, status: http.StatusUnauthorized},
+			setup: func(f *grantFixture) { now := time.Now(); f.user.DisabledAt = &now }, status: http.StatusBadRequest, code: "invalid_grant"},
 	}
 
 	for _, tc := range cases {
@@ -387,8 +387,8 @@ func TestPasswordGrantPasswordlessUserNeverMatchesDummy(t *testing.T) {
 	secrets.DummyHash = known
 	t.Cleanup(func() { secrets.DummyHash = original })
 
-	mustFail(t, f.login(t, testServiceID, testUsername, "known-dummy"), http.StatusUnauthorized, "")
-	mustFail(t, f.login(t, testServiceID, "mallory", "known-dummy"), http.StatusUnauthorized, "")
+	mustFail(t, f.login(t, testServiceID, testUsername, "known-dummy"), http.StatusBadRequest, "invalid_grant")
+	mustFail(t, f.login(t, testServiceID, "mallory", "known-dummy"), http.StatusBadRequest, "invalid_grant")
 }
 
 // An unknown user and a wrong password must look identical, or usernames can be enumerated
@@ -408,13 +408,13 @@ func TestPasswordGrantTOTP(t *testing.T) {
 	secret := f.enableTOTP(t)
 
 	// The password alone is not enough
-	mustFail(t, f.login(t, testServiceID, testUsername, testPassword), http.StatusUnauthorized, "invalid_grant")
+	mustFail(t, f.login(t, testServiceID, testUsername, testPassword), http.StatusBadRequest, "invalid_grant")
 
 	wrong := url.Values{"grant_type": {"password"}, "username": {testUsername}, "password": {testPassword}, "otp": {"000000"}}
 	if code, _ := totp.GenerateCode(secret, time.Now()); code == "000000" {
 		t.Skip("The current code happens to be 000000")
 	}
-	mustFail(t, f.post(t, testServiceID, wrong), http.StatusUnauthorized, "invalid_grant")
+	mustFail(t, f.post(t, testServiceID, wrong), http.StatusBadRequest, "invalid_grant")
 
 	code, err := totp.GenerateCode(secret, time.Now())
 	if err != nil {
@@ -428,6 +428,83 @@ func TestPasswordGrantTOTP(t *testing.T) {
 	}
 	if rt := f.tables.token(body.RefreshToken); rt == nil || !equalStrings(rt.AMR, []string{"pwd", "otp"}) {
 		t.Errorf("Expected the refresh token to remember the OTP login, got %+v", rt)
+	}
+}
+
+// A wrong OTP after a right password must look like a wrong password, or the
+// response confirms the password to anyone without the second factor
+func TestPasswordGrantWrongOTPMatchesWrongPassword(t *testing.T) {
+	f := newGrantFixture(t)
+	f.enableTOTP(t)
+
+	wrongPassword := f.post(t, testServiceID, url.Values{"grant_type": {"password"}, "username": {testUsername}, "password": {"wrong"}, "otp": {"000000"}})
+	wrongOTP := f.post(t, testServiceID, url.Values{"grant_type": {"password"}, "username": {testUsername}, "password": {testPassword}, "otp": {"000000"}})
+	noOTP := f.login(t, testServiceID, testUsername, testPassword)
+
+	for name, w := range map[string]*httptest.ResponseRecorder{"wrong otp": wrongOTP, "no otp": noOTP} {
+		if w.Code != wrongPassword.Code || w.Body.String() != wrongPassword.Body.String() {
+			t.Errorf("%s differs from a wrong password: %d %q vs %d %q",
+				name, w.Code, w.Body.String(), wrongPassword.Code, wrongPassword.Body.String())
+		}
+	}
+}
+
+func TestPasswordGrantOTPCannotBeReused(t *testing.T) {
+	f := newGrantFixture(t)
+	secret := f.enableTOTP(t)
+
+	code, err := totp.GenerateCode(secret, time.Now())
+	if err != nil {
+		t.Fatalf("GenerateCode: %v", err)
+	}
+	form := url.Values{"grant_type": {"password"}, "username": {testUsername}, "password": {testPassword}, "otp": {code}}
+
+	mustTokens(t, f.post(t, testServiceID, form), f.a.ks)
+	mustFail(t, f.post(t, testServiceID, form), http.StatusBadRequest, "invalid_grant")
+}
+
+func TestPasswordGrantSetsAuthTime(t *testing.T) {
+	f := newGrantFixture(t)
+	before := time.Now().Truncate(time.Second)
+
+	body, claims := loginTokens(t, f)
+
+	if claims.AuthTime == nil || claims.AuthTime.Time.Before(before) || claims.AuthTime.Time.After(time.Now()) {
+		t.Fatalf("Expected auth_time at login, got %v", claims.AuthTime)
+	}
+	if rt := f.tables.token(body.RefreshToken); rt == nil || rt.AuthTime == nil || !within(*rt.AuthTime, claims.AuthTime.Time) {
+		t.Errorf("Expected the refresh token to store auth_time, got %+v", rt)
+	}
+}
+
+// A refresh is not a login: auth_time must not move, or step-up could be passed by refreshing
+func TestRefreshGrantKeepsAuthTime(t *testing.T) {
+	f := newGrantFixture(t)
+	first, _ := loginTokens(t, f)
+
+	loggedIn := time.Now().Add(-time.Hour)
+	f.tables.token(first.RefreshToken).AuthTime = &loggedIn
+
+	second, claims := mustTokens(t, f.refresh(t, testServiceID, first.RefreshToken), f.a.ks)
+
+	if claims.AuthTime == nil || claims.AuthTime.Unix() != loggedIn.Unix() {
+		t.Errorf("Expected auth_time %v to carry over, got %v", loggedIn, claims.AuthTime)
+	}
+	if rt := f.tables.token(second.RefreshToken); rt == nil || rt.AuthTime == nil || !rt.AuthTime.Equal(loggedIn) {
+		t.Errorf("Expected the rotated refresh token to keep auth_time, got %+v", rt)
+	}
+}
+
+// Sessions from before auth_time was recorded carry no auth_time, so they never pass step-up
+func TestRefreshGrantLegacySessionHasNoAuthTime(t *testing.T) {
+	f := newGrantFixture(t)
+	first, _ := loginTokens(t, f)
+	f.tables.token(first.RefreshToken).AuthTime = nil
+
+	_, claims := mustTokens(t, f.refresh(t, testServiceID, first.RefreshToken), f.a.ks)
+
+	if claims.AuthTime != nil {
+		t.Errorf("Expected no auth_time for a legacy session, got %v", claims.AuthTime)
 	}
 }
 
@@ -466,7 +543,7 @@ func TestPasswordGrantKeepsCurrentHash(t *testing.T) {
 		t.Errorf("A hash with current params must not be rewritten")
 	}
 	for _, call := range f.a.ks.db.(*modelstest.FakeDB).Calls {
-		if strings.Contains(call.SQL, "UPDATE users") {
+		if strings.Contains(call.SQL, "UPDATE ohc_users") {
 			t.Errorf("Unexpected password update: %s", call.SQL)
 		}
 	}
@@ -530,7 +607,8 @@ func federatedLogin(t *testing.T, f *grantFixture) userTokens {
 	amr := []string{amrFederated, "mfa"}
 	r := httptest.NewRequest(http.MethodPost, "/oauth/token", nil)
 	w := httptest.NewRecorder()
-	f.a.issueUserTokens(w, r, f.user, testServiceID, uuid.NewString(), amr, refreshExpiry(amr, nil))
+	now := time.Now()
+	f.a.issueUserTokens(w, r, f.user, testServiceID, uuid.NewString(), amr, &now, refreshExpiry(amr, nil))
 	body, _ := mustTokens(t, w, f.a.ks)
 	return body
 }
@@ -681,7 +759,7 @@ func TestSaveRefreshTokenRevokedFamily(t *testing.T) {
 	if err := f.a.ks.RevokeRefreshFamily(t.Context(), claims.SID); err != nil {
 		t.Fatalf("RevokeRefreshFamily: %v", err)
 	}
-	if _, err := f.a.newRefreshToken(t.Context(), testUserID, testServiceID, claims.SID, []string{"pwd"}, time.Now().Add(time.Hour)); !errors.Is(err, ErrFamilyRevoked) {
+	if _, err := f.a.newRefreshToken(t.Context(), testUserID, testServiceID, claims.SID, []string{"pwd"}, nil, time.Now().Add(time.Hour)); !errors.Is(err, ErrFamilyRevoked) {
 		t.Fatalf("Expected ErrFamilyRevoked, got %v", err)
 	}
 	for _, rt := range f.tables.family(claims.SID) {

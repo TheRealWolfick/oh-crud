@@ -20,6 +20,7 @@ type RefreshToken struct {
 	ClientID   string     `json:"client_id" db:"client_id"`
 	FamilyID   string     `json:"family_id" db:"family_id"`
 	AMR        []string   `json:"amr" db:"amr"` // how the user authenticated at login, carried across refreshes
+	AuthTime   *time.Time `json:"auth_time" db:"auth_time"` // when they authenticated, carried across refreshes. Nil on rows made before it was recorded
 	ExpiresAt  time.Time  `json:"expires_at" db:"expires_at"`
 	UsedAt     *time.Time `json:"used_at" db:"used_at"`
 	RevokedAt  *time.Time `json:"revoked_at" db:"revoked_at"`

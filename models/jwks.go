@@ -18,5 +18,6 @@ type Claims struct {
 	AMR       []string  `json:"amr,omitempty"`  // How the user authenticated
 	Username  string    `json:"preferred_username,omitempty"` // Recorded against writes made with a user token
 	ClientID  string    `json:"client_id,omitempty"`          // The client a user token was issued to
+	AuthTime  *jwt.NumericDate `json:"auth_time,omitempty"`  // When the user last authenticated interactively. Not moved by refreshes.
 	jwt.RegisteredClaims
 }

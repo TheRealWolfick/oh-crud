@@ -1,6 +1,7 @@
 name: users
 version: 2.1.0
 table-name: users
+service: ohc
 end-point: user
 primary-key: username
 

@@ -2,7 +2,6 @@ package reqctx
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"slices"
 
@@ -62,7 +61,7 @@ func Username(ctx context.Context) string {
 // Start a task with a valid task type. Valid types are based off event actions: create, read, update, delete
 // The task's events publish on the model's table topic
 func StartTask(ctx context.Context, action string, cfg *models.DataModel) context.Context {
-	return StartTaskOnTopic(ctx, action, cfg, fmt.Sprintf("table:%s", *cfg.End_point))
+	return StartTaskOnTopic(ctx, action, cfg, cfg.TableTopic())
 }
 
 // Start a task whose events publish on topic instead of the model's table topic

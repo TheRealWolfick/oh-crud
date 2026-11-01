@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -28,7 +27,7 @@ var reservedFunctionNames = map[string]struct{}{
 }
 
 // FunctionRegistry is a thread-safe store of all loaded FunctionDefs, keyed by
-// (end_point, name). End_point matches the bound model's End_point.
+// (bound path, name). The bound path is the bound model's Path ("service/end-point").
 type FunctionRegistry struct {
 	mu    sync.RWMutex
 	funcs map[string]*models.FunctionDef
@@ -39,25 +38,25 @@ func NewFunctionRegistry() *FunctionRegistry {
 }
 
 // functionKey is the canonical map key — guarantees uniqueness across endpoints.
-func functionKey(end_point, name string) string {
-	return end_point + "::" + name
+func functionKey(path, name string) string {
+	return path + "::" + name
 }
 
 // Register adds or replaces a function. Safe to call concurrently.
 func (r *FunctionRegistry) Register(fn *models.FunctionDef) {
-	if fn.Bound_to == nil || fn.Name == nil {
+	if fn.BoundPath() == "" || fn.Name == nil {
 		return
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.funcs[functionKey(*fn.Bound_to, *fn.Name)] = fn
+	r.funcs[functionKey(fn.BoundPath(), *fn.Name)] = fn
 }
 
-// Get looks up a function by its bound endpoint and name.
-func (r *FunctionRegistry) Get(end_point, name string) (*models.FunctionDef, bool) {
+// Get looks up a function by its bound path ("service/end-point") and name.
+func (r *FunctionRegistry) Get(path, name string) (*models.FunctionDef, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	fn, ok := r.funcs[functionKey(end_point, name)]
+	fn, ok := r.funcs[functionKey(path, name)]
 	return fn, ok
 }
 
@@ -83,7 +82,8 @@ func LoadFunctionsFromDir(
 ) []*models.FunctionDef {
 	out := []*models.FunctionDef{}
 
-	entries, err := os.ReadDir(dir)
+	// Functions may sit in any folder below dir, so a service can keep its own together
+	files, err := datamodel.YAMLFiles(dir, true)
 	if err != nil {
 		// Missing directory is not fatal — functions are opt-in.
 		if os.IsNotExist(err) {
@@ -95,36 +95,26 @@ func LoadFunctionsFromDir(
 	}
 
 	// Track names registered so far so duplicates within a single load fail loud.
-	seen := map[string]string{} // key → source filename
+	seen := map[string]string{} // key → source file
 
-	for _, entry := range entries {
-		info, err := entry.Info()
-		if err != nil {
-			logger.Warn("Error reading function file info", "error", err)
-			continue
-		}
-		if filepath.Ext(info.Name()) != ".yaml" {
-			continue
-		}
-
-		path := fmt.Sprintf("%s/%s", dir, info.Name())
+	for _, path := range files {
 		fn, err := datamodel.LoadYAMLIntoModel[models.FunctionDef](path)
 		if err != nil {
-			logger.Warn("Failed to load function file", "file", info.Name(), "error", err)
+			logger.Warn("Failed to load function file", "file", path, "error", err)
 			continue
 		}
 		if errs := ValidateFunction(fn, model_reg); len(errs) > 0 {
-			logger.Warn("Function file failed validation", "file", info.Name(), "errors", errs)
+			logger.Warn("Function file failed validation", "file", path, "errors", errs)
 			continue
 		}
-		key := functionKey(*fn.Bound_to, *fn.Name)
+		key := functionKey(fn.BoundPath(), *fn.Name)
 		if prev, dup := seen[key]; dup {
 			logger.Warn("Duplicate function name on same endpoint; second occurrence skipped",
-				"endpoint", *fn.Bound_to, "name", *fn.Name,
-				"first", prev, "second", info.Name())
+				"endpoint", fn.BoundPath(), "name", *fn.Name,
+				"first", prev, "second", path)
 			continue
 		}
-		seen[key] = info.Name()
+		seen[key] = path
 		out = append(out, fn)
 	}
 
@@ -143,6 +133,9 @@ func ValidateFunction(fn *models.FunctionDef, model_reg *ModelRegistry) []error 
 	if fn.Version == nil || *fn.Version == "" {
 		errs = append(errs, fmt.Errorf("function %q: missing required field 'version'", deref(fn.Name)))
 	}
+	if fn.Service == nil || *fn.Service == "" {
+		errs = append(errs, fmt.Errorf("function %q: missing required field 'service'", deref(fn.Name)))
+	}
 	if fn.Bound_to == nil || *fn.Bound_to == "" {
 		errs = append(errs, fmt.Errorf("function %q: missing required field 'bound-to'", deref(fn.Name)))
 	}
@@ -154,13 +147,14 @@ func ValidateFunction(fn *models.FunctionDef, model_reg *ModelRegistry) []error 
 		}
 	}
 
-	// Bound model must exist.
+	// Bound model must exist in the function's own service, so a service can only add
+	// functions to its own tables.
 	var cfg *models.DataModel
-	if fn.Bound_to != nil {
-		m, ok := model_reg.ByEndpoint(*fn.Bound_to)
+	if path := fn.BoundPath(); path != "" {
+		m, ok := model_reg.ByPath(path)
 		if !ok {
-			errs = append(errs, fmt.Errorf("function %q: bound-to %q does not match any loaded model end-point",
-				deref(fn.Name), *fn.Bound_to))
+			errs = append(errs, fmt.Errorf("function %q: bound-to %q does not match any loaded end-point in service %q",
+				deref(fn.Name), *fn.Bound_to, *fn.Service))
 		} else {
 			cfg = m
 		}

@@ -7,6 +7,7 @@ name: signing_keys
 version: 1.0.1
 table-name: signing_keys
 end-point: ""
+service: ohc
 primary-key: kid
 
 fields:

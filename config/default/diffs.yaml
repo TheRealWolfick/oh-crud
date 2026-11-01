@@ -1,6 +1,7 @@
 name: diffs
 version: 1.2.1
 table-name: diffs
+service: ohc
 end-point: ""
 primary-key: diff_id
 

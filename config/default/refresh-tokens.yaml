@@ -1,7 +1,8 @@
 name: refresh-tokens
-version: 1.0.0
+version: 1.1.0
 table-name: refresh_tokens
 end-point: ""
+service: ohc
 primary-key: id
 
 unique-keys:
@@ -55,6 +56,13 @@ fields:
     nullable: false
     json: expires_at
     required-on-insert: true
+  # When the user authenticated interactively. Copied unchanged on each rotation so
+  # step-up checks see the real login time. Null on rows from before it was recorded.
+  auth_time:
+    type: time
+    db-type: timestamptz
+    nullable: true
+    json: auth_time
   used_at:
     type: time
     db-type: timestamptz

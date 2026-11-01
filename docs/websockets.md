@@ -9,14 +9,15 @@ described in `events.md`.
 
 ## 1. Connecting
 
-Every model with an `end-point` and a `GET` permission exposes a websocket at:
+Every model with an `end-point` and a `GET` permission exposes a websocket
+under its service, like its other routes:
 
 ```
-ws://<host>/ws/{end-point}
-wss://<host>/ws/{end-point}      (behind TLS)
+ws://<host>/{service}/{end-point}/ws
+wss://<host>/{service}/{end-point}/ws      (behind TLS)
 ```
 
-For example `wss://api.example.com/ws/asset/data`.
+For example `wss://api.example.com/inventory/asset/data/ws`.
 
 ### 1.1 Authentication
 
@@ -43,7 +44,7 @@ options:
 ```js
 // Node.js, using the "ws" package
 import WebSocket from "ws";
-const sock = new WebSocket("wss://api.example.com/ws/asset/data", {
+const sock = new WebSocket("wss://api.example.com/inventory/asset/data/ws", {
   headers: { Authorization: `Bearer ${serviceToken}`, "X-OhCrud-User": userToken },
 });
 ```
@@ -51,12 +52,12 @@ const sock = new WebSocket("wss://api.example.com/ws/asset/data", {
 ### 1.2 Initial subscription
 
 On connect the client is automatically subscribed to the endpoint's own table
-topic, `table:{end-point}`:
+topic: `table:{end-point}` in the model's service.
 
 | Connect URL | Subscribed to |
 |-------------|---------------|
-| `/ws/asset/data` | Every action and every status |
-| `/ws/asset/data?status=error` | Every action, `error` status only |
+| `/inventory/asset/data/ws` | Every action and every status |
+| `/inventory/asset/data/ws?status=error` | Every action, `error` status only |
 
 Each subscription is confirmed with a message (see 3.1). A client that wants
 nothing by default can unsubscribe straight after connecting.
@@ -79,13 +80,14 @@ After connecting, a client changes its subscriptions by sending JSON text
 messages:
 
 ```json
-{"instruction": "sub", "topic": "table:asset/data", "action": "update", "status": "success"}
+{"instruction": "sub", "service": "inventory", "topic": "table:asset/data", "action": "update", "status": "success"}
 ```
 
 | Key | Required | Values |
 |-----|----------|--------|
 | `instruction` | Yes | `sub` (subscribe) or `unsub` (unsubscribe) |
-| `topic` | Yes | A topic name, see 2.1 |
+| `service` | Yes | The service that owns the topic, such as `inventory` or `ohc` |
+| `topic` | Yes | A topic name within that service, see 2.1 |
 | `action` | No | `get`, `create`, `update`, `delete`, or `any`/`all`. Missing means all |
 | `status` | No | `queued`, `start`, `success`, `warn`, `failed`, `error`, or `any`/`all`. Missing means all |
 
@@ -94,13 +96,17 @@ ignored.
 
 ### 2.1 Topics
 
+Every topic belongs to a service, which sits a level above it. Two services can
+each have a `table:asset` topic; `service` picks which one. A message with no
+`service`, or the wrong one, matches no topic.
+
 | Topic | Published when | Example |
 |-------|----------------|---------|
 | `table:{end-point}` | A write task on that model changes state | `table:asset/data` |
-| `func:{function-name}` | A write on the function's bound model succeeds | `func:assets-by-building` |
+| `func:{end-point}/{function-name}` | A write on the function's bound model succeeds | `func:asset/data/assets-by-building` |
 | `diff:{end-point}` | A diff task on that model changes state. Needs the model's `DIFF` role to subscribe | `diff:asset/data` |
 
-The table topic uses the model's **end-point**, not its table name.
+Topics use the model's **end-point** within its service, not its table name.
 
 A function topic carries a small "data altered" notice, not the data itself,
 because the server cannot know which parameters each client is filtering by.
@@ -110,9 +116,9 @@ Refetch the function when it arrives. See `events.md`.
 
 | Action | Triggered by |
 |--------|--------------|
-| `create` | `POST /{endpoint}` and `POST /{endpoint}/group` |
-| `update` | `PUT /{endpoint}` and `PUT /{endpoint}/group` |
-| `delete` | `DELETE /{endpoint}` and `DELETE /{endpoint}/group` |
+| `create` | `POST /{service}/{endpoint}` and `POST /{service}/{endpoint}/group` |
+| `update` | `PUT /{service}/{endpoint}` and `PUT /{service}/{endpoint}/group` |
+| `delete` | `DELETE /{service}/{endpoint}` and `DELETE /{service}/{endpoint}/group` |
 | `get` | Accepted, but reads do not publish events, so it never fires |
 
 | Status | Meaning |
@@ -142,8 +148,8 @@ or `event_type` (function topics).
 Subscribe:
 
 ```json
-{"subscribe": true, "topic": "table:asset/data", "action": "update", "status": "all"}
-{"subscribe": false, "reason": "invalid subscription request",
+{"subscribe": true, "service": "inventory", "topic": "table:asset/data", "action": "update", "status": "all"}
+{"subscribe": false, "service": "inventory", "topic": "table:asset/data", "reason": "invalid subscription request",
  "is_topic_valid": true, "is_action_valid": false, "is_status_valid": true}
 ```
 
@@ -152,10 +158,10 @@ A subscribe to `any`/`all` actions is echoed back as `"action": "all"`.
 Unsubscribe:
 
 ```json
-{"unsubscribe": true, "topic": "table:asset/data"}
-{"unsubscribe": true, "topic": "table:asset/data", "action": "update"}
-{"unsubscribe": true, "topic": "table:asset/data", "note": "auto unsub from topic. No subbed actions remained"}
-{"unsubscribe": false, "topic": "table:asset/data", "reason": "you are not subscribed to this topic"}
+{"unsubscribe": true, "service": "inventory", "topic": "table:asset/data"}
+{"unsubscribe": true, "service": "inventory", "topic": "table:asset/data", "action": "update"}
+{"unsubscribe": true, "service": "inventory", "topic": "table:asset/data", "note": "auto unsub from topic. No subbed actions remained"}
+{"unsubscribe": false, "service": "inventory", "topic": "table:asset/data", "reason": "you are not subscribed to this topic"}
 ```
 
 Other `reason` values: `invalid topic`, `invalid action`, `invalid status`,
@@ -192,17 +198,18 @@ table, or correlate on `task_id` (returned by the write request).
 const sock = new WebSocket(url /* via a proxy that adds the token headers */);
 
 sock.onopen = () => {
-  // Already subscribed to everything on table:asset/data. Narrow it down:
-  sock.send(JSON.stringify({ instruction: "unsub", topic: "table:asset/data" }));
-  sock.send(JSON.stringify({ instruction: "sub", topic: "table:asset/data", status: "success" }));
-  sock.send(JSON.stringify({ instruction: "sub", topic: "table:asset/data", status: "warn" }));
-  sock.send(JSON.stringify({ instruction: "sub", topic: "func:assets-by-building" }));
+  // Already subscribed to everything on inventory's table:asset/data. Narrow it down:
+  const service = "inventory";
+  sock.send(JSON.stringify({ instruction: "unsub", service, topic: "table:asset/data" }));
+  sock.send(JSON.stringify({ instruction: "sub", service, topic: "table:asset/data", status: "success" }));
+  sock.send(JSON.stringify({ instruction: "sub", service, topic: "table:asset/data", status: "warn" }));
+  sock.send(JSON.stringify({ instruction: "sub", service, topic: "func:asset/data/assets-by-building" }));
 };
 
 sock.onmessage = (msg) => {
   const m = JSON.parse(msg.data);
   if ("subscribe" in m || "unsubscribe" in m) return handleAck(m);
-  if (m.event_type === "data altered") return refetchFunction(m.function_name);
+  if (m.event_type === "data altered") return refetchFunction(m.service, m.topic, m.function_name);
   if (m.task_id) return handleTaskEvent(m);   // see events.md
 };
 

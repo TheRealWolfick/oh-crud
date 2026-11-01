@@ -74,16 +74,16 @@ operation:
 
 | Operation | Roles taken from |
 |-----------|------------------|
-| `GET /{endpoint}`, `/fn/aggregate`, `/fn/schema`, `/history/{key}` | `end-points-allowed.GET` |
+| `GET /{service}/{endpoint}`, `/fn/aggregate`, `/fn/schema`, `/history/{key}` | `end-points-allowed.GET` |
 | Declarative function `/fn/{name}` | The function's `roles-allowed`, or the model's `GET` list if that is empty |
-| `POST /{endpoint}` / `POST /{endpoint}/group` | `POST` / `POST-GROUP` |
-| `PUT /{endpoint}` / `PUT /{endpoint}/group` | `PUT` / `PUT-GROUP` |
-| `DELETE /{endpoint}` / `DELETE /{endpoint}/group` | `DELETE` / `DELETE-GROUP` |
-| `GET /{endpoint}/diff` | `DIFF` |
-| `POST /{endpoint}/diff` | `POST` |
-| `PUT /{endpoint}/diff` | `PUT` |
-| `GET /{endpoint}/admin/pending`, `POST /{endpoint}/admin/approve` | The model's `admin-roles` |
-| `GET /ws/{endpoint}` (websocket) | `POST` (see `websockets.md`) |
+| `POST /{service}/{endpoint}` / `POST /{service}/{endpoint}/group` | `POST` / `POST-GROUP` |
+| `PUT /{service}/{endpoint}` / `PUT /{service}/{endpoint}/group` | `PUT` / `PUT-GROUP` |
+| `DELETE /{service}/{endpoint}` / `DELETE /{service}/{endpoint}/group` | `DELETE` / `DELETE-GROUP` |
+| `GET /{service}/{endpoint}/diff` | `DIFF` |
+| `POST /{service}/{endpoint}/diff` | `POST` |
+| `PUT /{service}/{endpoint}/diff` | `PUT` |
+| `GET /{service}/{endpoint}/admin/pending`, `POST /{service}/{endpoint}/admin/approve` | The model's `admin-roles` |
+| `GET /{service}/{endpoint}/ws` (websocket) | `POST` (see `websockets.md`) |
 
 | Failure | Status | Body (plain text) |
 |---------|--------|-------------------|
@@ -263,6 +263,7 @@ User tokens also carry:
 | `client_id` | The service the user logged in through |
 | `sid` | The login session. Every token from one login shares it |
 | `amr` | How the user logged in: `pwd`, plus `otp` with TOTP, or `fed` through an external IdP |
+| `auth_time` | When the user last authenticated interactively (Unix seconds). Set at login and kept unchanged through refreshes, so it shows how long ago they proved who they are. Missing on sessions started before it was recorded; treat those as needing a fresh login |
 
 ### 2.6 Verifying an access token
 
@@ -347,11 +348,10 @@ when the user has TOTP set up.
 | Status | Body | Cause |
 |--------|------|-------|
 | `401` | `{"error": "invalid_client"}` | The client assertion failed (2.4) |
-| `401` | `unauthorized` | Wrong username or password, disabled user, or a user with no password (such as one who signs in through Entra) |
-| `401` | `{"error": "invalid_grant"}` | TOTP code missing or wrong |
+| `400` | `{"error": "invalid_grant"}` | Wrong username or password, disabled user, a user with no password (such as one who signs in through Entra), or a TOTP code that is missing, wrong or already used |
 | `429` | `{"error": "slow_down"}` | More than 10 attempts for this service and username in 15 minutes |
 
-An unknown username and a wrong password give identical responses.
+Every login failure gives the identical response, so a caller can't tell which check failed. In particular a wrong TOTP code never confirms that the password was right. Each TOTP code can be used once; a second login with the same code fails.
 
 ### 4.2 Refreshing (`refresh_token` grant)
 

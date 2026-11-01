@@ -273,7 +273,7 @@ func TestClientCredentialsCreatesServiceUser(t *testing.T) {
 
 	var insert *modelstest.Call
 	for _, c := range f.a.ks.db.(*modelstest.FakeDB).Calls {
-		if strings.Contains(c.SQL, "INSERT INTO users") {
+		if strings.Contains(c.SQL, "INSERT INTO ohc_users") {
 			insert = &c
 		}
 	}

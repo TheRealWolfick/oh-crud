@@ -1,6 +1,7 @@
 name: service_keys
 version: 1.0.0
 table-name: service_keys
+service: ohc
 end-point: ""
 primary-key: kid
 

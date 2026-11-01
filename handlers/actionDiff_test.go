@@ -63,7 +63,7 @@ func TestDynamicActionDiff_ReadsExistingBatchCode(t *testing.T) {
 			}, nil
 		},
 		queryRowFn: func(ctx context.Context, sql string, args ...any) pgx.Row {
-			if strings.Contains(sql, "UPDATE diffs") {
+			if strings.Contains(sql, "UPDATE ohc_diffs") {
 				// Already batched -- the claim matches no row.
 				return &fakeRow{err: pgx.ErrNoRows}
 			}
@@ -108,7 +108,7 @@ func TestDynamicActionDiff_ConcurrentActionDoesNotRegenerateBatch(t *testing.T) 
 			}, nil
 		},
 		queryRowFn: func(ctx context.Context, sql string, args ...any) pgx.Row {
-			if strings.Contains(sql, "UPDATE diffs") {
+			if strings.Contains(sql, "UPDATE ohc_diffs") {
 				claimCalls++
 				if claimCalls == 1 {
 					return &fakeRow{values: []any{int64(9)}}

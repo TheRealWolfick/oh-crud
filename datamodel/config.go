@@ -681,31 +681,84 @@ func parseVersion(v string) ([3]int, error) {
 // endpointPattern is one or more path segments, with no leading, trailing or repeated '/'
 var endpointPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]*(/[A-Za-z0-9][A-Za-z0-9_-]*)*$`)
 
-// reservedEndpointPrefixes are first path segments the server registers routes under
-var reservedEndpointPrefixes = []string{"ws", "oauth", "health"}
+// reservedEndpointSegments are the sub-routes every model gets under its path
+// (/{service}/{end-point}/group and so on). No end-point segment may use one, or a
+// model's routes could collide with another model's sub-routes in the same service.
+var reservedEndpointSegments = []string{"group", "diff", "fn", "history", "ws", "admin"}
+
+// servicePattern is a service id: lower case letters and digits, starting with a letter,
+// 2 to 32 characters. It is the first path segment of every data route and the prefix of
+// every table it owns. Table names reach SQL unquoted, so no '-', and with no '_' the first
+// '_' of a qualified name always ends the service. A TopicKey relies on it having no '/'.
+var servicePattern = regexp.MustCompile(`^[a-z][a-z0-9]{1,31}$`)
+
+// maxIdentifier is PostgreSQL's identifier limit. Longer names are silently truncated,
+// which would make the table Oh CRUD creates differ from the one it queries.
+const maxIdentifier = 63
+
+// SystemService owns Oh CRUD's own tables. Only models in SystemModelsDir may use it.
+const SystemService = "ohc"
+
+// SystemModelsDir holds Oh CRUD's own models
+const SystemModelsDir = "config/default"
+
+// reservedServices are top-level route segments the server uses, so no service may take them
+var reservedServices = []string{"admin", "mesh", "oauth", "ws", "fn", "health"}
+
+// ValidateService reports whether id can be used as a service id
+func ValidateService(id string) error {
+	if !servicePattern.MatchString(id) {
+		return fmt.Errorf("service %q must be 2 to 32 lower case letters or digits, starting with a letter", id)
+	}
+	if slices.Contains(reservedServices, id) {
+		return fmt.Errorf("service %q is reserved for the server's own routes", id)
+	}
+	return nil
+}
+
+// ValidateModelOwner checks that only Oh CRUD's own models (those loaded from
+// SystemModelsDir) use the system service, and that they all do
+func ValidateModelOwner(m models.DataModel) error {
+	if m.Service == nil { return errors.New("service name is required") }
+	system := m.Filepath != nil && filepath.Dir(filepath.Clean(*m.Filepath)) == SystemModelsDir
+	switch {
+	case system && *m.Service != SystemService:
+		return fmt.Errorf("models in %s must use service %q, not %q", SystemModelsDir, SystemService, *m.Service)
+	case !system && *m.Service == SystemService:
+		return fmt.Errorf("service %q is reserved for Oh CRUD's own models", SystemService)
+	}
+	return nil
+}
 
 func ValidateDataModel(m models.DataModel) error {
 	var errs []string
 	reserved_fields := []string{"deleted_flag"}
 
-	if m.Name == nil || strings.TrimSpace(*m.Name) == "" {
-		errs = append(errs, "name is required")
-	}
-	if m.Version == nil || strings.TrimSpace(*m.Version) == "" {
+	if m.Name == nil || strings.TrimSpace(*m.Name) == "" { errs = append(errs, "name is required") }
+	if m.Version == nil || strings.TrimSpace(*m.Version) == "" { 
 		errs = append(errs, "version is required")
-	} else if _, err := parseVersion(*m.Version); err != nil {
-		errs = append(errs, fmt.Sprintf("version: %v", err))
+	} else if _, err := parseVersion(*m.Version); err != nil { errs = append(errs, fmt.Sprintf("version: %v", err)) }
+	if m.Table_name == nil || strings.TrimSpace(*m.Table_name) == "" { errs = append(errs, "table-name is required") }
+	if m.Service == nil || *m.Service == "" {
+		errs = append(errs, "service name is required")
+	} else if err := ValidateService(*m.Service); err != nil {
+		errs = append(errs, err.Error())
+	} else {
+		errs = append(errs, qualifiedNameErrors(m)...)
 	}
-	if m.Table_name == nil || strings.TrimSpace(*m.Table_name) == "" {
-		errs = append(errs, "table-name is required")
-	}
+
 	// end-point is optional, as a model without one has no API, but must be a clean path when set
 	if m.End_point != nil {
 		if end_point := strings.TrimSpace(*m.End_point); end_point != "" {
 			if !endpointPattern.MatchString(end_point) {
 				errs = append(errs, fmt.Sprintf("end-point %q must be path segments of letters, digits, '-' or '_', separated by single '/' with none leading or trailing", end_point))
-			} else if first, _, _ := strings.Cut(end_point, "/"); slices.Contains(reservedEndpointPrefixes, first) {
-				errs = append(errs, fmt.Sprintf("end-point %q cannot start with %q, which the server uses", end_point, first))
+			} else {
+				for _, seg := range strings.Split(end_point, "/") {
+					if slices.Contains(reservedEndpointSegments, seg) {
+						errs = append(errs, fmt.Sprintf("end-point %q cannot use the segment %q, which every model uses for its own routes", end_point, seg))
+						break
+					}
+				}
 			}
 		}
 	}
@@ -936,7 +989,34 @@ func ConvertFieldJsonSelect(cfg *models.DataModelField) (string, bool) {
 
 // ── Model transformers ────────────────────────────────────────────────────────────
 
+// qualifiedNameErrors checks that every name the model gets in the database, once its
+// service is prefixed, fits PostgreSQL's identifier limit
+func qualifiedNameErrors(m models.DataModel) []string {
+	var errs []string
+	svc := *m.Service
+	check := func(what string, name string) {
+		if len(name) > maxIdentifier {
+			errs = append(errs, fmt.Sprintf("%s %q is %d characters, over PostgreSQL's limit of %d. Shorten it, or the service name", what, name, len(name), maxIdentifier))
+		}
+	}
+	if m.Table_name != nil && strings.TrimSpace(*m.Table_name) != "" {
+		table := models.QualifiedName(svc, *m.Table_name)
+		check("table", table)
+		if m.Track_history != nil && *m.Track_history { check("history table", table+"_history") }
+		for name, f := range m.Fields {
+			if f.DB_type != nil && strings.Contains(strings.ToLower(*f.DB_type), "serial") {
+				check("sequence", table+"_"+name+"_seq")
+			}
+		}
+	}
+	for name := range m.Unique_keys { check("unique key", models.QualifiedName(svc, name)) }
+	for name := range m.Indexes { check("index", models.QualifiedName(svc, name)) }
+	return errs
+}
+
 func ProcessModelAdditionalFields(m *models.DataModel) {
+	qualifyNames(m)
+
 	// Normalise the end-point so it is never nil. Empty means the model has no API
 	end_point := ""
 	if m.End_point != nil { end_point = strings.TrimSpace(*m.End_point) }
@@ -945,5 +1025,39 @@ func ProcessModelAdditionalFields(m *models.DataModel) {
 	// Add soft delete field
 	if m.Soft_delete != nil && *m.Soft_delete {
 		m.Fields["deleted_flag"] = *models.GetSoftDeleteConfig()
+	}
+}
+
+// qualifyNames turns the model's names into the ones its service owns in the database.
+// The table becomes <service>_<table-name>, foreign keys point at tables in the same
+// service, and unique key and index names (which PostgreSQL keeps per schema, not per
+// table) get the service prefix too. It runs once: Short_table_name marks a model done.
+func qualifyNames(m *models.DataModel) {
+	if m.Short_table_name != nil || m.Table_name == nil || m.Service == nil || *m.Service == "" { return }
+	svc := *m.Service
+
+	short := *m.Table_name
+	table := models.QualifiedName(svc, short)
+	m.Short_table_name = &short
+	m.Table_name = &table
+
+	// A service only references its own tables
+	for name, fk := range m.Foreign_keys {
+		if fk.Target_table != nil {
+			target := models.QualifiedName(svc, strings.TrimSpace(*fk.Target_table))
+			fk.Target_table = &target
+			m.Foreign_keys[name] = fk
+		}
+	}
+
+	if len(m.Unique_keys) > 0 {
+		uks := make(map[string]models.UniqueKey, len(m.Unique_keys))
+		for name, uk := range m.Unique_keys { uks[models.QualifiedName(svc, name)] = uk }
+		m.Unique_keys = uks
+	}
+	if len(m.Indexes) > 0 {
+		idx := make(map[string]models.Index, len(m.Indexes))
+		for name, i := range m.Indexes { idx[models.QualifiedName(svc, name)] = i }
+		m.Indexes = idx
 	}
 }

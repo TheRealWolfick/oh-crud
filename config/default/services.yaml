@@ -3,6 +3,7 @@
 name: services
 version: 1.0.0
 table-name: services
+service: ohc
 end-point: ""
 primary-key: id
 fields:

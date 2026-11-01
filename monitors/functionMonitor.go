@@ -1,6 +1,7 @@
 package monitors
 
 import (
+	"path/filepath"
 
 	"github.com/fsnotify/fsnotify"
 	"lotusforge.au/api-server/datamodel"
@@ -33,6 +34,28 @@ func FunctionsMonitor(
 	}
 	defer watcher.Close()
 
+	// Functions may sit in any folder below config/functions
+	root := "./config/functions"
+
+	// reload validates and re-registers the function in one YAML file
+	reload := func(path string) {
+		if filepath.Ext(path) != ".yaml" { return }
+		fn, err := datamodel.LoadYAMLIntoModel[models.FunctionDef](path)
+		if err != nil {
+			qm.Logger.Error("Updated function YAML failed to load; skipping",
+				"file", path, "error", err)
+			return
+		}
+		if errs := registry.ValidateFunction(fn, modelRegistry); len(errs) > 0 {
+			qm.Logger.Error("Updated function YAML failed validation; skipping",
+				"file", path, "errors", errs)
+			return
+		}
+		qm.Logger.Debug("Function update detected", "name", *fn.Name, "bound-to", fn.BoundPath())
+		functionRegistry.Register(fn)
+		handlers.RegisterFunctionRoutes(fn, modelRegistry, handlerRegistry, auth, qm, server_conf, evh)
+	}
+
 	go func() {
 		for {
 			select {
@@ -42,22 +65,16 @@ func FunctionsMonitor(
 				// the watcher keeps running
 				func() {
 					defer safe.Recover(qm.Logger, "functions monitor", nil)
-					if !event.Has(fsnotify.Write) { return }
-
-					fn, err := datamodel.LoadYAMLIntoModel[models.FunctionDef](event.Name)
-					if err != nil {
-						qm.Logger.Error("Updated function YAML failed to load; skipping",
-							"file", event.Name, "error", err)
+					// A new folder needs watching, and may arrive with functions already in it
+					if newFolder(event, []string{root}) {
+						if err := watchTree(watcher, event.Name); err != nil {
+							qm.Logger.Error("Failed to watch new function folder", "dir", event.Name, "error", err)
+						}
+						files, _ := datamodel.YAMLFiles(event.Name, true)
+						for _, f := range files { reload(f) }
 						return
 					}
-					if errs := registry.ValidateFunction(fn, modelRegistry); len(errs) > 0 {
-						qm.Logger.Error("Updated function YAML failed validation; skipping",
-							"file", event.Name, "errors", errs)
-						return
-					}
-					qm.Logger.Debug("Function update detected", "name", *fn.Name, "bound-to", *fn.Bound_to)
-					functionRegistry.Register(fn)
-					handlers.RegisterFunctionRoutes(fn, modelRegistry, handlerRegistry, auth, qm, server_conf, evh)
+					if event.Has(fsnotify.Write) { reload(event.Name) }
 				}()
 
 			case err, ok := <-watcher.Errors:
@@ -67,11 +84,12 @@ func FunctionsMonitor(
 		}
 	}()
 
-	if err := watcher.Add("./config/functions"); err != nil {
+	if err := watchTree(watcher, root); err != nil {
 		// Missing directory is not fatal — functions are opt-in.
 		qm.Logger.Debug("Function directory absent; hot-reload disabled until it exists",
 			"error", err)
 	}
 
+	// Block goroutine
 	<-make(chan struct{})
 }

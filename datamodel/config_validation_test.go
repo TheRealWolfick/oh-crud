@@ -22,6 +22,7 @@ func configTestModel() *models.DataModel {
 		Name:        ptr("Test Model"),
 		Version:     ptr("1.0.0"),
 		Table_name:  ptr("test_table"),
+		Service:     ptr("assets"),
 		End_point:   ptr("test"),
 		Primary_key: ptr("id"),
 		Diff_comparator: ptr("code"),

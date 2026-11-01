@@ -297,7 +297,7 @@ func tableHistoryBlock(m *models.DataModel) string {
 
 	sb.WriteString(fmt.Sprintf("    foreign_key %q {\n", fmt.Sprintf("fk_%s_history_user", *m.Table_name)))
 	sb.WriteString(            "      columns     = [column.changed_by]\n")
-	sb.WriteString(            "      ref_columns = [table.users.column.username]\n")
+	sb.WriteString(            "      ref_columns = [table.ohc_users.column.username]\n")
 	sb.WriteString(            "      on_update   = CASCADE\n")
 	sb.WriteString(            "      on_delete   = CASCADE\n")
 	sb.WriteString(            "    }\n}\n")

@@ -2,6 +2,7 @@ package monitors
 
 import (
 	"context"
+	"path/filepath"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -23,6 +24,47 @@ func ModelsMonitor(handlerRegistry *registry.HandlerRegistry, modelRegistry *reg
 	}
 	defer watcher.Close()
 
+	// User models may sit in any folder below base-models, so a service can keep its own
+	// together. The system models in default stay flat.
+	recursive := []string{"./config/base-models"}
+	flat := []string{"./config/special-models", "./config/default"}
+
+	// reload validates, syncs and re-registers the model in one YAML file
+	reload := func(path string) {
+		if filepath.Ext(path) != ".yaml" { return }
+		updated_config, err := datamodel.LoadYAMLIntoModel[models.DataModel](path)
+		if err != nil {
+			qm.Logger.Error("Updated YAML failed to load. Skipping updating routes", "error", err)
+		} else {
+			// Record the source path so the gate/snapshot logic can find and revert it.
+			source := path
+			updated_config.Filepath = &source
+			// Check updated model is valid
+			qm.Logger.Debug("Update detected to config file", "config", *updated_config.Name)
+			if err := datamodel.ValidateDataModel(*updated_config); err != nil {
+				qm.Logger.Error("Updated YAML failed validation, routes not updated", "error", err)
+			} else if err := datamodel.ValidateModelOwner(*updated_config); err != nil {
+				qm.Logger.Error("Updated YAML failed validation, routes not updated", "error", err)
+			} else {
+				// Process model
+				datamodel.ProcessModelAdditionalFields(updated_config)
+				// Sync model first, stopping if there is an error or destructive change
+				schematools.SyncModelIfNeeded(context.Background(), qm.Db.(*pgxpool.Pool), updated_config, modelRegistry.All(), qm.Logger, gate)
+				// If the sync stopped because of destructive changes, the change will be waiting in the gate
+				if _, pending := gate.Pending(*updated_config.Table_name); !pending {
+					if err := modelRegistry.Register(updated_config); err != nil {
+						qm.Logger.Error("Updated model not loaded, routes not updated", "config", *updated_config.Name, "error", err)
+						return
+					}
+					diff_model, _ := modelRegistry.ByTableName("ohc_diffs")
+					handlers.RegisterRoutes(updated_config, diff_model, handlerRegistry, auth, qm, server_conf, evh, gate, modelRegistry)
+				} else {
+					qm.Logger.Info("Pending change waiting", "table", *updated_config.Table_name)
+				}
+			}
+		}
+	}
+
 	go func() {
 		for {
 			select {
@@ -34,37 +76,16 @@ func ModelsMonitor(handlerRegistry *registry.HandlerRegistry, modelRegistry *reg
 				// the watcher keeps running
 				func() {
 					defer safe.Recover(qm.Logger, "models monitor", nil)
-					if event.Has(fsnotify.Write) {
-						updated_config, err := datamodel.LoadYAMLIntoModel[models.DataModel](event.Name)
-						if err != nil {
-							qm.Logger.Error("Updated YAML failed to load. Skipping updating routes", "error", err)
-						} else {
-							// Record the source path so the gate/snapshot logic can find and revert it.
-							filepath := event.Name
-							updated_config.Filepath = &filepath
-							// Check updated model is valid
-							qm.Logger.Debug("Update detected to config file", "config", *updated_config.Name)
-							if err := datamodel.ValidateDataModel(*updated_config); err != nil {
-								qm.Logger.Error("Updated YAML failed validation, routes not updated", "error", err)
-							} else {
-								// Process model
-								datamodel.ProcessModelAdditionalFields(updated_config)
-								// Sync model first, stopping if there is an error or destructive change
-								schematools.SyncModelIfNeeded(context.Background(), qm.Db.(*pgxpool.Pool), updated_config, modelRegistry.All(), qm.Logger, gate)
-								// If the sync stopped because of destructive changes, the change will be waiting in the gate
-								if _, pending := gate.Pending(*updated_config.Table_name); !pending {
-									if err := modelRegistry.Register(updated_config); err != nil {
-										qm.Logger.Error("Updated model not loaded, routes not updated", "config", *updated_config.Name, "error", err)
-										return
-									}
-									diff_model, _ := modelRegistry.ByTableName("diffs")
-									handlers.RegisterRoutes(updated_config, diff_model, handlerRegistry, auth, qm, server_conf, evh, gate, modelRegistry)
-								} else {
-									qm.Logger.Info("Pending change waiting", "table", *updated_config.Table_name)
-								}
-							}
+					// A new folder needs watching, and may arrive with models already in it
+					if newFolder(event, recursive) {
+						if err := watchTree(watcher, event.Name); err != nil {
+							qm.Logger.Error("Failed to watch new folder", "dir", event.Name, "error", err)
 						}
+						files, _ := datamodel.YAMLFiles(event.Name, true)
+						for _, f := range files { reload(f) }
+						return
 					}
+					if event.Has(fsnotify.Write) { reload(event.Name) }
 				}()
 
 			case err, ok := <-watcher.Errors:
@@ -76,10 +97,13 @@ func ModelsMonitor(handlerRegistry *registry.HandlerRegistry, modelRegistry *reg
 		}
 	}()
 
-	paths := []string{"./config/base-models", "./config/special-models", "./config/default"}
-	for _, p := range paths {
-		err = watcher.Add(p)
-		if err != nil {
+	for _, p := range recursive {
+		if err := watchTree(watcher, p); err != nil {
+			qm.Logger.Error("Failed to load monitoring for folder", "dir", p, "error", err)
+		}
+	}
+	for _, p := range flat {
+		if err := watcher.Add(p); err != nil {
 			qm.Logger.Error("Failed to load monitoring for folder", "dir", p)
 		}
 	}

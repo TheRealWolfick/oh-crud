@@ -12,7 +12,7 @@ BEGIN
 
     SELECT COALESCE(MAX(batch_number), 0) + 1
       INTO v_latest_batch_number
-      FROM batch_numbers
+      FROM ohc_batch_numbers
      WHERE table_name = p_table_name AND service = p_service;
 
     IF v_latest_batch_number IS NULL THEN
@@ -24,7 +24,7 @@ BEGIN
             USING HINT = 'Investigate why latest batch number generated as < 1.';
     END IF;
 
-    INSERT INTO batch_numbers(table_name, service, batch_number, generated_by, generated_date)
+    INSERT INTO ohc_batch_numbers(table_name, service, batch_number, generated_by, generated_date)
     VALUES (p_table_name, p_service, v_latest_batch_number, p_generated_by, now());
 
     RETURN v_latest_batch_number;

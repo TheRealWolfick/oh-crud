@@ -118,35 +118,38 @@ func buildOpenAPISpec(dataModels []models.DataModel, functions []*models.Functio
 		},
 	}
 
-	// Index model names by end point so function paths can be tagged with the
-	// bound model's name, matching the tag every other operation on that model uses.
-	modelNameByEndpoint := map[string]string{}
+	// Index model tags by path so function paths can be tagged with the bound
+	// model's tag, matching the tag every other operation on that model uses.
+	modelTagByPath := map[string]string{}
 	for _, m := range dataModels {
-		if m.Name != nil && m.End_point != nil {
-			modelNameByEndpoint[*m.End_point] = *m.Name
+		if m.Name != nil && m.Path() != "" {
+			modelTagByPath[m.Path()] = modelTag(m)
 		}
 	}
 
 	for _, m := range dataModels {
-		if m.Name == nil || m.End_point == nil {
+		// Models with no end-point have no routes to document
+		if m.Name == nil || m.Path() == "" || m.Table_name == nil {
 			continue
 		}
 
-		schemaName := titleFirst(*m.Name)
-		spec.Components.Schemas[schemaName] = buildModelSchema(m)
-		schemaRef := "#/components/schemas/" + schemaName
+		// Schema and operation ids come from the table, which is <service>_<table-name>
+		// and so unique across services, where two services may share a model name
+		ident := sanitizeName(*m.Table_name)
+		spec.Components.Schemas[ident] = buildModelSchema(m)
+		schemaRef := "#/components/schemas/" + ident
 
 		allowed := m.End_points_allowed
-		tags := []string{*m.Name}
+		tags := []string{modelTag(m)}
 
 		// ── Standard CRUD path ──────────────────────────────────────────
-		path := "/" + *m.End_point
+		path := "/" + m.Path()
 		pi := oaPathItem{}
 
 		if isEnabled(allowed, "GET") {
 			pi.Get = &oaOperation{
 				Summary:     "List " + *m.Name,
-				OperationID: "list" + sanitizeName(*m.Name),
+				OperationID: "list" + ident,
 				Tags:        tags,
 				Parameters:  buildGetParams(m, schemaRef),
 				Responses: map[string]oaResponse{
@@ -165,7 +168,7 @@ func buildOpenAPISpec(dataModels []models.DataModel, functions []*models.Functio
 		if isEnabled(allowed, "POST") {
 			pi.Post = &oaOperation{
 				Summary:     "Create " + *m.Name,
-				OperationID: "create" + sanitizeName(*m.Name),
+				OperationID: "create" + ident,
 				Tags:        tags,
 				RequestBody: bodyRef(schemaRef, false),
 				Responses:   taskResponse(),
@@ -174,7 +177,7 @@ func buildOpenAPISpec(dataModels []models.DataModel, functions []*models.Functio
 		if isEnabled(allowed, "PUT") {
 			pi.Put = &oaOperation{
 				Summary:     "Update " + *m.Name,
-				OperationID: "update" + sanitizeName(*m.Name),
+				OperationID: "update" + ident,
 				Tags:        tags,
 				RequestBody: bodyRef(schemaRef, false),
 				Responses:   taskResponse(),
@@ -183,7 +186,7 @@ func buildOpenAPISpec(dataModels []models.DataModel, functions []*models.Functio
 		if isEnabled(allowed, "DELETE") {
 			pi.Delete = &oaOperation{
 				Summary:     "Delete " + *m.Name,
-				OperationID: "delete" + sanitizeName(*m.Name),
+				OperationID: "delete" + ident,
 				Tags:        tags,
 				RequestBody: bodyRef(schemaRef, false),
 				Responses:   taskResponse(),
@@ -198,7 +201,7 @@ func buildOpenAPISpec(dataModels []models.DataModel, functions []*models.Functio
 			hasGroup = true
 			gpItem.Post = &oaOperation{
 				Summary:     "Bulk create " + *m.Name,
-				OperationID: "bulkCreate" + sanitizeName(*m.Name),
+				OperationID: "bulkCreate" + ident,
 				Tags:        tags,
 				RequestBody: bodyArrayRef(schemaRef),
 				Responses:   taskResponse(),
@@ -208,7 +211,7 @@ func buildOpenAPISpec(dataModels []models.DataModel, functions []*models.Functio
 			hasGroup = true
 			gpItem.Put = &oaOperation{
 				Summary:     "Bulk update " + *m.Name,
-				OperationID: "bulkUpdate" + sanitizeName(*m.Name),
+				OperationID: "bulkUpdate" + ident,
 				Tags:        tags,
 				RequestBody: bodyArrayRef(schemaRef),
 				Responses:   taskResponse(),
@@ -218,14 +221,14 @@ func buildOpenAPISpec(dataModels []models.DataModel, functions []*models.Functio
 			hasGroup = true
 			gpItem.Delete = &oaOperation{
 				Summary:     "Bulk delete " + *m.Name,
-				OperationID: "bulkDelete" + sanitizeName(*m.Name),
+				OperationID: "bulkDelete" + ident,
 				Tags:        tags,
 				RequestBody: bodyArrayRef(schemaRef),
 				Responses:   taskResponse(),
 			}
 		}
 		if hasGroup {
-			spec.Paths["/"+*m.End_point+"/group"] = gpItem
+			spec.Paths["/"+m.Path()+"/group"] = gpItem
 		}
 
 		// ── Diff paths ──────────────────────────────────────────────────
@@ -233,7 +236,7 @@ func buildOpenAPISpec(dataModels []models.DataModel, functions []*models.Functio
 			diffItem := oaPathItem{}
 			diffItem.Get = &oaOperation{
 				Summary:     "Get diffs for " + *m.Name,
-				OperationID: "getDiff" + sanitizeName(*m.Name),
+				OperationID: "getDiff" + ident,
 				Tags:        tags,
 				Parameters: []oaParameter{
 					{Name: "task_id", In: "query", Schema: oaSchema{Type: "string"}},
@@ -245,14 +248,14 @@ func buildOpenAPISpec(dataModels []models.DataModel, functions []*models.Functio
 			}
 			diffItem.Post = &oaOperation{
 				Summary:     "Create diff for " + *m.Name,
-				OperationID: "createDiff" + sanitizeName(*m.Name),
+				OperationID: "createDiff" + ident,
 				Tags:        tags,
 				RequestBody: bodyArrayRef(schemaRef),
 				Responses:   taskResponse(),
 			}
 			diffItem.Put = &oaOperation{
 				Summary:     "Action diff for " + *m.Name,
-				OperationID: "actionDiff" + sanitizeName(*m.Name),
+				OperationID: "actionDiff" + ident,
 				Tags:        tags,
 				Parameters: []oaParameter{
 					{Name: "checksum", In: "query", Required: true, Schema: oaSchema{Type: "string"}},
@@ -261,7 +264,7 @@ func buildOpenAPISpec(dataModels []models.DataModel, functions []*models.Functio
 					"200": {Description: "Sync instructions"},
 				},
 			}
-			spec.Paths["/"+*m.End_point+"/diff"] = diffItem
+			spec.Paths["/"+m.Path()+"/diff"] = diffItem
 		}
 	}
 
@@ -270,11 +273,11 @@ func buildOpenAPISpec(dataModels []models.DataModel, functions []*models.Functio
 	// models.DataModel) and were previously invisible to this generator because it
 	// was only ever handed the model registry.
 	for _, fn := range functions {
-		if fn.Bound_to == nil || fn.Name == nil {
+		if fn.BoundPath() == "" || fn.Name == nil {
 			continue
 		}
-		tags := []string{*fn.Bound_to}
-		if name, ok := modelNameByEndpoint[*fn.Bound_to]; ok {
+		tags := []string{fn.BoundPath()}
+		if name, ok := modelTagByPath[fn.BoundPath()]; ok {
 			tags = []string{name}
 		}
 
@@ -295,16 +298,16 @@ func buildOpenAPISpec(dataModels []models.DataModel, functions []*models.Functio
 			})
 		}
 
-		description := "Declarative function bound to " + *fn.Bound_to + ". `fields` is ignored — the function owns its column list; only its declared parameters produce WHERE clauses."
+		description := "Declarative function bound to " + fn.BoundPath() + ". `fields` is ignored — the function owns its column list; only its declared parameters produce WHERE clauses."
 		if fn.Description != nil && *fn.Description != "" {
 			description = *fn.Description
 		}
 
-		spec.Paths["/"+*fn.Bound_to+"/fn/"+*fn.Name] = oaPathItem{
+		spec.Paths["/"+fn.BoundPath()+"/fn/"+*fn.Name] = oaPathItem{
 			Get: &oaOperation{
 				Summary:     "Run function " + *fn.Name,
 				Description: description,
-				OperationID: "fn" + sanitizeName(*fn.Bound_to) + sanitizeName(*fn.Name),
+				OperationID: "fn" + sanitizeName(fn.BoundPath()) + sanitizeName(*fn.Name),
 				Tags:        tags,
 				Parameters:  params,
 				Responses: map[string]oaResponse{
@@ -483,6 +486,10 @@ func taskResponse() map[string]oaResponse {
 		},
 	}
 }
+
+// modelTag groups a model's operations: its service, then its name, so two services'
+// models of the same name stay apart
+func modelTag(m models.DataModel) string { return *m.Service + "/" + *m.Name }
 
 func titleFirst(s string) string {
 	if s == "" {

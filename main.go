@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -69,13 +68,19 @@ func main() {
 	// ---------------------------------------------------------------
 	//                Data Models
 	// ---------------------------------------------------------------
-	default_models := loadModelsFromDir(default_models_dir, logger)   // Server models
-	base_models := loadModelsFromDir(models_dir, logger) 							// User models
+	default_models := loadModelsFromDir(default_models_dir, false, logger)   // Server models
+	base_models := loadModelsFromDir(models_dir, true, logger) 					// User models, in any folder below
 	all_models := append(default_models, base_models...)
 
 	// Sync database schema for all loaded models.
 	// Destructive changes are recorded in the gate and blocked until manually approved.
 	gate := schematools.NewPendingApprovalGate()
+
+	// Tables are named <service>_<table-name>. Rename any still under their old bare name
+	// first, or the sync below would create empty tables beside them.
+	if err := schematools.MigrateToQualifiedNames(context.Background(), pool, all_models, logger); err != nil {
+		logger.Error("Failed to rename tables to include their service", "error", err); os.Exit(1)
+	}
 	schematools.BootstrapModels(context.Background(), pool, all_models, logger, gate)
 
 
@@ -127,7 +132,7 @@ func main() {
 	}
 
 	// Check to ensure the required tables are available. Exit if any are false
-	for _, table := range []string{"diffs", "events", "batch_numbers", "signing_keys"} {
+	for _, table := range []string{"ohc_diffs", "ohc_events", "ohc_batch_numbers", "ohc_signing_keys"} {
 		_, found := modelRegister.ByTableName(table)
 		if !found { logger.Error("missing required table", "table", table); os.Exit(1) }
 	}
@@ -136,7 +141,7 @@ func main() {
 	// ---------------------------------------------------------------
 	//                Server - User tables
 	// ---------------------------------------------------------------
-	diff_model, _ := modelRegister.ByTableName("diffs")
+	diff_model, _ := modelRegister.ByTableName("ohc_diffs")
 	for _, dm := range base_models {
 		if err := modelRegister.Register(&dm); err != nil { logger.Error("Failed to load model", "data-model", *dm.Name, "error", err); continue }
 		handlers.RegisterRoutes(&dm, diff_model, handlerRegister, authMiddleware, qm, server_conf, evh, gate, modelRegister)
@@ -203,33 +208,29 @@ func main() {
 	defer pool.Close()
 }
 
-func loadModelsFromDir(dir string, logger interface{ Warn(string, ...any); Error(string, ...any) }) []models.DataModel {
+func loadModelsFromDir(dir string, recursive bool, logger interface{ Warn(string, ...any); Error(string, ...any) }) []models.DataModel {
 	result := make([]models.DataModel, 0)
 
-	entries, err := os.ReadDir(dir)
+	files, err := datamodel.YAMLFiles(dir, recursive)
 	if err != nil {
 		logger.Error("Error reading model config files", "dir", dir, "error", err)
 		return result
 	}
 
-	for _, entry := range entries {
-		info, err := entry.Info()
-		if err != nil {
-			logger.Warn("Error reading config file info", "error", err)
-			continue
-		}
-		if filepath.Ext(info.Name()) != ".yaml" {
-			continue
-		}
-		fp := fmt.Sprintf("%s/%s", dir, info.Name())
+	for _, fp := range files {
 		data, err := datamodel.LoadYAMLIntoModel[models.DataModel](fp)
 		if err != nil {
-			logger.Warn(fmt.Sprintf("Failed to load config file: %s", info.Name()), "error", err)
+			logger.Warn(fmt.Sprintf("Failed to load config file: %s", fp), "error", err)
 			continue
 		}
 		data.Filepath = &fp
 		if err := datamodel.ValidateDataModel(*data); err != nil {
-			logger.Warn(fmt.Sprintf("Config file failed validation: %s", info.Name()), "error", err)
+			logger.Warn(fmt.Sprintf("Config file failed validation: %s", fp), "error", err)
+			continue
+		}
+		// Only Oh CRUD's own models may use the system service
+		if err := datamodel.ValidateModelOwner(*data); err != nil {
+			logger.Warn(fmt.Sprintf("Config file failed validation: %s", fp), "error", err)
 			continue
 		}
 		datamodel.ProcessModelAdditionalFields(data)

@@ -44,15 +44,15 @@ func TestRegisterRoutes_NilDiffCfg_NoPanic(t *testing.T) {
 	RegisterRoutes(cfg, nil, hr, noopAuth, qm, svr, evh, gate, modelRegistry)
 
 	// The base resource route must still be registered...
-	req := httptest.NewRequest(http.MethodGet, "/assets", nil)
+	req := httptest.NewRequest(http.MethodGet, "/inventory/assets", nil)
 	if _, pattern := mux.Handler(req); pattern == "" {
-		t.Errorf("expected GET /assets to be registered even when diff_cfg is nil")
+		t.Errorf("expected GET /inventory/assets to be registered even when diff_cfg is nil")
 	}
 
 	// ...but the /diff routes must not be, since there's no diffs model to serve them.
-	diffReq := httptest.NewRequest(http.MethodGet, "/assets/diff", nil)
+	diffReq := httptest.NewRequest(http.MethodGet, "/inventory/assets/diff", nil)
 	if _, pattern := mux.Handler(diffReq); pattern != "" {
-		t.Errorf("expected GET /assets/diff to be unregistered when diff_cfg is nil, got pattern %q", pattern)
+		t.Errorf("expected GET /inventory/assets/diff to be unregistered when diff_cfg is nil, got pattern %q", pattern)
 	}
 }
 
@@ -71,7 +71,7 @@ func TestRegisterRoutes_WithDiffCfg_RegistersDiffRoutes(t *testing.T) {
 
 	RegisterRoutes(cfg, diffCfg, hr, noopAuth, qm, svr, evh, gate, modelRegistry)
 
-	for _, target := range []string{"/assets/diff"} {
+	for _, target := range []string{"/inventory/assets/diff"} {
 		req := httptest.NewRequest(http.MethodGet, target, nil)
 		if _, pattern := mux.Handler(req); pattern == "" {
 			t.Errorf("expected GET %s to be registered when diff_cfg is provided", target)
@@ -142,7 +142,85 @@ func TestRegisterRoutes_DuplicateEndpoint_Refused(t *testing.T) {
 	if err := register(first); err != nil {
 		t.Errorf("expected the owner to reload, got %v", err)
 	}
-	if !routeRegistered(mux, http.MethodPost, "/assets") {
+	if !routeRegistered(mux, http.MethodPost, "/inventory/assets") {
 		t.Error("expected the first model's routes to be registered")
+	}
+}
+
+// Every route a model gets sits under /{service}/{end-point}, and nothing is left at the
+// old unprefixed paths
+func TestRegisterRoutes_AllRoutesUnderServicePath(t *testing.T) {
+	mux, register := newRouteFixture(t)
+	cfg := diffResourceCfg()
+	cfg.Track_history = ptr(true)
+	if err := register(cfg); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	want := []struct{ method, target string }{
+		{http.MethodGet, "/inventory/assets"},
+		{http.MethodOptions, "/inventory/assets"},
+		{http.MethodPut, "/inventory/assets/group"},
+		{http.MethodGet, "/inventory/assets/fn/aggregate"},
+		{http.MethodGet, "/inventory/assets/admin/pending"},
+		{http.MethodPost, "/inventory/assets/admin/approve"},
+		{http.MethodGet, "/inventory/assets/history/42"},
+		{http.MethodGet, "/inventory/assets/ws"},
+	}
+	for _, w := range want {
+		if !routeRegistered(mux, w.method, w.target) {
+			t.Errorf("expected %s %s to be registered", w.method, w.target)
+		}
+	}
+
+	gone := []struct{ method, target string }{
+		{http.MethodGet, "/assets"},
+		{http.MethodOptions, "/assets"},
+		{http.MethodGet, "/assets/admin/pending"},
+		{http.MethodGet, "/assets/history/42"},
+		{http.MethodGet, "/ws/assets"},
+	}
+	for _, g := range gone {
+		if routeRegistered(mux, g.method, g.target) {
+			t.Errorf("expected nothing at the old path %s %s", g.method, g.target)
+		}
+	}
+}
+
+// Two services may each have an end-point of the same name
+func TestRegisterRoutes_SameEndpointInTwoServices(t *testing.T) {
+	mux, register := newRouteFixture(t)
+	first := diffResourceCfg()
+	if err := register(first); err != nil {
+		t.Fatalf("register first: %v", err)
+	}
+
+	second := diffResourceCfg()
+	second.Name = ptr("permit-assets")
+	second.Table_name = ptr("permit_assets")
+	second.Service = ptr("permits")
+	if err := register(second); err != nil {
+		t.Fatalf("expected the same end-point in another service to load, got %v", err)
+	}
+
+	for _, target := range []string{"/inventory/assets", "/permits/assets"} {
+		if !routeRegistered(mux, http.MethodGet, target) {
+			t.Errorf("expected GET %s to be registered", target)
+		}
+	}
+}
+
+// A model with an end-point but no service must not register routes or panic
+func TestRegisterRoutes_NoService_RegistersNothing(t *testing.T) {
+	mux, register := newRouteFixture(t)
+	cfg := diffResourceCfg()
+	cfg.Service = nil
+	if err := register(cfg); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	for _, target := range []string{"/assets", "//assets"} {
+		if routeRegistered(mux, http.MethodGet, target) {
+			t.Errorf("expected no route at %s for a model without a service", target)
+		}
 	}
 }

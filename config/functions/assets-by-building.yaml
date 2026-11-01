@@ -1,7 +1,8 @@
 ---
 name: assets-by-building
 version: 1.0.0
-bound-to: asset/data
+service: assets          # the bound model's service; functions can only bind to their own service's tables
+bound-to: asset/data     # the end-point within that service
 description: |
   Sample declarative function. Counts assets grouped by building, with an
   optional ?category=<cat_code> filter. Demonstrates the basic shape of a

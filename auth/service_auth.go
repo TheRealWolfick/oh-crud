@@ -169,7 +169,7 @@ const serviceUserPrefix = "svc:"
 // history, diffs and events reference users.username. The row has no password or
 // roles, so it can never log in or be used to widen access.
 func (a *Auth) ensureServiceUser(ctx context.Context, svcID string) error {
-	sql := `INSERT INTO users (id, username, display_name, roles) VALUES ($1, $1, $2, '{}') ON CONFLICT DO NOTHING`
+	sql := `INSERT INTO ohc_users (id, username, display_name, roles) VALUES ($1, $1, $2, '{}') ON CONFLICT DO NOTHING`
 	_, err := a.ks.db.Exec(ctx, sql, serviceUserPrefix+svcID, svcID)
 	return err
 }
@@ -251,7 +251,7 @@ const userColumns = `
 	COALESCE(roles, '{}') AS roles`
 
 func (a *Auth) getUser(ctx context.Context, where string, arg string) (*models.User, error) {
-	rows, err := a.ks.db.Query(ctx, `SELECT `+userColumns+` FROM users WHERE `+where+` = $1 LIMIT 1`, arg)
+	rows, err := a.ks.db.Query(ctx, `SELECT `+userColumns+` FROM ohc_users WHERE `+where+` = $1 LIMIT 1`, arg)
 	if err != nil { return nil, err }
 
 	return pgx.CollectOneRow(rows, pgx.RowToAddrOfStructByName[models.User])
@@ -268,7 +268,7 @@ func (a *Auth) getUserByID(ctx context.Context, id string) (*models.User, error)
 // Swap the stored hash only if it hasn't changed since it was read, so a
 // concurrent password change is never overwritten with the old password
 func (a *Auth) updatePasswordHash(ctx context.Context, userID string, oldHash string, newHash string) error {
-	sql := `UPDATE users SET password_hash = $1 WHERE id = $2 AND password_hash = $3`
+	sql := `UPDATE ohc_users SET password_hash = $1 WHERE id = $2 AND password_hash = $3`
 	_, err := a.ks.db.Exec(ctx, sql, newHash, userID, oldHash)
 	return err
 }
@@ -294,7 +294,7 @@ func (a *Auth) CreateUser(ctx context.Context, username string, display_name str
 		hash = &h
 	}
 
-	sql := `INSERT INTO users (id, username, display_name, password_hash, roles) VALUES ($1, $2, $3, $4, $5)`
+	sql := `INSERT INTO ohc_users (id, username, display_name, password_hash, roles) VALUES ($1, $2, $3, $4, $5)`
 	if _, err := a.ks.db.Exec(ctx, sql, id, username, display_name, hash, roles); err != nil { return nil, err }
 
 	user := &models.User{ID: id, Username: username, Displayname: display_name, Roles: roles}
@@ -305,7 +305,7 @@ func (a *Auth) CreateUser(ctx context.Context, username string, display_name str
 // The password grant for a user login. The client must assert who it is.
 func (a *Auth) PasswordLogin(w http.ResponseWriter, r *http.Request) {
 	username := r.PostFormValue("username")
-	password := r.PostFormValue("password")   // This should be a hash
+	password := r.PostFormValue("password")   // The plain password, sent over TLS. Never pre-hashed by the client, or the hash becomes the password
 
 	// Verify which client is asking
 	svc, err := a.AuthenticateService(r)
@@ -324,7 +324,7 @@ func (a *Auth) PasswordLogin(w http.ResponseWriter, r *http.Request) {
 
 	// Get the user
 	usr, err := a.getUserByUsername(r.Context(), username)
-	
+
 	// Use a dummy hash if there is no user, or the user has no password (such as one
 	// who signs in through Entra), so every failure takes as long as a real check
 	hasPassword := err == nil && usr.PasswordHash != ""
@@ -334,22 +334,23 @@ func (a *Auth) PasswordLogin(w http.ResponseWriter, r *http.Request) {
 	// Check if the hash matches the supplied password
 	match, params, hashErr := argon2id.CheckHash(password, hash)
 
-	// Handle false login. A match against the dummy never counts.
+	// Every failure below gives the same response, so a caller can't tell a wrong
+	// password from a disabled account or a wrong OTP (which would confirm the password).
+	// A match against the dummy never counts.
 	// TODO: implement logging for failed login
-	if !hasPassword || hashErr != nil || !match { unauthorized(w); return }
-
-	// A disabled account fails the same way as a wrong password
-	if usr.DisabledAt != nil { unauthorized(w); return }
+	if !hasPassword || hashErr != nil || !match { loginFailed(w); return }
+	if usr.DisabledAt != nil { loginFailed(w); return }
 
 	amr := []string{"pwd"}
 	if len(usr.TotpSecret) > 0 {
+		code := r.PostFormValue("otp")
 		secret, err := secrets.Decrypt(a.ks.master, usr.TotpSecret, []byte(usr.ID))
-		if err != nil || !totp.Validate(r.PostFormValue("otp"), string(secret)) {
-			oauthError(w, "invalid_grant", http.StatusUnauthorized)
-			return
-		} else {
-			amr = append(amr, "otp")
-		}
+		if err != nil || !totp.Validate(code, string(secret)) { loginFailed(w); return }
+
+		// A code stays valid for up to three 30 s steps (skew of one either side), so
+		// remember it for longer than that and refuse it a second time
+		if !a.Replay.Remember("otp:"+usr.ID+":"+code, time.Now().Add(otpReplayWindow)) { loginFailed(w); return }
+		amr = append(amr, "otp")
 	}
 
 	// Rehash if the stored hash used weaker params than we now require.
@@ -363,8 +364,15 @@ func (a *Auth) PasswordLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// issue the user token
-	a.issueUserTokens(w, r, usr, clientID, uuid.NewString(), amr, refreshExpiry(amr, nil))
+	now := time.Now()
+	a.issueUserTokens(w, r, usr, clientID, uuid.NewString(), amr, &now, refreshExpiry(amr, nil))
 }
+
+// How long a used OTP code is remembered. Longer than the 90 s a code can be accepted for.
+const otpReplayWindow = 2 * time.Minute
+
+// loginFailed is the one response for every failed password login (RFC 6749 5.2)
+func loginFailed(w http.ResponseWriter) { oauthError(w, "invalid_grant", http.StatusBadRequest) }
 
 
 const (
@@ -392,12 +400,12 @@ func (a *Auth) issueUserTokens(
 	r *http.Request,
 	u *models.User, 
 	clientID string, 
-	family string, 
+	family string,
 	amr []string,
+	authTime *time.Time,   // when the user authenticated interactively; nil if unknown
 	refreshExpires time.Time,
 ) {
-	// Create the access token
-	access, err := a.ks.Issue(models.Claims{
+	claims := models.Claims{
 		TokenUse: "user",
 		Roles: u.Roles,
 		SID: family,
@@ -405,13 +413,18 @@ func (a *Auth) issueUserTokens(
 		Username: u.Username,
 		ClientID: clientID,
 		RegisteredClaims: jwt.RegisteredClaims{Subject: u.ID},
-	}, 15*time.Minute)
+	}
+	// An unknown auth_time is left out, so step-up checks treat the session as stale
+	if authTime != nil { claims.AuthTime = jwt.NewNumericDate(*authTime) }
+
+	// Create the access token
+	access, err := a.ks.Issue(claims, 15*time.Minute)
 
 	// Handle the server failing to create the access issue
 	if err != nil { http.Error(w, "server_error", http.StatusInternalServerError); return }
 
 	// Create a new refresh token that the client can use
-	refresh, err := a.newRefreshToken(r.Context(), u.ID, clientID, family, amr, refreshExpires)
+	refresh, err := a.newRefreshToken(r.Context(), u.ID, clientID, family, amr, authTime, refreshExpires)
 	if errors.Is(err, ErrFamilyRevoked) { oauthError(w, "invalid_grant", http.StatusBadRequest); return }
 	if err != nil { http.Error(w, "server_error", http.StatusInternalServerError); return }
 
@@ -429,6 +442,7 @@ func (a *Auth) newRefreshToken(
 	clientID string,
 	family string,
 	amr []string,
+	authTime *time.Time,
 	expiresAt time.Time,
 ) (string, error) {
 	// Create the key and randomize it
@@ -443,6 +457,7 @@ func (a *Auth) newRefreshToken(
 		ClientID: clientID,
 		FamilyID: family,
 		AMR: amr,
+		AuthTime: authTime,
 		ExpiresAt: expiresAt,
 	}
 
@@ -512,8 +527,8 @@ func (a *Auth) RefreshGrant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Rotate: new tokens in the same family, keeping how the user logged in
-	a.issueUserTokens(w, r, usr, svc.ID, rt.FamilyID, rt.AMR, refreshExpiry(rt.AMR, rt))
+	// Rotate: new tokens in the same family, keeping how and when the user logged in
+	a.issueUserTokens(w, r, usr, svc.ID, rt.FamilyID, rt.AMR, rt.AuthTime, refreshExpiry(rt.AMR, rt))
 }
 
 // Revoke a session family, logging rather than failing the request if it errors
@@ -522,3 +537,6 @@ func (a *Auth) revokeFamily(ctx context.Context, family string) {
 		a.lg.Error("failed to revoke refresh token family", "family", family, "error", err)
 	}
 }
+
+// Check which tables and end point a user role can reach
+

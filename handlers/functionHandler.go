@@ -34,26 +34,26 @@ func RegisterFunctionRoutes(
 	server_conf *models.SwappableServerConfig,
 	evh *events.EventManager,
 ) {
-	if fn.Bound_to == nil || fn.Name == nil || fn.Version == nil {
+	if fn.BoundPath() == "" || fn.Name == nil || fn.Version == nil {
 		qm.Logger.Warn("Skipping function with missing required fields", "function", fn.Name); return 
 	}
 
-	// Define route
-	route := fmt.Sprintf("GET /%s/fn/%s", *fn.Bound_to, *fn.Name)
+	// Define route. Functions sit under their bound model: /{service}/{end-point}/fn/{name}
+	route := fmt.Sprintf("GET /%s/fn/%s", fn.BoundPath(), *fn.Name)
 	qm.Logger.Debug("Registering declarative function", "route", route, "version", *fn.Version)
 
 	// Resolve once for the model lookup at construction time. The handler
 	// will look up live each request to honour hot-reloads.
-	bound, ok := model_reg.ByEndpoint(*fn.Bound_to)
+	bound, ok := model_reg.ByPath(fn.BoundPath())
 	if !ok {
 		qm.Logger.Warn("Bound model not found at registration; route registered but will 503 until model loads",
-			"function", *fn.Name, "bound-to", *fn.Bound_to)
+			"function", *fn.Name, "bound-to", fn.BoundPath())
 	}
-	// Enable the function in the eventhandler
-	evh.RegisterFunction(*fn.Bound_to, fmt.Sprintf("func:%s", *fn.Name), fn.Webhooks, bound)
+	// Enable the function in the eventhandler, under its bound table's topic
+	evh.RegisterFunction(models.TopicKey(*fn.Service, "table:"+*fn.Bound_to), fn.Topic(), fn.Webhooks, bound)
 
 
-	handler_reg.Register(fmt.Sprintf("OPTIONS /%s/fn/%s", *fn.Bound_to, *fn.Name), middleware.CorsFunction(server_conf)(emptyResponse()), *fn.Version)
+	handler_reg.Register(fmt.Sprintf("OPTIONS /%s/fn/%s", fn.BoundPath(), *fn.Name), middleware.CorsFunction(server_conf)(emptyResponse()), *fn.Version)
 	handler_reg.Register(route, middleware.CorsFunction(server_conf)(model_auth(bound)(getFunctionResource(fn, model_reg, qm, server_conf))) , *fn.Version)
 }
 
@@ -71,7 +71,7 @@ func getFunctionResource(
 		req_ip := httpx.GetIP(r)
 		req_id, _ := secrets.RandomString(32)
 		req_actor := reqctx.Actor(r.Context())
-		log := qm.Logger.With("actor", req_actor, "IP", req_ip, "function", *fn.Name, "end_point", *fn.Bound_to, "request_id", req_id)
+		log := qm.Logger.With("actor", req_actor, "IP", req_ip, "function", *fn.Name, "end_point", fn.BoundPath(), "request_id", req_id)
 		ctx := reqctx.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -79,9 +79,9 @@ func getFunctionResource(
 		response := map[string]any{"task_type": task_type, "function": *fn.Name}
 
 		// Resolve the bound model at request time so model hot-reload is honoured.
-		cfg, ok := model_reg.ByEndpoint(*fn.Bound_to)
+		cfg, ok := model_reg.ByPath(fn.BoundPath())
 		if !ok {
-			log.Error("BOUND_MODEL_MISSING", "bound-to", *fn.Bound_to)
+			log.Error("BOUND_MODEL_MISSING", "bound-to", fn.BoundPath())
 			http.Error(w, "Function's bound model is not loaded", http.StatusServiceUnavailable)
 			return
 		}

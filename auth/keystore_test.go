@@ -53,7 +53,7 @@ func TestKeyStorePublish(t *testing.T) {
 		t.Fatalf("Expected %s to be published", k.KID)
 	}
 	call := fake_db.LastCall()
-	if !strings.Contains(call.SQL, "INSERT INTO signing_keys") || len(call.Args) != 4 {
+	if !strings.Contains(call.SQL, "INSERT INTO ohc_signing_keys") || len(call.Args) != 4 {
 		t.Errorf("Unexpected insert: %s %v", call.SQL, call.Args)
 	}
 }
@@ -161,7 +161,7 @@ func TestKeyStorePublishInvalidKey(t *testing.T) {
 func fakeSigningKeysTable(fake_db *modelstest.FakeDB) {
 	fake_db.ExecFunc = func(sql string, args []any) (pgconn.CommandTag, error) {
 		switch {
-		case strings.Contains(sql, "INSERT INTO signing_keys"):
+		case strings.Contains(sql, "INSERT INTO ohc_signing_keys"):
 			pub := args[1].(ed25519.PublicKey)
 			fake_db.Rows.Data = append(fake_db.Rows.Data, []any{args[0], []byte(pub), args[2], args[3]})
 			return pgconn.NewCommandTag("INSERT 0 1"), nil

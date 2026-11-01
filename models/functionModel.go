@@ -68,7 +68,8 @@ func (f *FunctionField) IsCalculated() bool {
 type FunctionDef struct {
 	Name          *string         `yaml:"name"`
 	Version       *string         `yaml:"version"`
-	Bound_to      *string         `yaml:"bound-to"`
+	Service       *string         `yaml:"service"`         // Must be the bound model's service: a service only adds functions to its own tables
+	Bound_to      *string         `yaml:"bound-to"`        // The bound model's end-point, within Service
 	Description   *string         `yaml:"description"`
 	Where         map[string]any  `yaml:"where"`
 	Parameters    []Parameter     `yaml:"parameters"`
@@ -79,3 +80,13 @@ type FunctionDef struct {
 	Roles_allowed []string        `yaml:"roles-allowed"`
 	Webhooks      *EventAction    `yaml:"web-hooks"`
 }
+
+// BoundPath is the bound model's Path ("service/end-point"), or "" if either is missing
+func (f *FunctionDef) BoundPath() string {
+	if f.Service == nil || *f.Service == "" || f.Bound_to == nil || *f.Bound_to == "" { return "" }
+	return *f.Service + "/" + *f.Bound_to
+}
+
+// Topic is the event topic key for the function: "func:" plus its end-point and name,
+// so functions with the same name on different end-points stay separate
+func (f *FunctionDef) Topic() string { return TopicKey(*f.Service, "func:"+*f.Bound_to+"/"+*f.Name) }

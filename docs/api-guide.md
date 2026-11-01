@@ -25,16 +25,16 @@ what each model looks like:
 | Method | Path | Auth | Returns |
 |--------|------|------|---------|
 | GET | `/openapi.json` | None | OpenAPI 3.0.3 spec of every model endpoint and declarative function, with request/response schemas |
-| GET | `/{endpoint}/fn/schema` | Bearer token | The model's fields, types, rules, keys and foreign keys (section 6.2). Use it to build tables and forms |
+| GET | `/{service}/{endpoint}/fn/schema` | Bearer token | The model's fields, types, rules, keys and foreign keys (section 6.2). Use it to build tables and forms |
 | GET | `/health` | None | `OK` |
 
 A typical frontend loads `/openapi.json` once to list the models, then calls
-`/{endpoint}/fn/schema` for each model it renders.
+`/{service}/{endpoint}/fn/schema` for each model it renders.
 
 ### 1.2 Every request
 
 ```http
-GET /asset/data?page_size=50 HTTP/1.1
+GET /inventory/asset/data?page_size=50 HTTP/1.1
 Authorization: Bearer <service token>
 X-OhCrud-User: <user token>
 ```
@@ -49,33 +49,34 @@ X-OhCrud-User: <user token>
 
 ## 2. URL conventions
 
-Every model with an `end-point:` exposes the routes below. `{endpoint}` is the
-model's `end-point:` value, for example `asset/data`, so the live URL is
-`/asset/data`. Each route also needs the matching permission in the model's
+Every model with an `end-point:` exposes the routes below. Each sits under the
+model's `service:`, so `{service}` is that value (for example `inventory`) and
+`{endpoint}` is the model's `end-point:` (for example `asset/data`), giving the
+live URL `/inventory/asset/data`. Two services may use the same end-point. Each route also needs the matching permission in the model's
 `end-points-allowed` (`auth.md`); a route the model doesn't enable answers `405`.
 
 | Method | Path | Purpose | Permission |
 |--------|------|---------|------------|
-| GET    | `/{endpoint}` | List / filter records | `GET` |
-| GET    | `/{endpoint}/fn/aggregate` | Ad-hoc grouped query | `GET` |
-| GET    | `/{endpoint}/fn/schema` | Model schema | `GET` |
-| GET    | `/{endpoint}/fn/{function}` | Declarative function | function `roles-allowed`, else `GET` |
-| GET    | `/{endpoint}/history/{key}` | Per-record audit log (if `track-history`) | `GET` |
-| POST   | `/{endpoint}` | Create one record | `POST` |
-| POST   | `/{endpoint}/group` | Create many | `POST-GROUP` |
-| PUT    | `/{endpoint}` | Update one record | `PUT` |
-| PUT    | `/{endpoint}/group` | Update many | `PUT-GROUP` |
-| DELETE | `/{endpoint}` | Delete one record | `DELETE` |
-| DELETE | `/{endpoint}/group` | Delete many | `DELETE-GROUP` |
-| GET    | `/{endpoint}/diff` | List stored diffs (if `allow-diff`) | `DIFF` |
-| POST   | `/{endpoint}/diff` | Create a diff against supplied rows | `POST` |
-| PUT    | `/{endpoint}/diff?checksum=…` | Action a diff | `PUT` |
-| GET    | `/{endpoint}/admin/pending` | Pending schema changes | model `admin-roles` |
-| POST   | `/{endpoint}/admin/approve` | Approve / deny a schema change | model `admin-roles` |
-| GET    | `/ws/{endpoint}` | Websocket (`websockets.md`) | `POST` |
+| GET    | `/{service}/{endpoint}` | List / filter records | `GET` |
+| GET    | `/{service}/{endpoint}/fn/aggregate` | Ad-hoc grouped query | `GET` |
+| GET    | `/{service}/{endpoint}/fn/schema` | Model schema | `GET` |
+| GET    | `/{service}/{endpoint}/fn/{function}` | Declarative function | function `roles-allowed`, else `GET` |
+| GET    | `/{service}/{endpoint}/history/{key}` | Per-record audit log (if `track-history`) | `GET` |
+| POST   | `/{service}/{endpoint}` | Create one record | `POST` |
+| POST   | `/{service}/{endpoint}/group` | Create many | `POST-GROUP` |
+| PUT    | `/{service}/{endpoint}` | Update one record | `PUT` |
+| PUT    | `/{service}/{endpoint}/group` | Update many | `PUT-GROUP` |
+| DELETE | `/{service}/{endpoint}` | Delete one record | `DELETE` |
+| DELETE | `/{service}/{endpoint}/group` | Delete many | `DELETE-GROUP` |
+| GET    | `/{service}/{endpoint}/diff` | List stored diffs (if `allow-diff`) | `DIFF` |
+| POST   | `/{service}/{endpoint}/diff` | Create a diff against supplied rows | `POST` |
+| PUT    | `/{service}/{endpoint}/diff?checksum=…` | Action a diff | `PUT` |
+| GET    | `/{service}/{endpoint}/admin/pending` | Pending schema changes | model `admin-roles` |
+| POST   | `/{service}/{endpoint}/admin/approve` | Approve / deny a schema change | model `admin-roles` |
+| GET    | `/{service}/{endpoint}/ws` | Websocket (`websockets.md`) | `POST` |
 
-System models are exposed the same way: `/events` (event log, `events.md`) and
-`/user` (user management, admin only).
+System models belong to the `ohc` service and are exposed the same way:
+`/ohc/events` (event log, `events.md`) and `/ohc/user` (user management, admin only).
 
 ---
 
@@ -139,7 +140,7 @@ parsing JSON.
 
 ## 4. Standard URL parameters (GET)
 
-`GET /{endpoint}` returns:
+`GET /{service}/{endpoint}` returns:
 
 ```json
 {
@@ -155,7 +156,7 @@ parsing JSON.
 matching row, not just this page.
 
 These parameters are honoured by **every** GET endpoint (including
-`/{endpoint}` and `/{endpoint}/fn/{function}`), unless a function YAML opts
+`/{service}/{endpoint}` and `/{service}/{endpoint}/fn/{function}`), unless a function YAML opts
 out of a particular one.
 
 ### Pagination
@@ -254,21 +255,21 @@ two exact sigil values are reserved.
 ### Examples
 
 ```text
-GET /asset/data?asset_no=CL001
-GET /asset/data?condition_rating=>=3
-GET /asset/data?install_date=>=2024-01-01&install_date=<=2024-12-31
-GET /asset/data?description=pump
-GET /asset/data?install_date=#NULL
-GET /asset/data?description=#NOTNULL
-GET /asset/data?tags=pump,urgent        # tagged pump or urgent
-GET /asset/data?tags=![pump,urgent]     # tagged pump and urgent
+GET /inventory/asset/data?asset_no=CL001
+GET /inventory/asset/data?condition_rating=>=3
+GET /inventory/asset/data?install_date=>=2024-01-01&install_date=<=2024-12-31
+GET /inventory/asset/data?description=pump
+GET /inventory/asset/data?install_date=#NULL
+GET /inventory/asset/data?description=#NOTNULL
+GET /inventory/asset/data?tags=pump,urgent        # tagged pump or urgent
+GET /inventory/asset/data?tags=![pump,urgent]     # tagged pump and urgent
 ```
 
 ---
 
 ## 6. The `/fn/{function}` namespace
 
-Per-endpoint functions live under `/{endpoint}/fn/{function}`. Two kinds of
+Per-endpoint functions live under `/{service}/{endpoint}/fn/{function}`. Two kinds of
 functions are dispatched by this route:
 
 - **Built-in** — implemented in code (`aggregate`, `schema`).
@@ -282,7 +283,7 @@ function, the response is a `400` (`invalid function`).
 
 ### 6.1 Built-in: `aggregate`
 
-`GET /{endpoint}/fn/aggregate` runs an ad-hoc grouped query. It's most
+`GET /{service}/{endpoint}/fn/aggregate` runs an ad-hoc grouped query. It's most
 useful when you need a one-off summary that doesn't justify creating a
 declarative function.
 
@@ -323,7 +324,7 @@ is the number of distinct rows. `page=all` returns them all.
 #### Example
 
 ```text
-GET /asset/data/fn/aggregate?group_by=building&aggregate=count,avg:condition_rating&sort_by=count~desc
+GET /inventory/asset/data/fn/aggregate?group_by=building&aggregate=count,avg:condition_rating&sort_by=count~desc
 ```
 
 Builds:
@@ -348,7 +349,7 @@ retrieve every group in one response.
 
 ### 6.2 Built-in: `schema`
 
-`GET /{endpoint}/fn/schema` returns the model's schema without querying the
+`GET /{service}/{endpoint}/fn/schema` returns the model's schema without querying the
 database. Use it to build tables and forms dynamically. It takes no URL
 parameters. Private fields are left out.
 
@@ -459,7 +460,7 @@ GET /asset/building/fn/schema
 ## 7. History endpoint
 
 For models that opt in via `track-history: true`, every record exposes an
-audit log at `GET /{endpoint}/history/{key}`, where `{key}` is the
+audit log at `GET /{service}/{endpoint}/history/{key}`, where `{key}` is the
 `track-history-field` value (commonly the human-readable identifier — for
 `asset/data` it's `asset_no`).
 
@@ -512,12 +513,12 @@ answered immediately with a `task_id`. The result arrives as events
 
 | Request | Body |
 |---------|------|
-| `POST /{endpoint}` | One object: the new record |
-| `POST /{endpoint}/group` | Array of objects |
-| `PUT /{endpoint}` | One object: a key plus the fields to change |
-| `PUT /{endpoint}/group` | Array of such objects |
-| `DELETE /{endpoint}` | One object: a key |
-| `DELETE /{endpoint}/group` | Array of keys |
+| `POST /{service}/{endpoint}` | One object: the new record |
+| `POST /{service}/{endpoint}/group` | Array of objects |
+| `PUT /{service}/{endpoint}` | One object: a key plus the fields to change |
+| `PUT /{service}/{endpoint}/group` | Array of such objects |
+| `DELETE /{service}/{endpoint}` | One object: a key |
+| `DELETE /{service}/{endpoint}/group` | Array of keys |
 
 Keys in the body are `json` names or aliases (section 3.1). Unknown keys are
 ignored.
@@ -529,7 +530,7 @@ ignored.
   to set. Delete ignores non-key fields.
 
 ```http
-PUT /asset/data
+PUT /inventory/asset/data
 Content-Type: application/json
 X-User-Note: Corrected description
 
@@ -554,7 +555,7 @@ X-User-Note: Corrected description
 succeeded: individual rows can still fail when the task runs (for example on a
 unique constraint) and are reported in the task's `warn`/`failed` event.
 
-`POST /{endpoint}` (single create) returns only `task_type`, `task_id` and
+`POST /{service}/{endpoint}` (single create) returns only `task_type`, `task_id` and
 `message` on success.
 
 `invalid` lists rows rejected before queuing:
@@ -573,7 +574,7 @@ missing field, type error or rule failure.
 |---------|--------|
 | At least one valid row (group requests) | `200`, invalid rows listed and skipped |
 | No valid rows | `400` with the same JSON shape, `successful_submission: false` |
-| `PUT /{endpoint}` (single) with an invalid row | `400` |
+| `PUT /{service}/{endpoint}` (single) with an invalid row | `400` |
 | Body is not valid JSON | `400` or `500`, plain text |
 
 ### 8.3 Updating string lists
@@ -627,13 +628,13 @@ the changes needed to bring either side in sync. Rows are matched on the
 model's `diff-comparator` field, and only fields with `include-in-diff: true`
 are compared.
 
-1. **Create**: `POST /{endpoint}/diff` with an array of rows (keys as in
+1. **Create**: `POST /{service}/{endpoint}/diff` with an array of rows (keys as in
    section 8). The response has a `task_id`, `rows_received`, `rows_valid`,
    `rows_invalid` and `invalid_resources`. The diff is computed in the
    background and stored.
-2. **List**: `GET /{endpoint}/diff` returns stored diffs for this model, with
+2. **List**: `GET /{service}/{endpoint}/diff` returns stored diffs for this model, with
    the normal paging and filters. Each has a `checksum`.
-3. **Action**: `PUT /{endpoint}/diff?checksum=<checksum>` (no body) returns:
+3. **Action**: `PUT /{service}/{endpoint}/diff?checksum=<checksum>` (no body) returns:
 
 ```json
 {
@@ -664,9 +665,9 @@ When a model config changes in a way that would destroy data, the change is
 held for approval instead of applied. Users with a role in the model's
 `admin-roles` (or the admin role) can review and approve it:
 
-- `GET /{endpoint}/admin/pending` returns `table`, `has_changes_pending`,
+- `GET /{service}/{endpoint}/admin/pending` returns `table`, `has_changes_pending`,
   `all_pending_tables`, and, when pending, `pending: {table, changes, approved}`.
-- `POST /{endpoint}/admin/approve` with `{"approve": true}` applies the change
+- `POST /{service}/{endpoint}/admin/approve` with `{"approve": true}` applies the change
   (`applied: true`, or `202` with `applied: false` if it couldn't be applied
   yet). `{"approve": false}` reverts the config to the last good version.
   Returns `404` if nothing is pending.
@@ -675,7 +676,7 @@ held for approval instead of applied. Users with a role in the model's
 
 ## 11. Authoring a declarative function
 
-Drop a `.yaml` file into `config/functions/`. The file is read at startup
+Drop a `.yaml` file into `config/functions/`, or any folder below it. The file is read at startup
 and re-read when modified — you don't need to restart the server.
 
 ### Minimum example
@@ -684,6 +685,7 @@ and re-read when modified — you don't need to restart the server.
 ---
 name: assets-by-building
 version: 1.0.0
+service: inventory
 bound-to: asset/data
 description: Count assets per building, optionally filtered by category.
 
@@ -700,9 +702,9 @@ sort-by: [count~desc]
 That's all that's required. The function becomes available at:
 
 ```text
-GET /asset/data/fn/assets-by-building
-GET /asset/data/fn/assets-by-building?category=PLANT
-GET /asset/data/fn/assets-by-building?page=2&page_size=10&sort_by=building
+GET /inventory/asset/data/fn/assets-by-building
+GET /inventory/asset/data/fn/assets-by-building?category=PLANT
+GET /inventory/asset/data/fn/assets-by-building?page=2&page_size=10&sort_by=building
 ```
 
 ### Full schema reference
@@ -714,8 +716,11 @@ name: <string>          # Required. URL slug — final segment after /fn/.
 version: <semver>       # Required. Hot-reloads only swap the handler when
                         # the new version is strictly greater.
 
-bound-to: <end-point>   # Required. Must match an existing model's `end-point:`
-                        # value exactly (e.g. asset/data, not Asset Data).
+service: <service>      # Required. The bound model's `service:`. A service can
+                        # only add functions to its own tables.
+
+bound-to: <end-point>   # Required. Must match the `end-point:` of a model in
+                        # that service exactly (e.g. asset/data, not Asset Data).
 
 description: <string>   # Optional but recommended. Free text.
 
@@ -759,19 +764,20 @@ web-hooks:              # Optional. Webhooks for this function's "data altered"
     success: [https://hooks.example.com/assets]   # (config-instructions.md).
 ```
 
-Every function also gets a websocket topic, `func:<name>` (`websockets.md`).
+Every function also gets a websocket topic, `func:<bound-to>/<name>` in its
+service (`websockets.md`).
 
-The response has the same shape as `GET /{endpoint}`, with `task_type:
+The response has the same shape as `GET /{service}/{endpoint}`, with `task_type:
 "Get Function"` and a `function` key holding the function name.
 
 ### Validation rules (enforced at load time)
 
 A function is rejected (and logged) if any of the following fail:
 
-- `name`, `version`, or `bound-to` are missing.
+- `name`, `version`, `service` or `bound-to` are missing.
 - `name` is one of the reserved words above.
-- `bound-to` doesn't match any loaded model's `end-point`.
-- A duplicate `(bound-to, name)` already exists from another file.
+- `bound-to` doesn't match the `end-point` of any loaded model in `service`.
+- A duplicate `(service, bound-to, name)` already exists from another file.
 - Any field reference (`where` keys, `parameters[].field`, `fields`,
   `group-by`, `aggregate` operands, `sort-by` tokens) names a field that
   isn't on the bound model **or** is marked `private`.
@@ -829,6 +835,7 @@ Functions don't have to aggregate. A "saved filter" is just `where` plus
 ---
 name: open-disposals
 version: 1.0.0
+service: inventory
 bound-to: asset/data
 description: Assets flagged for disposal but not yet completed.
 
@@ -846,8 +853,8 @@ sort-by: [disposal_date~asc]
 Live URL:
 
 ```text
-GET /asset/data/fn/open-disposals
-GET /asset/data/fn/open-disposals?department=ENG&page_size=50
+GET /inventory/asset/data/fn/open-disposals
+GET /inventory/asset/data/fn/open-disposals?department=ENG&page_size=50
 ```
 
 Builds:

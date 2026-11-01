@@ -1,5 +1,7 @@
 package models
 
+import "strings"
+
 // ConfigError reports a validation error on a specific field.
 type ConfigError struct {
 	Field   string
@@ -134,6 +136,7 @@ type DataModel struct {
 	Name                 *string                   `yaml:"name"`
 	Type                 *string                   `yaml:"type"`
 	Version              *string                   `yaml:"version"`
+	Service              *string                   `yaml:"service"`
 	Track_history        *bool                     `yaml:"track-history"`
 	Track_history_field  *string                   `yaml:"track-history-field"`
 	Soft_delete          *bool                     `yaml:"soft-delete"`
@@ -141,7 +144,8 @@ type DataModel struct {
 	Description          *string                   `yaml:"description"`
 	Meta                 map[string]any            `yaml:"meta"`
 	// Database metadata
-	Table_name           *string                   `yaml:"table-name"`
+	Table_name           *string                   `yaml:"table-name"`   // After loading, the real table: <service>_<table-name>. See Short_table_name
+	Short_table_name     *string                   `yaml:"-"`          // table-name as written in the YAML. Set once the model is qualified
 	End_point            *string                   `yaml:"end-point"`
 	End_points_allowed   *End_pointsAllowed        `yaml:"end-points-allowed"`
 	Allow_diff           *bool                     `yaml:"allow-diff"`
@@ -190,3 +194,33 @@ func GetSoftDeleteConfig() *DataModelField {
 // HasEndpoint reports whether the model is served over the API. A model with an empty
 // end-point, like most system tables, is only used internally.
 func (m *DataModel) HasEndpoint() bool { return m.End_point != nil && *m.End_point != "" }
+
+// Path is where the model is served: its service, then its end-point, as in "ohc/user".
+// Routes and the end-point uniqueness check use it, so two services can each have an
+// end-point of the same name. It is "" for a model with no end-point or service.
+func (m *DataModel) Path() string {
+	if !m.HasEndpoint() || m.Service == nil || *m.Service == "" { return "" }
+	return *m.Service + "/" + *m.End_point
+}
+
+// TableTopic is the event topic key for changes to the model's table
+func (m *DataModel) TableTopic() string { return TopicKey(*m.Service, "table:"+*m.End_point) }
+
+// DiffTopic is the event topic key for the model's diffs
+func (m *DataModel) DiffTopic() string { return TopicKey(*m.Service, "diff:"+*m.End_point) }
+
+// QualifiedName is the database name for an object a service owns: "<service>_<name>".
+// Tables and index names are prefixed so two services can never collide. A service id
+// has no '_', so the first '_' always separates the service from the name.
+func QualifiedName(service string, name string) string { return service + "_" + name }
+
+// TopicKey is how the event manager stores a topic: the owning service, then the topic.
+// Clients see the two separately (websocket messages carry "service" and "topic"), and
+// a service id never contains '/', so the key splits back unambiguously.
+func TopicKey(service, topic string) string { return service + "/" + topic }
+
+// SplitTopicKey returns the service and topic a TopicKey was built from
+func SplitTopicKey(key string) (service string, topic string) {
+	service, topic, _ = strings.Cut(key, "/")
+	return service, topic
+}

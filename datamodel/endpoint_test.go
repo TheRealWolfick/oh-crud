@@ -5,7 +5,8 @@ import (
 )
 
 func TestValidateDataModelEndpoint(t *testing.T) {
-	valid := []string{"", "  ", "asset", "asset/data", "Asset_Data/v2", "a-b/c_d"}
+	// Every end-point sits under its service, so top-level names like health are fine
+	valid := []string{"", "  ", "asset", "asset/data", "Asset_Data/v2", "a-b/c_d", "health", "oauth/token"}
 	for _, ep := range valid {
 		m := basicModel()
 		m.End_point = ptr(ep)
@@ -14,7 +15,10 @@ func TestValidateDataModelEndpoint(t *testing.T) {
 		}
 	}
 
-	invalid := []string{"/asset", "asset/", "asset//data", "asset data", "asset/{key}", ".well-known", "ws", "ws/asset", "oauth/token", "health"}
+	// Segments every model uses for its own sub-routes are refused anywhere in the path,
+	// or one model's routes could collide with another's (asset/group vs asset + /group)
+	invalid := []string{"/asset", "asset/", "asset//data", "asset data", "asset/{key}", ".well-known",
+		"ws", "ws/asset", "asset/ws", "asset/group", "diff", "a/fn/b", "x/history", "admin"}
 	for _, ep := range invalid {
 		m := basicModel()
 		m.End_point = ptr(ep)
@@ -23,15 +27,8 @@ func TestValidateDataModelEndpoint(t *testing.T) {
 		}
 	}
 
-	// Reserved names only matter as the first segment
-	m := basicModel()
-	m.End_point = ptr("asset/ws")
-	if err := ValidateDataModel(m); err != nil {
-		t.Errorf("expected asset/ws to pass, got: %v", err)
-	}
-
 	// Omitted is fine too
-	m = basicModel()
+	m := basicModel()
 	m.End_point = nil
 	if err := ValidateDataModel(m); err != nil {
 		t.Errorf("expected an omitted end-point to pass, got: %v", err)

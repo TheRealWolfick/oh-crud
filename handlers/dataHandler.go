@@ -50,50 +50,57 @@ func RegisterRoutes(
 		qm.Logger.Debug("Skipping end point for model with no end-point", "data-model", *cfg.Name)
 		return
 	}
-	if other, taken := modelRegistry.OtherByEndpoint(*cfg.End_point, *cfg.Table_name); taken {
-		qm.Logger.Error("Failed to load model: end-point is already used by another model", "data-model", *cfg.Name, "end_point", *cfg.End_point, "used_by", *other.Name)
+	// Every route sits under the model's service: /{service}/{end-point}
+	path := cfg.Path()
+	if path == "" {
+		qm.Logger.Error("Failed to load model: it has an end-point but no service", "data-model", *cfg.Name)
+		return
+	}
+	if other, taken := modelRegistry.OtherByPath(path, *cfg.Table_name); taken {
+		qm.Logger.Error("Failed to load model: end-point is already used by another model", "data-model", *cfg.Name, "end_point", path, "used_by", *other.Name)
 		return
 	}
 
-	qm.Logger.Debug("Dynamic end point generating", "data-model", *cfg.Name)
+	qm.Logger.Debug("Dynamic end point generating", "data-model", *cfg.Name, "path", path)
 	auth := model_auth(cfg)
+	route := func(method string, sub string) string { return fmt.Sprintf("%s /%s%s", method, path, sub) }
 
 	// Perform error check OPTIONS handler and soft cancel on error
-	err = handlerRegistry.Register(fmt.Sprintf("OPTIONS /%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(emptyResponse()), *cfg.Version)
+	err = handlerRegistry.Register(route("OPTIONS", ""), middleware.Cors(cfg, server_conf)(emptyResponse()), *cfg.Version)
 	if err != nil {
 		qm.Logger.Error("Failed to load model", "error", err)
 		return
 	}
 
 	// Browsers preflight every cross-origin path, not just the base end point
-	handlerRegistry.Register(fmt.Sprintf("OPTIONS /%s/group", *cfg.End_point), middleware.Cors(cfg, server_conf)(emptyResponse()), *cfg.Version)
-	handlerRegistry.Register(fmt.Sprintf("OPTIONS /%s/fn/{function}", *cfg.End_point), middleware.Cors(cfg, server_conf)(emptyResponse()), *cfg.Version)
+	handlerRegistry.Register(route("OPTIONS", "/group"), middleware.Cors(cfg, server_conf)(emptyResponse()), *cfg.Version)
+	handlerRegistry.Register(route("OPTIONS", "/fn/{function}"), middleware.Cors(cfg, server_conf)(emptyResponse()), *cfg.Version)
 
 	// Standard set of handlers
-	handlerRegistry.Register(fmt.Sprintf("GET /%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleGet(cfg, qm, server_conf))), *cfg.Version)
-	handlerRegistry.Register(fmt.Sprintf("PUT /%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleUpdate(cfg, qm, server_conf))), *cfg.Version)
-	handlerRegistry.Register(fmt.Sprintf("PUT /%s/group", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleUpdate_Group(cfg, qm, server_conf))), *cfg.Version)
-	handlerRegistry.Register(fmt.Sprintf("POST /%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleAddNew(cfg, qm, server_conf))), *cfg.Version)
-	handlerRegistry.Register(fmt.Sprintf("POST /%s/group", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleAddNew_Group(cfg, qm, server_conf))), *cfg.Version)
-	handlerRegistry.Register(fmt.Sprintf("DELETE /%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleDelete(cfg, qm, server_conf))), *cfg.Version)
-	handlerRegistry.Register(fmt.Sprintf("DELETE /%s/group", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleDelete_Group(cfg, qm, server_conf))), *cfg.Version)
+	handlerRegistry.Register(route("GET", ""), middleware.Cors(cfg, server_conf)(auth(handleGet(cfg, qm, server_conf))), *cfg.Version)
+	handlerRegistry.Register(route("PUT", ""), middleware.Cors(cfg, server_conf)(auth(handleUpdate(cfg, qm, server_conf))), *cfg.Version)
+	handlerRegistry.Register(route("PUT", "/group"), middleware.Cors(cfg, server_conf)(auth(handleUpdate_Group(cfg, qm, server_conf))), *cfg.Version)
+	handlerRegistry.Register(route("POST", ""), middleware.Cors(cfg, server_conf)(auth(handleAddNew(cfg, qm, server_conf))), *cfg.Version)
+	handlerRegistry.Register(route("POST", "/group"), middleware.Cors(cfg, server_conf)(auth(handleAddNew_Group(cfg, qm, server_conf))), *cfg.Version)
+	handlerRegistry.Register(route("DELETE", ""), middleware.Cors(cfg, server_conf)(auth(handleDelete(cfg, qm, server_conf))), *cfg.Version)
+	handlerRegistry.Register(route("DELETE", "/group"), middleware.Cors(cfg, server_conf)(auth(handleDelete_Group(cfg, qm, server_conf))), *cfg.Version)
 
 	// Handle diff routes
 	if cfg.Allow_diff != nil && *cfg.Allow_diff {
 		if diff_cfg == nil {
 			qm.Logger.Error("Cannot register diff routes: diffs model was not loaded", "data-model", *cfg.Name)
 		} else {
-			evh.EnableDiffTopic(fmt.Sprintf("diff:%s", *cfg.End_point), cfg)
-			handlerRegistry.Register(fmt.Sprintf("OPTIONS /%s/diff", *cfg.End_point), middleware.Cors(cfg, server_conf)(emptyResponse()), *cfg.Version)
-			handlerRegistry.Register(fmt.Sprintf("GET /%s/diff", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleGetDiff(cfg, diff_cfg, qm, server_conf))), *cfg.Version)
-			handlerRegistry.Register(fmt.Sprintf("POST /%s/diff", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(dynamicCreateDiff(cfg, qm, server_conf.Get()))), *cfg.Version)
-			handlerRegistry.Register(fmt.Sprintf("PUT /%s/diff", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(dynamicActionDiff(cfg, qm, server_conf.Get()))), *cfg.Version)
+			evh.EnableDiffTopic(cfg.DiffTopic(), cfg)
+			handlerRegistry.Register(route("OPTIONS", "/diff"), middleware.Cors(cfg, server_conf)(emptyResponse()), *cfg.Version)
+			handlerRegistry.Register(route("GET", "/diff"), middleware.Cors(cfg, server_conf)(auth(handleGetDiff(cfg, diff_cfg, qm, server_conf))), *cfg.Version)
+			handlerRegistry.Register(route("POST", "/diff"), middleware.Cors(cfg, server_conf)(auth(dynamicCreateDiff(cfg, qm, server_conf.Get()))), *cfg.Version)
+			handlerRegistry.Register(route("PUT", "/diff"), middleware.Cors(cfg, server_conf)(auth(dynamicActionDiff(cfg, qm, server_conf.Get()))), *cfg.Version)
 		}
 	}
 
 	// Built-in functions live under /fn/{function}. Today this dispatches to
 	// the aggregate handler; user-defined functions are registered separately.
-	handlerRegistry.Register(fmt.Sprintf("GET /%s/fn/{function}", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleGet(cfg, qm, server_conf))), *cfg.Version)
+	handlerRegistry.Register(route("GET", "/fn/{function}"), middleware.Cors(cfg, server_conf)(auth(handleGet(cfg, qm, server_conf))), *cfg.Version)
 
 	// Built-in admin endpoints for this end point. onApplied re-registers a model's
 	// routes after an approved schema change is committed.
@@ -105,23 +112,23 @@ func RegisterRoutes(
 		RegisterRoutes(applied, diff_cfg, handlerRegistry, model_auth, qm, server_conf, evh, gate, modelRegistry)
 	}
 	// Register admin end points
-	handlerRegistry.Register(fmt.Sprintf("OPTIONS /%s/admin/pending", *cfg.End_point), middleware.CorsAdmin(cfg, server_conf)(emptyResponse()), *cfg.Version)
-	handlerRegistry.Register(fmt.Sprintf("OPTIONS /%s/admin/approve", *cfg.End_point), middleware.CorsAdmin(cfg, server_conf)(emptyResponse()), *cfg.Version)
-	handlerRegistry.Register(fmt.Sprintf("GET /%s/admin/pending", *cfg.End_point), middleware.CorsAdmin(cfg, server_conf)(auth(handlePendingChanges(gate, qm, cfg, server_conf))), *cfg.Version)
-	handlerRegistry.Register(fmt.Sprintf("POST /%s/admin/approve", *cfg.End_point), middleware.CorsAdmin(cfg, server_conf)(auth(handleApproveChange(gate, qm, cfg, server_conf, modelRegistry, onApplied))), *cfg.Version)
+	handlerRegistry.Register(route("OPTIONS", "/admin/pending"), middleware.CorsAdmin(cfg, server_conf)(emptyResponse()), *cfg.Version)
+	handlerRegistry.Register(route("OPTIONS", "/admin/approve"), middleware.CorsAdmin(cfg, server_conf)(emptyResponse()), *cfg.Version)
+	handlerRegistry.Register(route("GET", "/admin/pending"), middleware.CorsAdmin(cfg, server_conf)(auth(handlePendingChanges(gate, qm, cfg, server_conf))), *cfg.Version)
+	handlerRegistry.Register(route("POST", "/admin/approve"), middleware.CorsAdmin(cfg, server_conf)(auth(handleApproveChange(gate, qm, cfg, server_conf, modelRegistry, onApplied))), *cfg.Version)
 
 	// History route — only when the model opts in via track-history.
 	// Path shape mirrors /fn/{function} so a literal segment sits at the same
 	// position, avoiding ambiguity with /{key}/history vs /fn/{function}.
 	if cfg.Track_history != nil && *cfg.Track_history {
-		handlerRegistry.Register(fmt.Sprintf("OPTIONS /%s/history/{key}", *cfg.End_point), middleware.Cors(cfg, server_conf)(emptyResponse()), *cfg.Version)
-		handlerRegistry.Register( fmt.Sprintf("GET /%s/history/{key}", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleGetHistory(cfg, qm, server_conf))), *cfg.Version )
+		handlerRegistry.Register(route("OPTIONS", "/history/{key}"), middleware.Cors(cfg, server_conf)(emptyResponse()), *cfg.Version)
+		handlerRegistry.Register(route("GET", "/history/{key}"), middleware.Cors(cfg, server_conf)(auth(handleGetHistory(cfg, qm, server_conf))), *cfg.Version)
 	}
 
-	// Enable the table for websockets and register end point
-	evh.EnableTopic(fmt.Sprintf("table:%s", *cfg.End_point), cfg.Webhooks, true, cfg)
-	//qm.Logger.Debug("event handler status", "enabled_topics", evh.ValidTopics(), "instructions", evh.CurrentTargets())
-	handlerRegistry.Register(fmt.Sprintf("GET /ws/%s", *cfg.End_point), middleware.Cors(cfg, server_conf)(auth(handleWebsocket(cfg, qm, server_conf, fmt.Sprintf("table:%s", *cfg.End_point), evh))), *cfg.Version)
+	// Enable the table for websockets and register end point. The socket sits under the
+	// model's path like its other sub-routes: /{service}/{end-point}/ws
+	evh.EnableTopic(cfg.TableTopic(), cfg.Webhooks, true, cfg)
+	handlerRegistry.Register(route("GET", "/ws"), middleware.Cors(cfg, server_conf)(auth(handleWebsocket(cfg, qm, server_conf, cfg.TableTopic(), evh))), *cfg.Version)
 }
 
 func handleGet(cfg *models.DataModel, qm *queue.QueueManager, svr_cfg *models.SwappableServerConfig) http.HandlerFunc {
@@ -207,7 +214,7 @@ func addNewResource(
 		req_id, err := secrets.RandomString(32)
 		req_actor := reqctx.Actor(r.Context())
 		note := r.Header.Get("X-User-Note")
-		log := qm.Logger.With("actor", req_actor, "IP", req_ip, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
+		log := qm.Logger.With("actor", req_actor, "IP", req_ip, "task_type", task_type, "end_point", cfg.Path(), "table", *cfg.Table_name, "request_id", req_id)
 		ctx := reqctx.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -280,7 +287,7 @@ func addNewResources_Group(
 		req_id, err := secrets.RandomString(32)
 		req_actor := reqctx.Actor(r.Context())
 		note := r.Header.Get("X-User-Note")
-		log := qm.Logger.With("actor", req_actor, "IP", req_ip, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
+		log := qm.Logger.With("actor", req_actor, "IP", req_ip, "task_type", task_type, "end_point", cfg.Path(), "table", *cfg.Table_name, "request_id", req_id)
 		ctx := reqctx.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -352,7 +359,7 @@ func getResource(
 		req_ip := httpx.GetIP(r)
 		req_id, _ := secrets.RandomString(32)
 		req_actor := reqctx.Actor(r.Context())
-		log := qm.Logger.With("actor", req_actor, "IP", req_ip, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
+		log := qm.Logger.With("actor", req_actor, "IP", req_ip, "task_type", task_type, "end_point", cfg.Path(), "table", *cfg.Table_name, "request_id", req_id)
 		ctx := reqctx.SetLogger(context.WithoutCancel(r.Context()), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -449,7 +456,7 @@ func getDiff(
 		req_ip := httpx.GetIP(r)
 		req_id, _ := secrets.RandomString(32)
 		req_actor := reqctx.Actor(r.Context())
-		log := qm.Logger.With("actor", req_actor, "IP", req_ip, "task_type", task_type, "end_point", fmt.Sprintf("%s/diff",*cfg.End_point), "table", *diff_cfg.Table_name, "request_id", req_id)
+		log := qm.Logger.With("actor", req_actor, "IP", req_ip, "task_type", task_type, "end_point", cfg.Path()+"/diff", "table", *diff_cfg.Table_name, "request_id", req_id)
 		ctx := reqctx.SetLogger(context.WithoutCancel(r.Context()), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -545,7 +552,7 @@ func getResourceHistory(
 		req_ip := httpx.GetIP(r)
 		req_id, _ := secrets.RandomString(32)
 		req_actor := reqctx.Actor(r.Context())
-		log := qm.Logger.With("actor", req_actor, "IP", req_ip, "task_type", task_type, "end_point", *cfg.End_point, "table", historyTable, "request_id", req_id)
+		log := qm.Logger.With("actor", req_actor, "IP", req_ip, "task_type", task_type, "end_point", cfg.Path(), "table", historyTable, "request_id", req_id)
 		ctx := reqctx.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -673,7 +680,7 @@ func updateResource(
 		req_id, err := secrets.RandomString(32)
 		req_actor := reqctx.Actor(r.Context())
 		note := r.Header.Get("X-User-Note")
-		log := qm.Logger.With("actor", req_actor, "IP", req_ip, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
+		log := qm.Logger.With("actor", req_actor, "IP", req_ip, "task_type", task_type, "end_point", cfg.Path(), "table", *cfg.Table_name, "request_id", req_id)
 		ctx := reqctx.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -746,7 +753,7 @@ func updateResource_Group(
 		req_id, err := secrets.RandomString(32)
 		req_actor := reqctx.Actor(r.Context())
 		note := r.Header.Get("X-User-Note")
-		log := qm.Logger.With("actor", req_actor, "IP", req_ip, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
+		log := qm.Logger.With("actor", req_actor, "IP", req_ip, "task_type", task_type, "end_point", cfg.Path(), "table", *cfg.Table_name, "request_id", req_id)
 		ctx := reqctx.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -861,7 +868,7 @@ func dynamicCreateDiff(
 		}
 
 		// Diffs publish on their own topic, so the table's subscribers and functions only hear of table changes
-		ctx_preserve := context.WithoutCancel(reqctx.StartTaskOnTopic(ctx, "create", cfg, fmt.Sprintf("diff:%s", *cfg.End_point)))
+		ctx_preserve := context.WithoutCancel(reqctx.StartTaskOnTopic(ctx, "create", cfg, cfg.DiffTopic()))
 		task_id, err := qm.QueueFunction(ctx_preserve, store.CreateDiff(ctx_preserve, qm.Db, cfg, valid_resources, note), note)
 		if err != nil {
 			log.Error("TASK_ERROR", "error", err)
@@ -889,7 +896,7 @@ func dynamicActionDiff(
 		req_ip := httpx.GetIP(r)
 		req_id, _ := secrets.RandomString(32)
 		req_actor := reqctx.Actor(r.Context())
-		log := qm.Logger.With("actor", req_actor, "IP", req_ip, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
+		log := qm.Logger.With("actor", req_actor, "IP", req_ip, "task_type", task_type, "end_point", cfg.Path(), "table", *cfg.Table_name, "request_id", req_id)
 		ctx := reqctx.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -910,7 +917,7 @@ func dynamicActionDiff(
 		log.Debug("Checksum decoded", "checksum", checksum)
 
 		// Read the diff row as a raw map so JSONB columns come back as []byte
-		rows, err := qm.Db.Query(r.Context(), `SELECT * FROM diffs WHERE diff_type = $1 AND checksum = $2 LIMIT 1;`, *cfg.Table_name, checksum)
+		rows, err := qm.Db.Query(r.Context(), `SELECT * FROM ohc_diffs WHERE diff_type = $1 AND checksum = $2 LIMIT 1;`, *cfg.Table_name, checksum)
 		if err != nil {
 			log.Error("DATA_READ_ERROR", "error", err)
 			http.Error(w, "Error reading diff", http.StatusInternalServerError)
@@ -956,10 +963,10 @@ func dynamicActionDiff(
 		// instead of calling generate_batch_number again.
 		var batchNumber int64
 		claimRow := qm.Db.QueryRow(r.Context(), `
-			UPDATE diffs
-			SET batched = true, batch_number = generate_batch_number($1, 'Asset Data', $2), batched_date = now()
+			UPDATE ohc_diffs
+			SET batched = true, batch_number = generate_batch_number($1, $4, $2), batched_date = now()
 			WHERE diff_type = $1 AND checksum = $3 AND batched = false
-			RETURNING batch_number`, *cfg.Table_name, reqctx.Username(r.Context()), checksum)
+			RETURNING batch_number`, *cfg.Table_name, reqctx.Username(r.Context()), checksum, *cfg.Service)
 		if err := claimRow.Scan(&batchNumber); err != nil {
 			if !errors.Is(err, pgx.ErrNoRows) {
 				log.Error("BATCH_CODE_ERROR", "error", err)
@@ -967,7 +974,7 @@ func dynamicActionDiff(
 				return
 			}
 			// Already batched -- read back the committed batch number.
-			existingRow := qm.Db.QueryRow(r.Context(), `SELECT batch_number FROM diffs WHERE diff_type = $1 AND checksum = $2`, *cfg.Table_name, checksum)
+			existingRow := qm.Db.QueryRow(r.Context(), `SELECT batch_number FROM ohc_diffs WHERE diff_type = $1 AND checksum = $2`, *cfg.Table_name, checksum)
 			if err := existingRow.Scan(&batchNumber); err != nil {
 				log.Error("BATCH_CODE_ERROR", "error", err)
 				http.Error(w, "Error reading batch code", http.StatusInternalServerError)
@@ -1011,7 +1018,7 @@ func deleteResource(
 		req_id, err := secrets.RandomString(32)
 		req_actor := reqctx.Actor(r.Context())
 		note := r.Header.Get("X-User-Note")
-		log := qm.Logger.With("actor", req_actor, "IP", req_ip, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
+		log := qm.Logger.With("actor", req_actor, "IP", req_ip, "task_type", task_type, "end_point", cfg.Path(), "table", *cfg.Table_name, "request_id", req_id)
 		ctx := reqctx.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")
@@ -1082,7 +1089,7 @@ func deleteResource_Group(
 		req_id, err := secrets.RandomString(32)
 		req_actor := reqctx.Actor(r.Context())
 		note := r.Header.Get("X-User-Note")
-		log := qm.Logger.With("actor", req_actor, "IP", req_ip, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
+		log := qm.Logger.With("actor", req_actor, "IP", req_ip, "task_type", task_type, "end_point", cfg.Path(), "table", *cfg.Table_name, "request_id", req_id)
 		ctx := reqctx.SetLogger(r.Context(), log)
 
 		log.Info("REQUEST_RECEIVED")

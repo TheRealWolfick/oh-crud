@@ -23,7 +23,7 @@ func TestCreateUser(t *testing.T) {
 	}
 
 	call := db.LastCall()
-	if !strings.Contains(call.SQL, "INSERT INTO users") {
+	if !strings.Contains(call.SQL, "INSERT INTO ohc_users") {
 		t.Fatalf("Expected an insert into users, got %q", call.SQL)
 	}
 	if call.Args[0] != u.ID || call.Args[1] != "alice" {

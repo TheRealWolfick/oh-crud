@@ -93,10 +93,10 @@ func (r *ModelRegistry) Register(m *models.DataModel) error {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if m.End_point != nil && *m.End_point != "" {
+	if path := m.Path(); path != "" {
 		for table, other := range r.models {
-			if table != *m.Table_name && other.End_point != nil && *other.End_point == *m.End_point {
-				return fmt.Errorf("end-point %q is already used by table %q", *m.End_point, table)
+			if table != *m.Table_name && other.Path() == path {
+				return fmt.Errorf("end-point %q is already used by table %q", path, table)
 			}
 		}
 	}
@@ -115,25 +115,27 @@ func (r *ModelRegistry) All() []models.DataModel {
 	return out
 }
 
-// ByEndpoint returns the model whose End_point matches the given path, or
-// (nil, false) if no model claims that endpoint.
-func (r *ModelRegistry) ByEndpoint(end_point string) (*models.DataModel, bool) {
+// ByPath returns the model served at path ("service/end-point", see DataModel.Path),
+// or (nil, false) if no model is.
+func (r *ModelRegistry) ByPath(path string) (*models.DataModel, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+	if path == "" { return nil, false }
 	for _, m := range r.models {
-		if m.End_point != nil && *m.End_point == end_point {
+		if m.Path() == path {
 			return m, true
 		}
 	}
 	return nil, false
 }
 
-// OtherByEndpoint returns a model, other than the one for table_name, that claims end_point
-func (r *ModelRegistry) OtherByEndpoint(end_point string, table_name string) (*models.DataModel, bool) {
+// OtherByPath returns a model, other than the one for table_name, served at path
+func (r *ModelRegistry) OtherByPath(path string, table_name string) (*models.DataModel, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+	if path == "" { return nil, false }
 	for table, m := range r.models {
-		if table != table_name && m.End_point != nil && *m.End_point == end_point {
+		if table != table_name && m.Path() == path {
 			return m, true
 		}
 	}

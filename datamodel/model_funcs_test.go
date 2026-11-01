@@ -15,6 +15,7 @@ func basicModel() models.DataModel {
 		Name:        ptr("Test Model"),
 		Version:     ptr("1.0.0"),
 		Table_name:  ptr("test_table"),
+		Service:     ptr("assets"),
 		End_point:   ptr("test"),
 		Primary_key: ptr("id"),
 		End_points_allowed: &models.End_pointsAllowed{

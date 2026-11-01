@@ -140,17 +140,16 @@ func (h *EventManager) CurrentTargets() map[string]*Instructions { return h.targ
 // -----------------------------------------------------------------
 
 // This function is used for registering a function. It will enable the function as a topic and
-// also reference it in the table topic. If the table is not a valid topic, which should never 
-// happen, the function will not register and will log an error.
-func (h *EventManager) RegisterFunction(table string, topic string, hooks *models.EventAction, cfg *models.DataModel) {
+// also reference it in the table topic. Both are topic keys (models.TopicKey). If the table is
+// not a valid topic, which should never happen, the function will not register and will log an error.
+func (h *EventManager) RegisterFunction(table_topic string, topic string, hooks *models.EventAction, cfg *models.DataModel) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-  table_topic := fmt.Sprintf("table:%s", table)
 	_, valid := h.validTopics[table_topic]
 	if !valid {
 		logging.BasicDebug().Error(fmt.Sprintf(`Attempted to register the function topic {%s} against
-		table {%s}, but the table is an invalid topic`, topic, table))
+		table {%s}, but the table is an invalid topic`, topic, table_topic))
 		return
 	}
 
@@ -342,7 +341,7 @@ func (h *EventManager) registerUnsafe(c *Client, topic string, action string, st
 	valid_status := status == "" || status == "any" || status == "all" || slices.Contains(ValidStatuses, status)
 
 	if valid_topic == false || valid_action == false || valid_status == false {
-		c.NotifyJson(map[string]any{"subscribe": false, "reason": "invalid subscription request", "is_topic_valid": valid_topic, "is_action_valid": valid_action, "is_status_valid": valid_status})
+		c.NotifyJson(map[string]any{"subscribe": false, "service": serviceOf(topic), "topic": topicOf(topic), "reason": "invalid subscription request", "is_topic_valid": valid_topic, "is_action_valid": valid_action, "is_status_valid": valid_status})
 		return
 	}
 
@@ -389,7 +388,7 @@ func (h *EventManager) registerUnsafe(c *Client, topic string, action string, st
 		}
 	}
 
-	c.NotifyJson(map[string]any{"subscribe": true, "topic": topic, "action": action, "status": status})
+	c.NotifyJson(map[string]any{"subscribe": true, "service": serviceOf(topic), "topic": topicOf(topic), "action": action, "status": status})
 }
 
 // Register the client in the eventhub safely
@@ -402,11 +401,11 @@ func (h *EventManager) unregister(c *Client, topic string, action string, status
 func (h *EventManager) unregisterUnsafe(c *Client, topic string, action string, status string) {
 	// Process a topic as valid and can be unsubscribed from
 	_, ok := h.targets[topic]; if !ok { 
-		c.NotifyJson(map[string]any{"unsubscribe": false, "topic": topic, "reason": "invalid topic"})
+		c.NotifyJson(map[string]any{"unsubscribe": false, "service": serviceOf(topic), "topic": topicOf(topic), "reason": "invalid topic"})
 		return 
 	}
 	_, ok = h.clients[c][topic]; if !ok { 
-		c.NotifyJson(map[string]any{"unsubscribe": false, "topic": topic, "reason": "you are not subscribed to this topic"})
+		c.NotifyJson(map[string]any{"unsubscribe": false, "service": serviceOf(topic), "topic": topicOf(topic), "reason": "you are not subscribed to this topic"})
 		return 
 	}
 
@@ -430,7 +429,7 @@ func (h *EventManager) unregisterUnsafe(c *Client, topic string, action string, 
 			// Delete the topic from the client data (no actions remaining)
 			delete(h.clients[c], topic)
 
-			c.NotifyJson(map[string]any{"unsubscribe": true, "topic": topic})
+			c.NotifyJson(map[string]any{"unsubscribe": true, "service": serviceOf(topic), "topic": topicOf(topic)})
 			return
 		} else {
 			// ----------------------------------
@@ -441,7 +440,7 @@ func (h *EventManager) unregisterUnsafe(c *Client, topic string, action string, 
 				_, ok = h.clients[c][topic][action_reg][status]; if !ok { continue }
 				delete(h.targets[topic].clients[action_reg][status], c)
 				delete(h.clients[c][topic], action_reg)
-				c.NotifyJson(map[string]any{"unsubscribe": true, "topic": topic, "action": action, "status": status})
+				c.NotifyJson(map[string]any{"unsubscribe": true, "service": serviceOf(topic), "topic": topicOf(topic), "action": action, "status": status})
 			}
 			return
 		}
@@ -451,11 +450,11 @@ func (h *EventManager) unregisterUnsafe(c *Client, topic string, action string, 
 		// --------------------------------
 		// Validate the action
 		if !slices.Contains(ValidActions, action) {
-			c.NotifyJson(map[string]any{"unsubscribe": false, "topic": topic, "action": action, "reason": "invalid action"})
+			c.NotifyJson(map[string]any{"unsubscribe": false, "service": serviceOf(topic), "topic": topicOf(topic), "action": action, "reason": "invalid action"})
 			return 
 		}
 		_, ok := h.clients[c][topic][action]; if !ok {
-			c.NotifyJson(map[string]any{"unsubscribe": false, "topic": topic, "action": action, "reason": "you are not subscribed to this action"})
+			c.NotifyJson(map[string]any{"unsubscribe": false, "service": serviceOf(topic), "topic": topicOf(topic), "action": action, "reason": "you are not subscribed to this action"})
 			return 
 		}
 		if status == "" || status == "any" || status == "all" {
@@ -471,9 +470,9 @@ func (h *EventManager) unregisterUnsafe(c *Client, topic string, action string, 
 			// Check if no actions remain in the topic
 			if len(h.clients[c][topic]) == 0 { 
 				delete(h.clients[c], topic) 
-				c.NotifyJson(map[string]any{"unsubscribe": true, "topic": topic, "note": "auto unsub from topic. No subbed actions remained"})
+				c.NotifyJson(map[string]any{"unsubscribe": true, "service": serviceOf(topic), "topic": topicOf(topic), "note": "auto unsub from topic. No subbed actions remained"})
 			} else {
-				c.NotifyJson(map[string]any{"unsubscribe": true, "topic": topic, "action": action})
+				c.NotifyJson(map[string]any{"unsubscribe": true, "service": serviceOf(topic), "topic": topicOf(topic), "action": action})
 			}
 
 			return
@@ -483,11 +482,11 @@ func (h *EventManager) unregisterUnsafe(c *Client, topic string, action string, 
 			// ----------------------------------
 			// Ensure the status is valid and can be unsubbed from
 			if !slices.Contains(ValidStatuses, status) {
-				c.NotifyJson(map[string]any{"unsubscribe": false, "topic": topic, "action": action, "status": status, "reason": "invalid status"})
+				c.NotifyJson(map[string]any{"unsubscribe": false, "service": serviceOf(topic), "topic": topicOf(topic), "action": action, "status": status, "reason": "invalid status"})
 				return 
 			}
 			_, ok = h.clients[c][topic][action][status]; if !ok { 
-				c.NotifyJson(map[string]any{"unsubscribe": false, "topic": topic, "action": action, "status": status, "reason": "you are not subscribed to this status"})
+				c.NotifyJson(map[string]any{"unsubscribe": false, "service": serviceOf(topic), "topic": topicOf(topic), "action": action, "status": status, "reason": "you are not subscribed to this status"})
 				return
 			}
 			delete(h.targets[topic].clients[action][status], c)
@@ -496,14 +495,14 @@ func (h *EventManager) unregisterUnsafe(c *Client, topic string, action string, 
 				delete(h.clients[c][topic], action)
 				if len(h.clients[c][topic]) == 0 { 
 					delete(h.clients[c], topic) 
-					c.NotifyJson(map[string]any{"unsubscribe": true, "topic": topic, "note": "auto unsub from topic. No subbed statuses and actions remained"})
+					c.NotifyJson(map[string]any{"unsubscribe": true, "service": serviceOf(topic), "topic": topicOf(topic), "note": "auto unsub from topic. No subbed statuses and actions remained"})
 					return
 				} else {
-					c.NotifyJson(map[string]any{"unsubscribe": true, "topic": topic, "action": action, "note": "auto unsub from action. No subbes statuses remained"})
+					c.NotifyJson(map[string]any{"unsubscribe": true, "service": serviceOf(topic), "topic": topicOf(topic), "action": action, "note": "auto unsub from action. No subbes statuses remained"})
 					return
 				}
 			}
-			c.NotifyJson(map[string]any{"unsubscribe": true, "topic": topic, "action": action, "status": status})
+			c.NotifyJson(map[string]any{"unsubscribe": true, "service": serviceOf(topic), "topic": topicOf(topic), "action": action, "status": status})
 			return
 		}
 	} 
@@ -582,7 +581,7 @@ func (h *EventManager) readLoop(c *Client) {
 		case "sub":
 			h.subscribe(c, cm)
 		case "unsub":
-			h.unregister(c, cm.Topic, cm.Action, cm.Status)
+			h.unregister(c, cm.Key(), cm.Action, cm.Status)
 		}
 
 		// msg actions currently unimplemented
@@ -596,11 +595,16 @@ func (h *EventManager) readLoop(c *Client) {
 func (h *EventManager) subscribe(c *Client, cm models.ClientMessage) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	inst, ok := h.targets[cm.Topic]
+	inst, ok := h.targets[cm.Key()]
 	if ok && h.auth.CheckUserAgainstConfig(c.actor, inst.config, inst.permission) {
-		h.registerUnsafe(c, cm.Topic, cm.Action, cm.Status)
+		h.registerUnsafe(c, cm.Key(), cm.Action, cm.Status)
 	}
 }
+
+// serviceOf and topicOf split a topic key for messages to clients, which see the
+// service and the topic as separate fields
+func serviceOf(key string) string { s, _ := models.SplitTopicKey(key); return s }
+func topicOf(key string) string   { _, t := models.SplitTopicKey(key); return t }
 
 // -----------------------------------------------------------------
 //              Event Handling / Publishing
@@ -684,7 +688,8 @@ func (h *EventManager) publish(ctx context.Context, action string, status string
 
 	// Publish to the database
 	if instructions.persist_to_db && action != "get" {
-		_, err := h.db.Exec(ctx, `INSERT INTO events(action, status, topic, log, time, "user") VALUES ($1, $2, $3, $4, $5, $6)`, action, status, topic, payload, timestamp, user.Username)
+		service, short_topic := models.SplitTopicKey(topic)
+		_, err := h.db.Exec(ctx, `INSERT INTO ohc_events(action, status, service, topic, log, time, "user") VALUES ($1, $2, $3, $4, $5, $6, $7)`, action, status, service, short_topic, payload, timestamp, user.Username)
 		if err != nil { logging.Basic().Error("Failed to log event to db", "error", err) }
 	}
 
@@ -700,10 +705,14 @@ func (h *EventManager) publish(ctx context.Context, action string, status string
 	if (len(instructions.functions) > 0 && success_count > 0) {
 		for _, func_topic := range instructions.functions {
 			// Build the update message for this function
+			// Clients see the service and topic separately, and the function's bare name
+			func_service, func_short := models.SplitTopicKey(func_topic)
 			update_message := map[string]any{
 				"event_type": "data altered",
 				"event_time": timestamp,
-				"function_name": func_topic,
+				"service": func_service,
+				"topic": func_short,
+				"function_name": func_short[strings.LastIndex(func_short, "/")+1:],
 				"items_added": 0,
 				"items_updated": 0,
 				"items_removed": 0,

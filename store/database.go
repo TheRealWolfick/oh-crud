@@ -132,7 +132,7 @@ func createDiff(
 	diff_struct.Note = &note
 
 	insertQb := querybuilder.NewQueryBuilder(log)
-	insertQuery := insertQb.BuildInsert("diffs", diff_struct)
+	insertQuery := insertQb.BuildInsert("ohc_diffs", diff_struct)
 	cmdtag, err := db.Exec(ctx, insertQuery, insertQb.GetArgs()...)
 
 	ret_map := map[string]any{

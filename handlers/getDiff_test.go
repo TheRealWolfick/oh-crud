@@ -24,6 +24,7 @@ func diffResourceCfg() *models.DataModel {
 		Name:       ptr("asset-data"),
 		Version:    ptr("1.0.0"),
 		Table_name: ptr("assets"),
+		Service:    ptr("inventory"),
 		End_point:  ptr("assets"),
 		Allow_diff: ptr(true),
 		End_points_allowed: &models.End_pointsAllowed{
@@ -41,7 +42,8 @@ func diffModelCfg() *models.DataModel {
 	return &models.DataModel{
 		Name:       ptr("diffs"),
 		Version:    ptr("1.0.0"),
-		Table_name: ptr("diffs"),
+		Table_name: ptr("ohc_diffs"), // as loaded: <service>_<table-name>
+		Service:    ptr("ohc"),
 		End_point:  ptr(""),
 		Fields: map[string]models.DataModelField{
 			"diff_id":   {Type: ptr("int"), JSON: ptr("diff_id"), DB_type: ptr("serial")},
@@ -111,8 +113,8 @@ func TestGetDiff_QueriesDiffsTableFilteredByResourceTable(t *testing.T) {
 		t.Fatalf("expected 2 queries (data + count), got %d: %v", len(queries), queries)
 	}
 	for _, q := range queries {
-		if !strings.Contains(q, "FROM diffs") {
-			t.Errorf("expected query to read FROM diffs, got: %s", q)
+		if !strings.Contains(q, "FROM ohc_diffs") {
+			t.Errorf("expected query to read FROM ohc_diffs, got: %s", q)
 		}
 		if !strings.Contains(q, "diff_type = $1") {
 			t.Errorf("expected the resource-table filter on diff_type, got: %s", q)

@@ -32,7 +32,7 @@ func adminAuthorised(
 	req_ip := httpx.GetIP(r)
 	req_id, _ := secrets.RandomString(32)
 	req_actor := reqctx.Actor(r.Context())
-	log := qm.Logger.With("actor", req_actor, "IP", req_ip, "function", function, "task_type", task_type, "end_point", *cfg.End_point, "table", *cfg.Table_name, "request_id", req_id)
+	log := qm.Logger.With("actor", req_actor, "IP", req_ip, "function", function, "task_type", task_type, "end_point", cfg.Path(), "table", *cfg.Table_name, "request_id", req_id)
 	ctx := reqctx.SetLogger(r.Context(), log)
 
 	log.Info("REQUEST_RECEIVED")

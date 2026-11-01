@@ -11,15 +11,18 @@ lists every key, its rules, and how Oh CRUD applies it.
 
 | Path | Contents | Loaded |
 |------|----------|--------|
-| `config/default/` | System models (`users`, `events`, `diffs`, `batch_numbers`, `signing_keys`, `services`, `service_keys`) | Startup, watched |
-| `config/base-models/` | Your models | Startup, watched |
+| `config/default/` | System models, service `ohc` (tables `ohc_users`, `ohc_events`, `ohc_diffs`, `ohc_batch_numbers`, `ohc_signing_keys`, `ohc_services`, `ohc_service_keys`, `ohc_refresh_tokens`) | Startup, watched |
+| `config/base-models/` | Your models, in this folder or any folder below it (for example one folder per service) | Startup, watched |
 | `config/special-models/` | Extra models | Watched only (not loaded at startup) |
-| `config/functions/` | Declarative functions | Startup, watched |
+| `config/functions/` | Declarative functions, in this folder or any folder below it | Startup, watched |
 | `config/server/server.yaml` | Server settings (section 2) | Startup, watched |
 | `config/database/` | Generated schema snapshots. Do not edit | Written by Oh CRUD |
 | `config/schemas/datamodel.json` | JSON Schema for model files, for editor validation | Not loaded |
 
-Only files ending in `.yaml` are read. On startup each model is validated
+Only files ending in `.yaml` are read, and folders starting with `.` are skipped.
+A folder added while the server runs is watched from then on, and any models or
+functions already in it are loaded. `config/default/` is not searched below its
+own folder. On startup each model is validated
 (section 5), its table is created or migrated to match, and its routes are
 registered.
 
@@ -98,6 +101,7 @@ name: Asset Data
 version: 1.4.0
 description: Physical assets and their condition.
 table-name: asset_data
+service: inventory
 end-point: asset/data
 primary-key: asset_id
 
@@ -164,8 +168,9 @@ fields:
 | `version` | Yes | `x.y.z`. Must increase for a hot reload to apply |
 | `description` | No | Free text. Returned by the `schema` function |
 | `meta` | No | Free-form map, returned as-is by the `schema` function. Use it for frontend hints (labels, grouping) |
-| `table-name` | Yes | Database table to create/use |
-| `end-point` | No | URL path for the API, e.g. `asset/data` → `/asset/data`. Omit or leave empty for a table with no API. Segments of letters, digits, `-` or `_`, with no leading or trailing `/`. Cannot start with `ws`, `oauth` or `health`, or be used by another model |
+| `table-name` | Yes | The table's name within its service. The database table is `<service>_<table-name>`, so `service: inventory` with `table-name: asset_data` creates `inventory_asset_data`, and two services can each have a table of the same name. With the prefix (and `_history` if `track-history` is on) it must fit PostgreSQL's 63 character limit |
+| `service` | Yes | The service that owns the table, e.g. `inventory`. The first segment of every route and the prefix of every table it owns. 2 to 32 lower case letters or digits, starting with a letter: no `-` or `_`, so table names stay valid SQL and the prefix is unambiguous. Cannot be `admin`, `mesh`, `oauth`, `ws`, `fn` or `health`. `ohc` is reserved for Oh CRUD's own models in `config/default`, which must all use it |
+| `end-point` | No | URL path for the API within the service, e.g. `asset/data` → `/inventory/asset/data`. Omit or leave empty for a table with no API. Segments of letters, digits, `-` or `_`, with no leading or trailing `/`. No segment may be `group`, `diff`, `fn`, `history`, `ws` or `admin`, which every model uses for its own routes. Cannot be used by another model in the same service |
 
 **Flags**
 
@@ -182,7 +187,7 @@ fields:
 | Key | Meaning |
 |-----|---------|
 | `end-points-allowed` | Which operations exist, and which roles may use them (3.3) |
-| `admin-roles` | Roles allowed to use `/{end-point}/admin/pending` and `/admin/approve` |
+| `admin-roles` | Roles allowed to use `/{service}/{end-point}/admin/pending` and `/admin/approve` |
 | `access` | Who may call the model's routes: `require-user` (service calls must act for a user) and `allow-direct` (accept a user token with no service). Both default to `false`. See `auth.md` 1.2 |
 
 **Keys and events**
@@ -244,6 +249,10 @@ These match the event statuses. `all` is accepted but never fires.
 A map of constraint name → `unique-key-fields` list. Each key can span several
 fields. Unique keys can identify rows in update and delete requests.
 
+PostgreSQL keeps unique key and index names per database, not per table, so in the
+database each name gets the service prefix: `uk_building_room` below becomes
+`inventory_uk_building_room`.
+
 ```yaml
 unique-keys:
   uk_building_room:
@@ -257,7 +266,7 @@ A map of constraint name → definition:
 | Key | Required | Meaning |
 |-----|----------|---------|
 | `foreign-key-fields` | Yes | Fields on this model |
-| `foreign-key-target-table` | Yes | Referenced table |
+| `foreign-key-target-table` | Yes | Referenced table's `table-name`, in the same service (`building` refers to `inventory_building`). A service only references its own tables |
 | `foreign-key-target-fields` | Yes | Referenced fields. Same length as `foreign-key-fields` |
 | `foreign-key-target-field-description` | No | Field on the target table holding a human-readable label for the referenced record. Returned by the `schema` function for display only |
 | `foreign-key-on-update` | No | `CASCADE`, `SET NULL`, `SET DEFAULT`, `RESTRICT`, `NO ACTION` |
@@ -267,7 +276,7 @@ A map of constraint name → definition:
 
 A map of index name → definition. Indexes speed up lookups on fields that are
 not keys. They don't change the API, and each name must differ from the
-`unique-keys` names.
+`unique-keys` names. Like unique keys, each name gets the service prefix in the database.
 
 | Key | Required | Meaning |
 |-----|----------|---------|
@@ -417,16 +426,25 @@ routes are not registered and an error is logged.
 When a model's fields change, Oh CRUD migrates its table. Changes that could
 lose data (dropping a table, column or index, or changing a column's type,
 except widening a `character varying`) are **not** applied automatically: they are held in a pending gate, the old routes keep serving,
-and an admin approves or denies them through `GET /{end-point}/admin/pending`
-and `POST /{end-point}/admin/approve` (`api-guide.md` section 10). Denying
+and an admin approves or denies them through `GET /{service}/{end-point}/admin/pending`
+and `POST /{service}/{end-point}/admin/approve` (`api-guide.md` section 10). Denying
 reverts the config file to its last good version.
 
----
+### 6.1 Moving to `<service>_<table-name>`
+
+Tables created before tables carried their service have bare names (`users`,
+`asset_data`). On startup, before any schema sync, Oh CRUD renames each one that
+still exists to `<service>_<table-name>`, in one transaction, along with its history
+table, its primary key, unique key and index names, its sequences, and its history
+foreign keys. Rows in `ohc_diffs` and `ohc_batch_numbers` that name the old table
+are updated, and the table's files in `config/database/` follow it. If both the bare
+and the prefixed table exist, neither is touched and a warning is logged: move the
+data by hand. Back up the database before the first start after upgrading.
 
 ## 7. Declarative functions
 
 A function is a saved, parameterised query on one model, served at
-`GET /{bound-to}/fn/{name}`. Full reference and examples are in `api-guide.md`
+`GET /{service}/{bound-to}/fn/{name}`. Full reference and examples are in `api-guide.md`
 sections 11–12.
 
 ### 7.1 Top-level keys
@@ -435,7 +453,8 @@ sections 11–12.
 |-----|----------|---------|
 | `name` | Yes | URL slug after `/fn/`. Cannot be `aggregate`, `schema`, `diff`, `history`, `group` |
 | `version` | Yes | `x.y.z`. Hot reload only applies a higher version |
-| `bound-to` | Yes | The model's `end-point` exactly (e.g. `asset/data`, not `Asset Data`) |
+| `service` | Yes | The bound model's `service`. A service can only add functions to its own tables |
+| `bound-to` | Yes | The model's `end-point` within that service, exactly (e.g. `asset/data`, not `Asset Data`) |
 | `description` | No | Free text |
 | `roles-allowed` | No | Roles that may call it. Empty or omitted inherits the model's `end-points-allowed.GET` |
 | `where` | No | Always-applied equality filters: field name → literal |
@@ -446,7 +465,7 @@ sections 11–12.
 | `sort-by` | No | Default sort. Caller `sort_by` is appended |
 | `web-hooks` | No | Same structure as a model's `web-hooks`, for the function's "data altered" events |
 
-Every function also gets a websocket topic, `func:{name}`.
+Every function also gets a websocket topic, `func:{bound-to}/{name}` in its service.
 
 ### 7.2 Parameters
 
