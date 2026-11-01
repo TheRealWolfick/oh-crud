@@ -76,6 +76,10 @@ audit:
 cluster:
   peers:
     - http://10.0.0.2:8080
+
+admin:
+  services: [management]
+  idle-days: 30
 ```
 
 | Key | Meaning |
@@ -91,6 +95,8 @@ cluster:
 | `logging.retention-days` | Days of application logs kept in the database, today included. Older days are dropped whole. Default 14 |
 | `logging.db-level` | Lowest level written to the database: `debug`, `info`, `warn` or `error`. Default `info`. stderr follows `LOG_LEVEL` instead |
 | `cluster.peers` | Base URLs of the other Oh CRUD instances sharing this database. Each instance tells the others of revocations as they happen (`auth.md` 4.4). Empty for a single instance. Listing an instance's own URL is harmless |
+| `admin.services` | Services allowed to call the admin API for a user, such as the management platform (`admin-api.md`). A user can also call it directly with their own token |
+| `admin.idle-days` | A service whose keys have signed nothing for this many days shows as idle. Default 30 |
 | `audit.min-retention-days` | Audit entries newer than this can never be pruned. Default 365. Applies once the admin API's prune endpoint exists |
 
 **Reloading.** The file is watched, but settings take effect at different
@@ -101,6 +107,7 @@ times:
 | `cors`, `token-url`, `token-lifetime` | Immediately |
 | `logging` | At the next log maintenance run, within the hour |
 | `cluster.peers` | The next message sent |
+| `admin` | The next request |
 | `rbac` | When each model's routes are next registered (a model version bump), or on restart |
 | `issuer` | Restart. It also invalidates every outstanding access token |
 

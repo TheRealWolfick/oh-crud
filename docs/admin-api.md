@@ -1,0 +1,125 @@
+# Admin API
+
+`/admin/v1` is what the management platform reads to show Oh CRUD's users, services,
+sessions, audit log, logs and pending schema changes. These routes only read; the
+routes that change things come next.
+
+---
+
+## 1. Access
+
+Every route needs a **user** holding the platform admin role (`rbac.admin-role` in
+`server.yaml`), sent one of two ways:
+
+- Through a service listed in `admin.services` (the management platform): its service
+  token as `Authorization: Bearer`, and the user's token in `X-OhCrud-User`.
+- Directly: the user's own access token as the bearer.
+
+A service alone (no user), a service not in `admin.services`, or a user without the
+role is refused with `403`. The per-service schema route also lets in that service's
+admin role, `<service>:admin`.
+
+Every answer carries `X-Request-Id`. Errors are RFC 9457 problem details:
+
+```json
+{"type": "about:blank", "title": "Not an administrator", "status": 403,
+ "instance": "/admin/v1/users", "request_id": "evyAeRj3mQUkZw5CZgzUjFkr"}
+```
+
+A `500` says only "Something went wrong"; the error is in the logs under the same
+`request_id` (`GET /admin/v1/logs?request_id=...`).
+
+## 2. Lists
+
+Lists answer `{"items": [...], "next_cursor": "..."}`. Pass `cursor=<next_cursor>` to
+get the next page; it is empty on the last one. `limit` is 50 by default, at most 200.
+
+Times are RFC 3339. Filters taking a time also take a date (`2026-10-28`); as an upper
+bound a date includes the whole day.
+
+## 3. Routes
+
+| Route | Returns |
+|-------|---------|
+| `GET /admin/v1/overview` | The dashboard's first screen (3.1) |
+| `GET /admin/v1/services?q=` | Services by id, with status and key counts. `q` searches the id and role |
+| `GET /admin/v1/services/{id}` | One service, its keys, and what its role can reach |
+| `GET /admin/v1/users?status=&q=` | Users by username, with each tab's count (3.2) |
+| `GET /admin/v1/users/{id}` | One user, their sessions, and their last 20 audit entries |
+| `GET /admin/v1/audit?...` | The audit log, newest first (3.3) |
+| `GET /admin/v1/roles/{role}/access` | What a role can reach (3.4) |
+| `GET /admin/v1/schema/pending` | Destructive schema changes waiting for approval |
+| `GET /admin/v1/services/{svc}/schema/pending` | The same, for one service's tables. Open to `<svc>:admin` too |
+| `GET /admin/v1/logs?...` | Application logs, newest first (3.5) |
+
+### 3.1 Overview
+
+"Today" is the UTC day.
+
+| Field | Meaning |
+|-------|---------|
+| `tiles.services` | `total`, `idle` (no key has signed for `admin.idle-days`, default 30, or ever), `disabled` |
+| `tiles.people` | `total` users (not service rows), and those who `signed_in_today` |
+| `tiles.sessions_ended_today` | Sessions ended by the system today, and how many of those were `token_reuse` |
+| `tiles.admin_changes_today` | Audit entries made by a user that aren't logins or logouts, and how many of those were made `with_otp` |
+| `recent_changes` | The last 5 audit entries |
+| `needs_you` | `{kind, id, title}` to open: idle services, admins with no second factor, users whose sessions were ended by token reuse in the last day, pending schema changes |
+| `key_health` | Each service's `last_signed_at` and status |
+
+### 3.2 Users
+
+| `status` | Lists |
+|----------|-------|
+| `all` (default) | Everyone |
+| `active` | Not disabled, not a service row |
+| `sessions_ended` | Active users who had a session ended by token reuse or a revocation in the last 7 days |
+| `disabled` | Disabled users |
+| `service` | The rows a service's own writes are recorded against (`svc:<id>`). A service gets one when it first takes a token |
+
+`q` searches the username, id, display name and roles. Each user has `has_password`,
+`has_otp`, `last_login_at` (from the audit log), `live_sessions` and `status`.
+
+A user's sessions are their refresh token families: `session` (the `sid`), the
+`service` it was started through, `amr`, `started_at`, `expires_at` and `state`
+(`live`, `revoked` or `expired`).
+
+### 3.3 Audit
+
+| Parameter | Matches |
+|-----------|---------|
+| `actor` | `actor_user`, a user id |
+| `action` | Exactly, or by prefix with a trailing `*`: `service_key.*`, `user.login*` |
+| `target` | Exactly: `usr_…`, `svc:…`, `username:…` |
+| `service` | The service that owns the target |
+| `request_id` | One request |
+| `from`, `to` | Time range |
+
+`format=csv` downloads up to 10,000 matching entries as `audit.csv` instead.
+
+### 3.4 Role access
+
+Read from every loaded model's `end-points-allowed` and `admin-roles`, and every
+function's `roles-allowed` (a function with none inherits its model's `GET`):
+
+```json
+{"role": "editor", "platform_admin": false,
+ "models": [{"service": "inventory", "path": "/inventory/building", "model": "Building",
+             "methods": ["GET", "POST"], "admin": false}],
+ "functions": []}
+```
+
+`platform_admin` is true for `rbac.admin-role`, which passes every check whatever the
+lists say.
+
+### 3.5 Logs
+
+| Parameter | Matches |
+|-----------|---------|
+| `level` | This level and above: `debug`, `info`, `warn`, `error` |
+| `service` | Who logged it (`ohc` for Oh CRUD) |
+| `request_id` | One request |
+| `q` | Text in the message |
+| `since`, `until` | Time range |
+
+Logs have no id, so the cursor is the time of the last row shown; rows logged in the
+same microsecond as a page boundary can be skipped.

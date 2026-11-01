@@ -26,6 +26,31 @@ type ServerConfig struct {
 	Logging         *LoggingConfig `yaml:"logging"`
 	Audit           *AuditConfig   `yaml:"audit"`
 	Cluster         *ClusterConfig `yaml:"cluster"`
+	Admin           *AdminConfig   `yaml:"admin"`
+}
+
+// AdminConfig controls the admin API (/admin/v1)
+type AdminConfig struct {
+	Services  []string `yaml:"services"`   // services.id values allowed to call the admin API for a user, such as the management platform
+	Idle_days int      `yaml:"idle-days"`  // a service whose keys signed nothing for this long is idle. Default 30
+}
+
+// AdminServices are the services allowed to call the admin API on a user's behalf
+func (c *ServerConfig) AdminServices() []string {
+	if c == nil || c.Admin == nil { return nil }
+	return c.Admin.Services
+}
+
+// ServiceIdleDays is how long a service may go without signing before it shows as idle
+func (c *ServerConfig) ServiceIdleDays() int {
+	if c == nil || c.Admin == nil || c.Admin.Idle_days <= 0 { return 30 }
+	return c.Admin.Idle_days
+}
+
+// AdminRole is the platform admin role, or "" if none is configured
+func (c *ServerConfig) AdminRole() string {
+	if c == nil || c.RBAC == nil { return "" }
+	return c.RBAC.Admin_role
 }
 
 // ClusterConfig lists the other Oh CRUD instances, which this one tells of revocations

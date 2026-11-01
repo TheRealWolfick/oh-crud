@@ -156,6 +156,9 @@ func (a *Auth) revoked(c *models.Claims) bool {
 // serviceID is the services.id a service token was issued for
 func serviceID(c *models.Claims) string { return strings.TrimPrefix(c.Subject, serviceUserPrefix) }
 
+// ServiceID is the services.id a service token was issued for
+func ServiceID(c *models.Claims) string { return serviceID(c) }
+
 func (p *Principal) callerRoles() reqctx.CallerRoles {
 	var c reqctx.CallerRoles
 	if p.Service != nil { c.Service, c.HasService = p.Service.Roles, true }

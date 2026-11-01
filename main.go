@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"lotusforge.au/api-server/admin"
 	"lotusforge.au/api-server/auth"
 	"lotusforge.au/api-server/cluster"
 	"lotusforge.au/api-server/datamodel"
@@ -201,6 +202,12 @@ func main() {
 	mux.Handle("POST /oauth/token", oauthHandler.TokenEndpoint())
 	mux.Handle("POST /oauth/logout", oauthHandler.LogoutHandler())
 	mux.Handle("POST "+cluster.Path, bus.Handler())
+
+	// Admin API: what the management platform reads (and later changes)
+	admin.New(admin.Deps{
+		DB: pool, Auth: oauthHandler, Config: server_conf, Models: modelRegister,
+		Functions: functionRegister, Gate: gate, Logger: logger,
+	}).Routes(mux)
 
 
 	// ---------------------------------------------------------------

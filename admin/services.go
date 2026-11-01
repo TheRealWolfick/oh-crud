@@ -1,0 +1,98 @@
+package admin
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net/http"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+)
+
+// Service is one row of the services list
+type Service struct {
+	ID            string     `json:"id" db:"id"`
+	Role          string     `json:"role" db:"role"`
+	EntraClientID *string    `json:"entra_client_id" db:"entra_client_id"`
+	DisabledAt    *time.Time `json:"disabled_at" db:"disabled_at"`
+	ActiveKeys    int        `json:"active_keys" db:"active_keys"`
+	RevokedKeys   int        `json:"revoked_keys" db:"revoked_keys"`
+	LastSigned    *time.Time `json:"last_signed_at" db:"last_signed_at"` // the latest any of its keys signed an assertion
+	Status        string     `json:"status" db:"-"`                      // active, idle or disabled
+	WritesAs      string     `json:"writes_recorded_as" db:"-"`
+}
+
+const serviceSQL = `
+SELECT s.id, s.role, s.entra_client_id, s.disabled_at,
+       count(k.kid) FILTER (WHERE k.revoked_at IS NULL)     AS active_keys,
+       count(k.kid) FILTER (WHERE k.revoked_at IS NOT NULL) AS revoked_keys,
+       max(k.last_used_at)                                  AS last_signed_at
+  FROM ohc_services s
+  LEFT JOIN ohc_service_keys k ON k.service_id = s.id`
+
+// status fills in what is worked out rather than stored
+func (a *API) finishService(s *Service) {
+	idle := time.Duration(a.d.Config.Get().ServiceIdleDays()) * 24 * time.Hour
+	switch {
+	case s.DisabledAt != nil:
+		s.Status = "disabled"
+	case s.LastSigned == nil || time.Since(*s.LastSigned) > idle:
+		s.Status = "idle"
+	default:
+		s.Status = "active"
+	}
+	s.WritesAs = "svc:" + s.ID
+}
+
+// services lists services by id, after the cursor, matching q (id or role)
+func (a *API) services(ctx context.Context, q string, after string, n int) ([]Service, error) {
+	rows, err := a.d.DB.Query(ctx, serviceSQL+`
+		WHERE ($1 = '' OR s.id ILIKE '%' || $1 || '%' OR s.role ILIKE '%' || $1 || '%')
+		  AND s.id > $2
+		GROUP BY s.id ORDER BY s.id LIMIT $3`, q, after, n)
+	if err != nil { return nil, err }
+	list, err := pgx.CollectRows(rows, pgx.RowToStructByNameLax[Service])
+	if err != nil { return nil, err }
+	for i := range list { a.finishService(&list[i]) }
+	return list, nil
+}
+
+// GET /admin/v1/services?q=&cursor=&limit=
+func (a *API) listServices(w http.ResponseWriter, r *http.Request) {
+	after, ok := cursor(r)
+	if !ok { problem(w, r, http.StatusBadRequest, "Bad cursor", ""); return }
+	n := limit(r)
+	list, err := a.services(r.Context(), r.URL.Query().Get("q"), after, n+1)
+	if err != nil { a.serverError(w, r, "list services", err); return }
+	writeJSON(w, trim(list, n, func(s Service) string { return s.ID }))
+}
+
+// ServiceKey is one of a service's keys
+type ServiceKey struct {
+	KID           string     `json:"kid" db:"kid"`
+	CreatedAt     time.Time  `json:"created_at" db:"created_at"`
+	LastUsedAt    *time.Time `json:"last_signed_at" db:"last_used_at"`
+	RevokedAt     *time.Time `json:"revoked_at" db:"revoked_at"`
+	RevokedReason *string    `json:"revoked_reason" db:"revoked_reason"`
+}
+
+// GET /admin/v1/services/{id}: the service, its keys, and what its role can reach
+func (a *API) getService(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	rows, err := a.d.DB.Query(r.Context(), serviceSQL+` WHERE s.id = $1 GROUP BY s.id`, id)
+	if err != nil { a.serverError(w, r, "get service", err); return }
+	s, err := pgx.CollectOneRow(rows, pgx.RowToStructByNameLax[Service])
+	if errors.Is(err, pgx.ErrNoRows) { problem(w, r, http.StatusNotFound, "No such service", fmt.Sprintf("No service %q.", id)); return }
+	if err != nil { a.serverError(w, r, "get service", err); return }
+	a.finishService(&s)
+
+	rows, err = a.d.DB.Query(r.Context(), `SELECT kid, created_at, last_used_at, revoked_at, revoked_reason
+		FROM ohc_service_keys WHERE service_id = $1 ORDER BY created_at DESC`, id)
+	if err != nil { a.serverError(w, r, "list service keys", err); return }
+	keys, err := pgx.CollectRows(rows, pgx.RowToStructByName[ServiceKey])
+	if err != nil { a.serverError(w, r, "list service keys", err); return }
+	if keys == nil { keys = []ServiceKey{} }
+
+	writeJSON(w, map[string]any{"service": s, "keys": keys, "reach": a.access(s.Role)})
+}

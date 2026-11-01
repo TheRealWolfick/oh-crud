@@ -38,3 +38,9 @@ audit:
 # as they happen. Leave empty for a single instance.
 cluster:
   peers: []
+
+# The admin API (/admin/v1). Only users with rbac.admin-role may use it, either
+# directly or through one of these services (the management platform).
+admin:
+  services: []
+  idle-days: 30        # a service whose keys signed nothing for this long shows as idle
