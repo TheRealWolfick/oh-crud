@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"lotusforge.au/api-server/auth"
+	"lotusforge.au/api-server/cluster"
 	"lotusforge.au/api-server/datamodel"
 	"lotusforge.au/api-server/events"
 	"lotusforge.au/api-server/handlers"
@@ -111,6 +112,20 @@ func main() {
 	//                Middleware
 	// ---------------------------------------------------------------
 	oauthHandler := auth.AuthHandler(pool, server_conf, logger, ks)
+
+	// Revoked users, sessions and services, held in memory. The recent ones are read once
+	// here; after that each instance tells the others of a revocation as it happens.
+	if err := oauthHandler.Blocks.Load(context.Background()); err != nil {
+		logger.Error("Failed to load revocations: tokens revoked before this start are accepted", "error", err)
+	}
+
+
+	// ---------------------------------------------------------------
+	//                Cluster (instance to instance messages)
+	// ---------------------------------------------------------------
+	bus := cluster.New([]byte(os.Getenv("OH_CRUD_SECRET")), func() []string { return server_conf.Get().ClusterPeers() }, logger)
+	oauthHandler.Blocks.ShareWith(func(r auth.Revocation) { bus.Publish(auth.RevocationChannel, r) })
+	bus.Handle(auth.RevocationChannel, oauthHandler.Blocks.Receive)
 	authMiddleware := handlers.ModelAuth(oauthHandler.ForModel)   // Bearer tokens, then each model's access rule
 
 
@@ -118,6 +133,10 @@ func main() {
 	//                Event Manager
 	// ---------------------------------------------------------------
 	evh := events.NewEventManager(27, 10, pool, oauthHandler)
+
+	// A revocation closes the websockets opened with the revoked tokens, whether this
+	// instance made it or a peer sent it
+	oauthHandler.Blocks.OnRevoke(func(key string, at time.Time) { evh.CloseRevoked(key, at) })
 
 
 	// ---------------------------------------------------------------
@@ -146,7 +165,7 @@ func main() {
 	}
 
 	// Check to ensure the required tables are available. Exit if any are false
-	for _, table := range []string{"ohc_diffs", "ohc_events", "ohc_batch_numbers", "ohc_signing_keys", "ohc_audit_events"} {
+	for _, table := range []string{"ohc_diffs", "ohc_events", "ohc_batch_numbers", "ohc_signing_keys", "ohc_audit_events", "ohc_revocations"} {
 		_, found := modelRegister.ByTableName(table)
 		if !found { logger.Error("missing required table", "table", table); os.Exit(1) }
 	}
@@ -180,6 +199,8 @@ func main() {
 	mux.Handle("GET /.well-known/jwks.json", handlers.JWKSHandler(ks))
 	mux.Handle("GET /.well-known/openid-configuration", oauthHandler.OpenIDConfig())
 	mux.Handle("POST /oauth/token", oauthHandler.TokenEndpoint())
+	mux.Handle("POST /oauth/logout", oauthHandler.LogoutHandler())
+	mux.Handle("POST "+cluster.Path, bus.Handler())
 
 
 	// ---------------------------------------------------------------
@@ -212,7 +233,7 @@ func main() {
 	//                Server Launch
 	// ---------------------------------------------------------------
 	srv := &http.Server{
-		Addr:        ":8080",
+		Addr:        listenAddr(),
 		Handler:     middleware.Recover(logger)(mux),
 		IdleTimeout: 120 * time.Second,
 		ReadTimeout: 30 * time.Second,
@@ -224,6 +245,12 @@ func main() {
 	//                Cleanup
 	// ---------------------------------------------------------------
 	defer pool.Close()
+}
+
+// listenAddr is ADDR, or :8080. Several instances on one machine need different ones.
+func listenAddr() string {
+	if a := os.Getenv("ADDR"); a != "" { return a }
+	return ":8080"
 }
 
 func loadModelsFromDir(dir string, recursive bool, logger interface{ Warn(string, ...any); Error(string, ...any) }) []models.DataModel {

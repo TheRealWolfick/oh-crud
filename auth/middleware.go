@@ -22,6 +22,11 @@ type Principal struct {
 
 type principalKey struct{}
 
+// ContextWithPrincipal records p as the request's principal, as Middleware does
+func ContextWithPrincipal(ctx context.Context, p *Principal) context.Context {
+	return context.WithValue(ctx, principalKey{}, p)
+}
+
 func PrincipalFrom(ctx context.Context) *Principal {
 	p, _ := ctx.Value(principalKey{}).(*Principal)
 	return p
@@ -38,7 +43,7 @@ func (a *Auth) Middleware(next http.Handler) http.Handler {
 			return
 		}
 		first, err := a.authenticate(raw)
-		if err != nil {
+		if err != nil || a.revoked(first) {
 			unauthorized(w)
 			return
 		}
@@ -50,7 +55,7 @@ func (a *Auth) Middleware(next http.Handler) http.Handler {
 			p.Service = first
 			if ut != "" {
 				u, err := a.authenticate(ut)
-				if err != nil || u.TokenUse != "user" {
+				if err != nil || u.TokenUse != "user" || a.revoked(u) {
 					unauthorized(w)
 					return
 				}
@@ -75,7 +80,7 @@ func (a *Auth) Middleware(next http.Handler) http.Handler {
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), principalKey{}, p)
+		ctx := ContextWithPrincipal(r.Context(), p)
 		ctx = reqctx.SetActor(ctx, p.actor(), p.callerRoles())
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
@@ -137,6 +142,15 @@ func (a *Auth) authenticate(raw string) (*models.Claims, error) {
 	if err != nil { return nil, err }
 	if c.Subject == "" { return nil, errors.New("token has no subject") }
 	return c, nil
+}
+
+// revoked reports whether the token was issued before a revocation of its user, its
+// session or its service
+func (a *Auth) revoked(c *models.Claims) bool {
+	if a.Blocks == nil { return false }
+	// Every token Oh CRUD issues has iat; one without can't be checked, so it is refused
+	if c.IssuedAt == nil { return true }
+	return a.Blocks.Blocked(c.IssuedAt.Time, TokenKeys(c)...)
 }
 
 // serviceID is the services.id a service token was issued for

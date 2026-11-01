@@ -33,6 +33,8 @@ const (
 	RefreshTokenReuse    = "refresh_token.reuse"
 	RefreshTokenMisused  = "refresh_token.wrong_client"
 	SessionRevoke        = "session.revoke"
+	UserLogout           = "user.logout"
+	UserLogoutAll        = "user.logout_all"
 )
 
 // Event is one entry. Action, Target and Service are required; leave anything unknown empty.

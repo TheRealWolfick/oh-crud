@@ -1,5 +1,5 @@
 name: users
-version: 2.1.0
+version: 2.1.1
 table-name: users
 service: ohc
 end-point: user
@@ -52,6 +52,7 @@ fields:
     db-type: bytea
     json: totp_secret
     private: true
+    nullable: true            # NULL: the user has no second factor set up
     required-on-insert: false
   created_at:
     type: time
@@ -66,6 +67,7 @@ fields:
     json: disabled_at
     db-type: timestamptz
     private: true
+    nullable: true            # NULL: the user is not disabled
     skip-insert: true
   roles:
     type: "[]string"

@@ -368,6 +368,12 @@ func (ks *KeyStore) UseRefreshToken(ctx context.Context, id int) (bool, error) {
 }
 
 // Revoke every live refresh token in a family, ending that login session
+// RevokeUserRefreshTokens revokes every refresh token the user holds, in every session
+func (ks *KeyStore) RevokeUserRefreshTokens(ctx context.Context, userID string) error {
+	_, err := ks.db.Exec(ctx, `UPDATE ohc_refresh_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, userID)
+	return err
+}
+
 func (ks *KeyStore) RevokeRefreshFamily(ctx context.Context, family string) error {
 	sql := `UPDATE ohc_refresh_tokens SET revoked_at = now() WHERE family_id = $1 AND revoked_at IS NULL`
 

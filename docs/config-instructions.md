@@ -37,9 +37,9 @@ remove a model or function.
 |----------|----------|---------|
 | `DATABASE_URL` | Yes | `host:port/database` part of the PostgreSQL URL |
 | `DATABASE_USER`, `DATABASE_PWD` | Yes | Database credentials |
-| `OH_CRUD_SECRET` | Yes | Exactly 32 bytes. Encrypts the token signing keys (`auth.md`) |
-
-The server listens on `:8080`.
+| `OH_CRUD_SECRET` | Yes | Exactly 32 bytes. Encrypts the token signing keys, and signs messages between instances (`auth.md` 4.4). Every instance sharing a database must use the same value |
+| `ADDR` | No | Address to listen on. Default `:8080` |
+| `LOG_LEVEL`, `LOG_TYPE` | No | stderr logging (2.1) |
 
 ---
 
@@ -72,6 +72,10 @@ logging:
 
 audit:
   min-retention-days: 365
+
+cluster:
+  peers:
+    - http://10.0.0.2:8080
 ```
 
 | Key | Meaning |
@@ -86,6 +90,7 @@ audit:
 | `token-lifetime` | Access token lifetime, as a duration (`10m`, `1h`) |
 | `logging.retention-days` | Days of application logs kept in the database, today included. Older days are dropped whole. Default 14 |
 | `logging.db-level` | Lowest level written to the database: `debug`, `info`, `warn` or `error`. Default `info`. stderr follows `LOG_LEVEL` instead |
+| `cluster.peers` | Base URLs of the other Oh CRUD instances sharing this database. Each instance tells the others of revocations as they happen (`auth.md` 4.4). Empty for a single instance. Listing an instance's own URL is harmless |
 | `audit.min-retention-days` | Audit entries newer than this can never be pruned. Default 365. Applies once the admin API's prune endpoint exists |
 
 **Reloading.** The file is watched, but settings take effect at different
@@ -95,6 +100,7 @@ times:
 |---------|-----------------------|
 | `cors`, `token-url`, `token-lifetime` | Immediately |
 | `logging` | At the next log maintenance run, within the hour |
+| `cluster.peers` | The next message sent |
 | `rbac` | When each model's routes are next registered (a model version bump), or on restart |
 | `issuer` | Restart. It also invalidates every outstanding access token |
 

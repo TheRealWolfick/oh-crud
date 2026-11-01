@@ -25,6 +25,18 @@ type ServerConfig struct {
 	Token_lifetime  time.Duration  `yaml:"token-lifetime"`
 	Logging         *LoggingConfig `yaml:"logging"`
 	Audit           *AuditConfig   `yaml:"audit"`
+	Cluster         *ClusterConfig `yaml:"cluster"`
+}
+
+// ClusterConfig lists the other Oh CRUD instances, which this one tells of revocations
+type ClusterConfig struct {
+	Peers []string `yaml:"peers"` // base URLs, e.g. http://10.0.0.2:8080. Listing this instance too is harmless
+}
+
+// ClusterPeers are the base URLs of the other instances; none for a single instance
+func (c *ServerConfig) ClusterPeers() []string {
+	if c == nil || c.Cluster == nil { return nil }
+	return c.Cluster.Peers
 }
 
 // LoggingConfig controls the application log kept in the database (ohc_logs)

@@ -1,0 +1,43 @@
+name: revocations
+version: 1.0.0
+table-name: revocations
+service: ohc
+end-point: ""
+description: >
+  Access tokens can't be recalled, so revoking a session, a user or a service adds a
+  row here. Every instance reloads the recent rows every 15 seconds and refuses any
+  token of that key issued at or before the row's created_at. Rows older than the
+  longest access token lifetime no longer matter.
+
+primary-key: id
+
+indexes:
+  idx_revocations_created_at:
+    index-fields: [created_at]
+
+fields:
+  id:
+    type: int
+    db-type: bigserial
+    json: id
+    skip-insert: true
+  key:
+    type: string
+    db-type: text
+    json: key
+    nullable: false
+    required-on-insert: true
+    description: "What is revoked: user:<users.id>, sid:<session>, or svc:<service id>"
+  created_at:
+    type: time
+    db-type: timestamptz
+    json: created_at
+    default: now()
+    nullable: false
+    skip-insert: true
+    description: "Tokens of this key issued at or before this moment are refused"
+  reason:
+    type: string
+    db-type: text
+    json: reason
+    nullable: true

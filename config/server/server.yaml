@@ -33,3 +33,8 @@ logging:
 # Audit log (ohc_audit_events). Entries newer than this can never be pruned
 audit:
   min-retention-days: 365
+
+# Other Oh CRUD instances sharing this database. Each tells the others of revocations
+# as they happen. Leave empty for a single instance.
+cluster:
+  peers: []

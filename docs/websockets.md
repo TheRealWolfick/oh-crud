@@ -62,7 +62,15 @@ topic: `table:{end-point}` in the model's service.
 Each subscription is confirmed with a message (see 3.1). A client that wants
 nothing by default can unsubscribe straight after connecting.
 
-### 1.3 Keep-alive
+### 1.3 Revocation
+
+If the token a socket was opened with is revoked (a logout, the user's sessions being
+ended, or the service's tokens being revoked; see `auth.md` 4.4), the server closes
+the socket with close code **`4401`** and reason `token revoked`. Reconnecting with
+the same token is refused with `401`: get a new token first. Sockets opened with a
+token issued after the revocation are not affected.
+
+### 1.4 Keep-alive
 
 The server sends a websocket **ping every 27 seconds**. If it hears nothing
 back (a pong or any message) for about **57 seconds**, it closes the

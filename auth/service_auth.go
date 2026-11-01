@@ -35,6 +35,7 @@ type Auth struct {
 	Replay    models.ReplayCache
 	lg        *slog.Logger
 	ks        *KeyStore
+	Blocks    *BlockList // revoked users, sessions and services; nil disables the check
 }
 
 type ReplayMemory struct {
@@ -51,6 +52,7 @@ func AuthHandler(db models.DBExecQuery, svr_conf *models.SwappableServerConfig, 
 		Replay: ReplayService(),
 		lg: lg,
 		ks: ks,
+		Blocks: NewBlockList(db, func() time.Duration { return svr_conf.Get().Token_lifetime }),
 	}
 }
 
@@ -170,7 +172,9 @@ const serviceUserPrefix = "svc:"
 // history, diffs and events reference users.username. The row has no password or
 // roles, so it can never log in or be used to widen access.
 func (a *Auth) ensureServiceUser(ctx context.Context, svcID string) error {
-	sql := `INSERT INTO ohc_users (id, username, display_name, roles) VALUES ($1, $1, $2, '{}') ON CONFLICT DO NOTHING`
+	// $1 fills both a text and a varchar column, so it is typed explicitly: PostgreSQL
+	// won't infer one type for a parameter used against two
+	sql := `INSERT INTO ohc_users (id, username, display_name, roles) VALUES ($1::text, $1::text, $2, '{}') ON CONFLICT DO NOTHING`
 	_, err := a.ks.db.Exec(ctx, sql, serviceUserPrefix+svcID, svcID)
 	return err
 }
@@ -227,8 +231,8 @@ func (a *Auth) OpenIDConfig() http.HandlerFunc {
 			"issuer": cfg.Issuer,
 			"jwks_uri": cfg.Issuer+"/.well-known/jwks.json",
 			"token_endpoint": cfg.Token_url,
-			"authorization_endpoint": cfg.Issuer+"/authorize",
-			"end_session_endpoint": cfg.Issuer+"/logout",
+			// Only what exists is advertised: clients such as go-oidc trust this document.
+			// authorization_endpoint and end_session_endpoint arrive with the login page.
 			"grant_types_supported": []string{
 				"client_credentials",
 				"password",
@@ -238,7 +242,6 @@ func (a *Auth) OpenIDConfig() http.HandlerFunc {
 			},
 			"token_endpoint_auth_methods_supported": []string{"private_key_jwt"},
 			"id_token_signing_alg_values_supported": []string{"EdDSA"},
-			"code_challenge_methods_supported": []string{"S256"},
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(res)
@@ -562,7 +565,7 @@ func (a *Auth) RefreshGrant(w http.ResponseWriter, r *http.Request) {
 	}
 	if rt.UsedAt != nil || !claimed {
 		a.lg.Warn("refresh token reuse, revoking family", "user", rt.UserID, "client", svc.ID, "family", rt.FamilyID)
-		a.revokeFamily(ctx, rt.FamilyID)
+		a.endSession(ctx, rt.FamilyID, "refresh_token.reuse")
 		// The system ends the session, so there is no actor
 		a.record(r, audit.Event{Action: audit.RefreshTokenReuse, Target: rt.UserID, Service: audit.System,
 			ViaService: svc.ID, Before: map[string]string{"session": rt.FamilyID, "state": "live"},
@@ -574,7 +577,10 @@ func (a *Auth) RefreshGrant(w http.ResponseWriter, r *http.Request) {
 	// Load the user fresh, so disabling an account or changing roles takes effect on refresh
 	usr, err := a.getUserByID(ctx, rt.UserID)
 	if err != nil || usr.DisabledAt != nil {
-		a.revokeFamily(ctx, rt.FamilyID)
+		// Every session goes, not just this one: the user can't use any of them now
+		if err := a.RevokeUser(ctx, rt.UserID, "user disabled or removed"); err != nil {
+			a.lg.Error("failed to revoke a disabled user's sessions", "user", rt.UserID, "error", err)
+		}
 		reason := "user_disabled"
 		if err != nil { reason = "user_missing" }
 		a.record(r, audit.Event{Action: audit.SessionRevoke, Target: rt.UserID, Service: audit.System,
@@ -588,11 +594,63 @@ func (a *Auth) RefreshGrant(w http.ResponseWriter, r *http.Request) {
 	a.issueUserTokens(w, r, usr, svc.ID, rt.FamilyID, rt.AMR, rt.AuthTime, refreshExpiry(rt.AMR, rt))
 }
 
-// Revoke a session family, logging rather than failing the request if it errors
-func (a *Auth) revokeFamily(ctx context.Context, family string) {
+// endSession ends one login session: its refresh tokens stop working at once, and its
+// access tokens on every instance within reloadEvery. Errors are logged, not returned,
+// because the caller has already decided the session must end.
+func (a *Auth) endSession(ctx context.Context, family string, reason string) {
 	if err := a.ks.RevokeRefreshFamily(ctx, family); err != nil {
 		a.lg.Error("failed to revoke refresh token family", "family", family, "error", err)
 	}
+	if a.Blocks == nil { return }
+	if _, err := a.Blocks.Revoke(ctx, sessionKey(family), reason); err != nil {
+		a.lg.Error("failed to block a session's access tokens", "family", family, "error", err)
+	}
+}
+
+// RevokeUser ends every session the user has: all their refresh tokens, and every
+// access token issued to them up to now. A login after this works as normal, so a
+// disabled user is kept out by the disabled check, not by this.
+func (a *Auth) RevokeUser(ctx context.Context, userID string, reason string) error {
+	if err := a.ks.RevokeUserRefreshTokens(ctx, userID); err != nil { return err }
+	if a.Blocks == nil { return nil }
+	_, err := a.Blocks.Revoke(ctx, userKey(userID), reason)
+	return err
+}
+
+// LogoutHandler ends the session of the user token in the request: the X-OhCrud-User
+// token a service sends, or the bearer token on a direct call. all=true ends every
+// session the user has. It answers 204, or 400 when the request carries no user.
+func (a *Auth) LogoutHandler() http.Handler {
+	return a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p := PrincipalFrom(r.Context())
+		if p == nil || p.User == nil {
+			oauthError(w, "invalid_request", http.StatusBadRequest)
+			return
+		}
+		u := p.User
+		via := ""
+		if p.Service != nil { via = serviceID(p.Service) }
+		session := map[string]string{"session": u.SID}
+
+		if r.URL.Query().Get("all") == "true" {
+			if err := a.RevokeUser(r.Context(), u.Subject, "logout from every session"); err != nil {
+				a.lg.Error("logout from every session failed", "user", u.Subject, "error", err)
+				oauthError(w, "server_error", http.StatusInternalServerError)
+				return
+			}
+			a.record(r, audit.Event{Action: audit.UserLogoutAll, Target: u.Subject, Service: audit.System,
+				ActorUser: u.Subject, ViaService: via, AMR: u.AMR, Before: session})
+		} else {
+			if u.SID == "" {
+				oauthError(w, "invalid_request", http.StatusBadRequest)
+				return
+			}
+			a.endSession(r.Context(), u.SID, "logout")
+			a.record(r, audit.Event{Action: audit.UserLogout, Target: u.Subject, Service: audit.System,
+				ActorUser: u.Subject, ViaService: via, AMR: u.AMR, Before: session})
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
 }
 
 // Check which tables and end point a user role can reach

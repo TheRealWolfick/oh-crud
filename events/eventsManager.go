@@ -75,8 +75,56 @@ type Client struct {
 	timeout_write_sec int
 	timeout_read_sec int
 	actor *models.User
+	tokens []*models.Claims // the tokens the socket was opened with, so a revocation can find it
 	done chan struct{}
 	closeOnce sync.Once
+}
+
+// CloseCodeRevoked is the websocket close code sent when the token a socket was opened
+// with is revoked. It mirrors HTTP 401: reconnecting with the same token is refused.
+const CloseCodeRevoked = 4401
+
+// tokensFrom are the tokens on the upgrade request: the user's, and the service's when
+// a service called on the user's behalf
+func tokensFrom(ctx context.Context) []*models.Claims {
+	p := auth.PrincipalFrom(ctx)
+	if p == nil { return nil }
+	var out []*models.Claims
+	if p.User != nil { out = append(out, p.User) }
+	if p.Service != nil { out = append(out, p.Service) }
+	return out
+}
+
+// CloseRevoked closes every socket opened with a token the revocation covers. It is
+// registered with the auth blocklist (BlockList.OnRevoke), so it runs once for each
+// revocation, as it is made on this instance or as a reload finds it from another,
+// instead of every socket checking the blocklist. It returns how many it closed.
+func (h *EventManager) CloseRevoked(key string, at time.Time) int {
+	h.mu.RLock()
+	var hit []*Client
+	for c := range h.clients {
+		for _, t := range c.tokens {
+			if auth.RevocationCovers(key, at, t) { hit = append(hit, c); break }
+		}
+	}
+	h.mu.RUnlock()
+
+	// Closing writes to the socket, so it happens outside the lock and without
+	// holding up the revoking request
+	for _, c := range hit {
+		safe.Go(logging.Basic(), "websocket revoke", func() { c.closeWith(CloseCodeRevoked, "token revoked") })
+	}
+	if len(hit) > 0 {
+		logging.Basic().Info("Closed websockets for a revocation", "key", key, "sockets", len(hit))
+	}
+	return len(hit)
+}
+
+// closeWith tells the client why, then closes. WriteControl may run alongside the
+// write loop, and a client that doesn't read the frame in time is closed anyway.
+func (c *Client) closeWith(code int, reason string) {
+	c.conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(code, reason), time.Now().Add(time.Second))
+	c.close()
 }
 
 // webhookClient posts webhooks. The timeout stops a slow receiver from holding a
@@ -232,7 +280,7 @@ func (h *EventManager) RegisterTopicAction(ctx context.Context, w http.ResponseW
 	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil { return err }
 
-	if actor, ok := reqctx.GetActor(ctx); ok { go h.handleClientTopicAction(conn, actor, topic, action) } else { conn.Close() }
+	if actor, ok := reqctx.GetActor(ctx); ok { go h.handleClientTopicAction(conn, actor, tokensFrom(ctx), topic, action) } else { conn.Close() }
 
 	return nil
 }
@@ -242,7 +290,7 @@ func (h *EventManager) RegisterTopicStatusAction(ctx context.Context, w http.Res
 	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil { return err }
 
-	if actor, ok := reqctx.GetActor(ctx); ok { go h.handleClientTopicStatusAction(conn, actor, topic, action, status) } else { conn.Close() }
+	if actor, ok := reqctx.GetActor(ctx); ok { go h.handleClientTopicStatusAction(conn, actor, tokensFrom(ctx), topic, action, status) } else { conn.Close() }
 
 	return nil
 }
@@ -251,7 +299,7 @@ func (h *EventManager) RegisterTopicStatus(ctx context.Context, w http.ResponseW
 	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil { return err }
 
-	if actor, ok := reqctx.GetActor(ctx); ok { go h.handleClientTopicStatus(conn, actor, topic, status) } else { conn.Close() }
+	if actor, ok := reqctx.GetActor(ctx); ok { go h.handleClientTopicStatus(conn, actor, tokensFrom(ctx), topic, status) } else { conn.Close() }
 
 	return nil
 }
@@ -259,7 +307,7 @@ func (h *EventManager) RegisterTopicStatus(ctx context.Context, w http.ResponseW
 func (h *EventManager) RegisterTopicOnly(ctx context.Context, w http.ResponseWriter, r *http.Request, topic string) error {
 	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil { return err }
-	if actor, ok := reqctx.GetActor(ctx); ok { go h.HandleClientTopic(conn, actor, topic) } else { conn.Close() }
+	if actor, ok := reqctx.GetActor(ctx); ok { go h.HandleClientTopic(conn, actor, tokensFrom(ctx), topic) } else { conn.Close() }
 
 	return nil
 }
@@ -269,27 +317,27 @@ func (h *EventManager) RegisterTopicOnly(ctx context.Context, w http.ResponseWri
 // -----------------------------------------------------------------
 
 // Register a new client connection to specific topic
-func (h *EventManager) HandleClientTopic(conn *websocket.Conn, actor *models.User, topic string) {
+func (h *EventManager) HandleClientTopic(conn *websocket.Conn, actor *models.User, tokens []*models.Claims, topic string) {
 	h.mu.RLock()
 	valid := h.validTopics[topic]
 	h.mu.RUnlock()
 	if !valid { conn.Close(); return }
-	h.handleClient(conn, actor, topic, ValidActions, ValidStatuses)
+	h.handleClient(conn, actor, tokens, topic, ValidActions, ValidStatuses)
 }
 // Register a new client connection to specific topic statuses
-func (h *EventManager) handleClientTopicStatus(conn *websocket.Conn, actor *models.User, topic string, status []string) {
-	h.handleClient(conn, actor, topic, ValidActions, status)
+func (h *EventManager) handleClientTopicStatus(conn *websocket.Conn, actor *models.User, tokens []*models.Claims, topic string, status []string) {
+	h.handleClient(conn, actor, tokens, topic, ValidActions, status)
 }
 // Register a new client connection to specific topic actions
-func (h *EventManager) handleClientTopicAction(conn *websocket.Conn, actor *models.User, topic string, action []string) {
-	h.handleClient(conn, actor, topic, action, ValidStatuses)
+func (h *EventManager) handleClientTopicAction(conn *websocket.Conn, actor *models.User, tokens []*models.Claims, topic string, action []string) {
+	h.handleClient(conn, actor, tokens, topic, action, ValidStatuses)
 }
 // Register a new client connection to specific topic actions and statuses. Statuses apply over all actions
-func (h *EventManager) handleClientTopicStatusAction(conn *websocket.Conn, actor *models.User, topic string, action []string, status []string) {
-	h.handleClient(conn, actor, topic, action, status)
+func (h *EventManager) handleClientTopicStatusAction(conn *websocket.Conn, actor *models.User, tokens []*models.Claims, topic string, action []string, status []string) {
+	h.handleClient(conn, actor, tokens, topic, action, status)
 }
 // Register a new client connection. It is expected to call this via a go function
-func (h *EventManager) handleClient(conn *websocket.Conn, actor *models.User, topic string, action []string, status []string) {
+func (h *EventManager) handleClient(conn *websocket.Conn, actor *models.User, tokens []*models.Claims, topic string, action []string, status []string) {
 	// Create the client
 	client := &Client{
 		conn: conn,
@@ -299,6 +347,7 @@ func (h *EventManager) handleClient(conn *websocket.Conn, actor *models.User, to
 		timeout_read_sec: int(float64(h.ping_sec) * 2.1),
 		done: make(chan struct{}),
 		actor: actor,
+		tokens: tokens,
 	}
 
 	// However the client ends, even in a panic, remove it so events stop queuing for it.

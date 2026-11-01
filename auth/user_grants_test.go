@@ -132,9 +132,13 @@ func (tb *authTables) exec(sql string, args []any) (pgconn.CommandTag, error) {
 		return pgconn.NewCommandTag("UPDATE 0"), nil
 
 	case strings.Contains(sql, "SET revoked_at"):
+		// By user (every session) or by family (one session)
+		byUser := strings.Contains(sql, "WHERE user_id")
 		n := 0
 		for _, rt := range tb.tokens {
-			if rt.FamilyID == args[0] && rt.RevokedAt == nil {
+			match := rt.FamilyID == args[0]
+			if byUser { match = rt.UserID == args[0] }
+			if match && rt.RevokedAt == nil {
 				rt.RevokedAt = &now
 				n++
 			}

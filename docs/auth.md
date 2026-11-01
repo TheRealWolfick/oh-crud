@@ -144,9 +144,9 @@ client assertion (2.3).
 | `password` | Log a user in through the service (4.1) |
 | `refresh_token` | Rotate a user's refresh token (4.2) |
 
-The discovery document also advertises `/authorize`, `/logout`, and the
-`authorization_code` and token-exchange grants. Those are **planned, not
-implemented**.
+The discovery document advertises only what exists: these three grants, the token
+endpoint and the JWKS. `POST /oauth/logout` (4.3) is not listed, because the
+`end_session_endpoint` field is for browser logout, which arrives with the login page.
 
 ### 2.2 Registering a service
 
@@ -385,6 +385,70 @@ The response has the same shape as 4.1, with a **new** refresh token.
 | `400` | `invalid_grant` | Unknown, expired, revoked or reused token, the wrong service, or the user was disabled or removed |
 | `500` | `server_error` | A database error. Safe to retry with the same token |
 
+### 4.3 Logging out
+
+```http
+POST /oauth/logout HTTP/1.1
+Authorization: Bearer <service token>
+X-OhCrud-User: <the user's access token>
+```
+
+Ends the session the user's access token belongs to (its `sid`): its refresh tokens
+and access tokens stop working at once, on every instance (4.4). The user's other
+sessions carry on. `POST /oauth/logout?all=true` ends every session the user has.
+
+A user can also log themselves out directly, with their own access token as the
+bearer and no `X-OhCrud-User`.
+
+| Status | Body | Cause |
+|--------|------|-------|
+| `204` | | Logged out |
+| `401` | `unauthorized` | No valid token |
+| `400` | `{"error": "invalid_request"}` | The request carries no user, or the user token has no session |
+
+### 4.4 Revocation
+
+Access tokens can't be recalled once issued, so each instance keeps the recent
+revocations in memory and checks every token against them. A token is refused when its user (`user:<id>`), its session (`sid:<sid>`) or, for a
+service token, its service (`svc:<id>`) was revoked at or after the moment the token
+was issued. A login after a revocation works straight away. (JWT times are whole
+seconds, so a token issued in the same second as a revocation is refused too; the
+next refresh replaces it.)
+
+| Event | What is revoked |
+|-------|-----------------|
+| Logout | The session |
+| Logout with `all=true` | The user |
+| A used refresh token is presented again | The session (`refresh_token.reuse` in the audit log) |
+| A refresh finds the user disabled or removed | The user: every session, not only the one refreshing |
+
+**Instances.** Oh CRUD can run as several server processes (instances) behind a load
+balancer, sharing one database. Each holds its own copy of the revocations, and they
+are kept in step by telling each other, never by polling:
+
+1. The instance that revokes writes a row to `ohc_revocations`, applies it in
+   memory, and posts it to every peer in `cluster.peers` (`config-instructions.md` 2).
+2. Each peer applies it on receipt. Measured between two instances on one machine,
+   a logout on one was refused by the other within 10 ms.
+3. An instance reads the table once, when it starts, for the revocations made before
+   it was running. Rows only matter while a token issued before them could still be
+   live: the longest access token lifetime plus 5 minutes (20 minutes by default).
+
+Peers authenticate each other with a key derived from `OH_CRUD_SECRET`, which they
+already share: messages go to `POST /mesh/v1/peer/events`, signed over the whole body
+(`X-OhCrud-Peer-Signature`), and are refused if unsigned, altered, or more than a
+minute old. Delivery is retried twice (after 1 and 3 seconds); a peer still
+unreachable misses the message and logs nothing, while the sender logs
+`cluster message not delivered`. A peer that was down learns the revocation from the
+table when it starts again; one that stayed up but unreachable for all three attempts
+does not, until it restarts. With a single instance there are no peers and nothing is
+sent.
+
+Open websockets are closed by the revocation itself: each socket remembers the tokens
+it was opened with, and when an instance applies a revocation, its own or a peer's,
+it closes every socket whose token the revocation covers, with close code `4401`
+(see `websockets.md` 1.3).
+
 ---
 
 ## 5. Audit log
@@ -414,7 +478,9 @@ itself (package `audit`). It has no data endpoint; the admin API will read it.
 | `user.login_failed` | A password login fails | `after.reason`: `unknown_user`, `no_password`, `bad_password`, `disabled`, `otp_missing`, `bad_otp`, `otp_reused`, `otp_error` or `rate_limited`. The caller still gets the one `invalid_grant` response (4.1) |
 | `refresh_token.reuse` | A used refresh token is presented again | The session is revoked; no actor |
 | `refresh_token.wrong_client` | A refresh token is presented by a service it wasn't issued to | `after.issued_to` names the right service. The token is left alone |
-| `session.revoke` | A refresh finds the user disabled or removed | `after.reason`: `user_disabled` or `user_missing` |
+| `session.revoke` | A refresh finds the user disabled or removed | `after.reason`: `user_disabled` or `user_missing`. Every session the user has is ended |
+| `user.logout` | The user logs out of one session | `before.session` is the session ended |
+| `user.logout_all` | The user logs out of every session | |
 
 A request whose client assertion fails is not recorded: it never reached a user.
 Passwords, OTP codes and tokens are never recorded.
