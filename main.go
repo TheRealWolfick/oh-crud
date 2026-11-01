@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -132,7 +134,7 @@ func main() {
 	}
 
 	// Check to ensure the required tables are available. Exit if any are false
-	for _, table := range []string{"ohc_diffs", "ohc_events", "ohc_batch_numbers", "ohc_signing_keys"} {
+	for _, table := range []string{"ohc_diffs", "ohc_events", "ohc_batch_numbers", "ohc_signing_keys", "ohc_audit_events"} {
 		_, found := modelRegister.ByTableName(table)
 		if !found { logger.Error("missing required table", "table", table); os.Exit(1) }
 	}
@@ -181,11 +183,15 @@ func main() {
 	// ---------------------------------------------------------------
 	// !! Future Improvement: Make them Declaritive and with a watcher !!
 	
-	// Batch number generator
-	batch_num_func, err := os.ReadFile("./config/server/generate-batch-numbers.sql")
-	if err != nil { logger.Error("Failed to load function file to generate batch numbers") } else {
-		if _, err := qm.Db.Exec(context.Background(), string(batch_num_func)); err != nil {
-			logger.Error("Failed to execute function file to generate batch numbers")
+	// Every .sql file in config/server, in name order: the batch number generator, the
+	// audit log's append-only trigger. Each is safe to run again on every start.
+	sql_files, _ := filepath.Glob("./config/server/*.sql")
+	sort.Strings(sql_files)
+	for _, f := range sql_files {
+		body, err := os.ReadFile(f)
+		if err != nil { logger.Error("Failed to read SQL file", "file", f, "error", err); continue }
+		if _, err := qm.Db.Exec(context.Background(), string(body)); err != nil {
+			logger.Error("Failed to run SQL file", "file", f, "error", err)
 		}
 	}
 

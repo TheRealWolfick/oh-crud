@@ -1,5 +1,5 @@
 name: diffs
-version: 1.2.1
+version: 1.2.2
 table-name: diffs
 service: ohc
 end-point: ""
@@ -28,7 +28,7 @@ fields:
   diff_type:
     type: string
     json: diff_type
-    db-type: character varying(20)
+    db-type: character varying(63)   # a table name, <service>_<table-name>: up to PostgreSQL's 63 characters
     required-on-insert: true
   task_id:
     type: string

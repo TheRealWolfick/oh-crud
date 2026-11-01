@@ -137,7 +137,15 @@ func planQualifiedRenames(catalog []catalogEntry, loaded []models.DataModel) ren
 	if len(plan.Renamed) == 0 { return plan }
 
 	// Rows that name a table by its old name. Run after the DDL, so the system tables
-	// themselves already have their new names.
+	// themselves already have their new names. Qualified names are longer than the
+	// columns used to allow, so widen them first, to the width their models now declare
+	// (widening a varchar rewrites nothing, and leaves the schema sync nothing to do).
+	if exists["r:ohc_diffs"] {
+		plan.Statements = append(plan.Statements, "ALTER TABLE ohc_diffs ALTER COLUMN diff_type TYPE character varying(63)")
+	}
+	if exists["r:ohc_batch_numbers"] {
+		plan.Statements = append(plan.Statements, "ALTER TABLE ohc_batch_numbers ALTER COLUMN table_name TYPE character varying(63)")
+	}
 	for _, r := range plan.Renamed {
 		short, table := r[0], r[1]
 		if exists["r:ohc_diffs"] {

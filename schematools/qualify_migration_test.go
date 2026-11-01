@@ -78,6 +78,15 @@ func TestPlanQualifiedRenames(t *testing.T) {
 	has(t, s, `ALTER TABLE "inventory_asset_data_history" RENAME CONSTRAINT "fk_asset_data_history_pk" TO "fk_inventory_asset_data_history_pk"`)
 	has(t, s, `ALTER TABLE "inventory_asset_data_history" RENAME CONSTRAINT "fk_asset_data_history_user" TO "fk_inventory_asset_data_history_user"`)
 
+	// The columns holding table names are widened before the long names go in
+	has(t, s, `ALTER TABLE ohc_diffs ALTER COLUMN diff_type TYPE character varying(63)`)
+	has(t, s, `ALTER TABLE ohc_batch_numbers ALTER COLUMN table_name TYPE character varying(63)`)
+	widen := slices.Index(s, `ALTER TABLE ohc_diffs ALTER COLUMN diff_type TYPE character varying(63)`)
+	update := slices.Index(s, `UPDATE ohc_diffs SET diff_type = 'inventory_asset_data' WHERE diff_type = 'asset_data'`)
+	if widen > update {
+		t.Errorf("expected diff_type to be widened before it is updated")
+	}
+
 	// Rows naming a table by its old name follow it, after the system tables are renamed
 	has(t, s, `UPDATE ohc_diffs SET diff_type = 'inventory_asset_data' WHERE diff_type = 'asset_data'`)
 	has(t, s, `UPDATE ohc_batch_numbers SET table_name = 'inventory_asset_data', service = 'inventory' WHERE table_name = 'asset_data'`)

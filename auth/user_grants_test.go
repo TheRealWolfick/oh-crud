@@ -42,6 +42,18 @@ type authTables struct {
 	// tokenReads, when set, holds each refresh token lookup until all of them
 	// have read, forcing concurrent requests to see the same unused row
 	tokenReads *sync.WaitGroup
+
+	// audits holds every audit entry written, in order
+	audits []auditRow
+}
+
+// auditRow is one INSERT into ohc_audit_events, by the column order audit.Record uses
+type auditRow struct {
+	Action, Target, Service string
+	ActorUser, ViaService   any
+	AMR                     []string
+	After                   any
+	IP, RequestID           any
 }
 
 var userCols = []string{"id", "username", "display_name", "password_hash", "totp_secret", "created_at", "disabled_at", "roles"}
@@ -130,6 +142,14 @@ func (tb *authTables) exec(sql string, args []any) (pgconn.CommandTag, error) {
 		return pgconn.NewCommandTag(fmt.Sprintf("UPDATE %d", n)), nil
 
 	case strings.Contains(sql, "INSERT INTO ohc_users"):
+		return pgconn.NewCommandTag("INSERT 0 1"), nil
+
+	case strings.Contains(sql, "INSERT INTO ohc_audit_events"):
+		tb.audits = append(tb.audits, auditRow{
+			Action: args[0].(string), Target: args[1].(string), Service: args[2].(string),
+			ActorUser: args[3], ViaService: args[4], AMR: args[5].([]string), After: args[8],
+			IP: args[9], RequestID: args[10],
+		})
 		return pgconn.NewCommandTag("INSERT 0 1"), nil
 
 	case strings.Contains(sql, "UPDATE ohc_users SET password_hash"):
@@ -858,4 +878,28 @@ func TestRefreshGrantDatabaseError(t *testing.T) {
 	}
 	// An outage is a server error, not a bad token, so clients retry rather than log the user out
 	mustFail(t, f.refresh(t, testServiceID, first.RefreshToken), http.StatusInternalServerError, "server_error")
+}
+
+// lastAudit returns the most recent audit entry, failing if there is none
+func (tb *authTables) lastAudit(t *testing.T) auditRow {
+	t.Helper()
+	tb.mu.Lock()
+	defer tb.mu.Unlock()
+	if len(tb.audits) == 0 {
+		t.Fatalf("expected an audit entry, got none")
+	}
+	return tb.audits[len(tb.audits)-1]
+}
+
+func afterField(t *testing.T, row auditRow, key string) string {
+	t.Helper()
+	raw, ok := row.After.(string)
+	if !ok {
+		t.Fatalf("expected after to be JSON text, got %#v", row.After)
+	}
+	var m map[string]string
+	if err := json.Unmarshal([]byte(raw), &m); err != nil {
+		t.Fatalf("after is not a JSON object: %v", err)
+	}
+	return m[key]
 }

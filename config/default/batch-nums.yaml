@@ -1,5 +1,5 @@
 name: batch_numbers
-version: 1.1.1
+version: 1.1.2
 table-name: batch_numbers
 service: ohc
 end-point: ""
@@ -20,13 +20,12 @@ fields:
     json: batch_id
   table_name:
     type: string
-    db-type: character varying(30)
+    db-type: character varying(63)   # <service>_<table-name>: up to PostgreSQL's 63 characters
     required-on-insert: true
     json: table_name
   service:
     type: string
-    db-type: character varying(30)
-    default: Asset Data
+    db-type: character varying(32)   # the table's service; always passed by generate_batch_number
     json: service
   batch_number:
     type: int

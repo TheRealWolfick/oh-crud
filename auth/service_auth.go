@@ -20,6 +20,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/pquerna/otp/totp"
+	"lotusforge.au/api-server/audit"
 	"lotusforge.au/api-server/httpx"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/safe"
@@ -318,16 +319,33 @@ func (a *Auth) PasswordLogin(w http.ResponseWriter, r *http.Request) {
 
 	// Ensure the request can be processed
 	if !a.Limiter.Allow(clientID+":"+username) {
+		a.record(r, audit.Event{Action: audit.UserLoginFailed, Target: "username:" + username, Service: audit.System,
+			ViaService: clientID, After: map[string]string{"reason": "rate_limited"}})
 		oauthError(w, "slow_down", http.StatusTooManyRequests)
 		return
 	}
 
 	// Get the user
 	usr, err := a.getUserByUsername(r.Context(), username)
+	if err != nil {
+		// A database error still fails like an unknown user, but must not pass unnoticed
+		if !errors.Is(err, pgx.ErrNoRows) { a.lg.Error("user lookup failed during login", "error", err) }
+		usr = nil
+	}
+
+	// fail records why the login failed, then gives the response every failure shares.
+	// The reason is for admins reading the audit log; the caller never sees it.
+	fail := func(reason string) {
+		target := "username:" + username
+		if usr != nil { target = usr.ID }
+		a.record(r, audit.Event{Action: audit.UserLoginFailed, Target: target, Service: audit.System,
+			ViaService: clientID, After: map[string]string{"reason": reason}})
+		loginFailed(w)
+	}
 
 	// Use a dummy hash if there is no user, or the user has no password (such as one
 	// who signs in through Entra), so every failure takes as long as a real check
-	hasPassword := err == nil && usr.PasswordHash != ""
+	hasPassword := usr != nil && usr.PasswordHash != ""
 	hash := secrets.DummyHash
 	if hasPassword { hash = usr.PasswordHash }
 
@@ -337,19 +355,31 @@ func (a *Auth) PasswordLogin(w http.ResponseWriter, r *http.Request) {
 	// Every failure below gives the same response, so a caller can't tell a wrong
 	// password from a disabled account or a wrong OTP (which would confirm the password).
 	// A match against the dummy never counts.
-	// TODO: implement logging for failed login
-	if !hasPassword || hashErr != nil || !match { loginFailed(w); return }
-	if usr.DisabledAt != nil { loginFailed(w); return }
+	switch {
+	case usr == nil:
+		fail("unknown_user"); return
+	case !hasPassword:
+		fail("no_password"); return
+	case hashErr != nil || !match:
+		fail("bad_password"); return
+	case usr.DisabledAt != nil:
+		fail("disabled"); return
+	}
 
 	amr := []string{"pwd"}
 	if len(usr.TotpSecret) > 0 {
 		code := r.PostFormValue("otp")
+		if code == "" { fail("otp_missing"); return }
 		secret, err := secrets.Decrypt(a.ks.master, usr.TotpSecret, []byte(usr.ID))
-		if err != nil || !totp.Validate(code, string(secret)) { loginFailed(w); return }
+		if err != nil {
+			a.lg.Error("could not decrypt a TOTP secret", "user", usr.ID, "error", err)
+			fail("otp_error"); return
+		}
+		if !totp.Validate(code, string(secret)) { fail("bad_otp"); return }
 
 		// A code stays valid for up to three 30 s steps (skew of one either side), so
 		// remember it for longer than that and refuse it a second time
-		if !a.Replay.Remember("otp:"+usr.ID+":"+code, time.Now().Add(otpReplayWindow)) { loginFailed(w); return }
+		if !a.Replay.Remember("otp:"+usr.ID+":"+code, time.Now().Add(otpReplayWindow)) { fail("otp_reused"); return }
 		amr = append(amr, "otp")
 	}
 
@@ -365,7 +395,21 @@ func (a *Auth) PasswordLogin(w http.ResponseWriter, r *http.Request) {
 
 	// issue the user token
 	now := time.Now()
-	a.issueUserTokens(w, r, usr, clientID, uuid.NewString(), amr, &now, refreshExpiry(amr, nil))
+	family := uuid.NewString()
+	if a.issueUserTokens(w, r, usr, clientID, family, amr, &now, refreshExpiry(amr, nil)) {
+		a.record(r, audit.Event{Action: audit.UserLogin, Target: usr.ID, Service: audit.System,
+			ActorUser: usr.ID, ViaService: clientID, AMR: amr, After: map[string]string{"session": family}})
+	}
+}
+
+// record writes an audit entry for the request, adding its IP and request id. The
+// action has already happened, so a failed write is logged rather than failing it.
+func (a *Auth) record(r *http.Request, e audit.Event) {
+	e.IP = audit.IP(r)
+	e.RequestID = audit.RequestID(r)
+	if err := audit.Record(r.Context(), a.ks.db, e); err != nil {
+		a.lg.Error("failed to write audit event", "action", e.Action, "target", e.Target, "error", err)
+	}
 }
 
 // How long a used OTP code is remembered. Longer than the 90 s a code can be accepted for.
@@ -394,7 +438,8 @@ func refreshExpiry(amr []string, current *models.RefreshToken) time.Time {
 	return time.Now().Add(federatedRefreshLifetime)
 }
 
-// Issue a user token to the user
+// Issue a user token to the user. Reports whether the tokens were issued; on false an
+// error response has already been written.
 func (a *Auth) issueUserTokens(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -404,7 +449,7 @@ func (a *Auth) issueUserTokens(
 	amr []string,
 	authTime *time.Time,   // when the user authenticated interactively; nil if unknown
 	refreshExpires time.Time,
-) {
+) bool {
 	claims := models.Claims{
 		TokenUse: "user",
 		Roles: u.Roles,
@@ -421,18 +466,19 @@ func (a *Auth) issueUserTokens(
 	access, err := a.ks.Issue(claims, 15*time.Minute)
 
 	// Handle the server failing to create the access issue
-	if err != nil { http.Error(w, "server_error", http.StatusInternalServerError); return }
+	if err != nil { http.Error(w, "server_error", http.StatusInternalServerError); return false }
 
 	// Create a new refresh token that the client can use
 	refresh, err := a.newRefreshToken(r.Context(), u.ID, clientID, family, amr, authTime, refreshExpires)
-	if errors.Is(err, ErrFamilyRevoked) { oauthError(w, "invalid_grant", http.StatusBadRequest); return }
-	if err != nil { http.Error(w, "server_error", http.StatusInternalServerError); return }
+	if errors.Is(err, ErrFamilyRevoked) { oauthError(w, "invalid_grant", http.StatusBadRequest); return false }
+	if err != nil { http.Error(w, "server_error", http.StatusInternalServerError); return false }
 
 	// Give the token back to the user
 	httpx.WriteJSON_nostore(w, map[string]any{
 		"access_token": access, "token_type": "Bearer", "expires_in": 900,
 		"refresh_token": refresh,
 	})
+	return true
 }
 
 // Create and save a new refresh token
@@ -494,6 +540,8 @@ func (a *Auth) RefreshGrant(w http.ResponseWriter, r *http.Request) {
 	// Token must be redeemed by the client it was issued to
 	if rt.ClientID != svc.ID {
 		a.lg.Warn("refresh token presented by the wrong client", "client", svc.ID, "family", rt.FamilyID)
+		a.record(r, audit.Event{Action: audit.RefreshTokenMisused, Target: rt.UserID, Service: audit.System,
+			ViaService: svc.ID, After: map[string]string{"session": rt.FamilyID, "issued_to": rt.ClientID}})
 		oauthError(w, "invalid_grant", http.StatusBadRequest)
 		return
 	}
@@ -515,6 +563,10 @@ func (a *Auth) RefreshGrant(w http.ResponseWriter, r *http.Request) {
 	if rt.UsedAt != nil || !claimed {
 		a.lg.Warn("refresh token reuse, revoking family", "user", rt.UserID, "client", svc.ID, "family", rt.FamilyID)
 		a.revokeFamily(ctx, rt.FamilyID)
+		// The system ends the session, so there is no actor
+		a.record(r, audit.Event{Action: audit.RefreshTokenReuse, Target: rt.UserID, Service: audit.System,
+			ViaService: svc.ID, Before: map[string]string{"session": rt.FamilyID, "state": "live"},
+			After: map[string]string{"session": rt.FamilyID, "state": "revoked"}})
 		oauthError(w, "invalid_grant", http.StatusBadRequest)
 		return
 	}
@@ -523,6 +575,11 @@ func (a *Auth) RefreshGrant(w http.ResponseWriter, r *http.Request) {
 	usr, err := a.getUserByID(ctx, rt.UserID)
 	if err != nil || usr.DisabledAt != nil {
 		a.revokeFamily(ctx, rt.FamilyID)
+		reason := "user_disabled"
+		if err != nil { reason = "user_missing" }
+		a.record(r, audit.Event{Action: audit.SessionRevoke, Target: rt.UserID, Service: audit.System,
+			ViaService: svc.ID, Before: map[string]string{"session": rt.FamilyID, "state": "live"},
+			After: map[string]string{"session": rt.FamilyID, "state": "revoked", "reason": reason}})
 		oauthError(w, "invalid_grant", http.StatusBadRequest)
 		return
 	}

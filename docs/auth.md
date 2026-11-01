@@ -384,3 +384,47 @@ The response has the same shape as 4.1, with a **new** refresh token.
 | `401` | `invalid_client` | The client assertion failed |
 | `400` | `invalid_grant` | Unknown, expired, revoked or reused token, the wrong service, or the user was disabled or removed |
 | `500` | `server_error` | A database error. Safe to retry with the same token |
+
+---
+
+## 5. Audit log
+
+Security and admin actions are recorded in `ohc_audit_events`, written by Oh CRUD
+itself (package `audit`). It has no data endpoint; the admin API will read it.
+
+| Column | Meaning |
+|--------|---------|
+| `at` | When it happened |
+| `action` | What happened, as `<object>.<verb>` (below) |
+| `target` | What it happened to: a user id, `svc:<id>`, `svc:<id>/<kid>`, or `username:<name>` for a login naming no known user |
+| `service` | The service that owns the target (`ohc` for users, services and keys), so each service's admins can read their own entries |
+| `actor_user` | The user who did it. Empty for the system, and for a failed login |
+| `via_service` | The service the request came through |
+| `amr` | How the actor had signed in |
+| `org_id` | Set when the action is inside an organisation |
+| `before`, `after` | JSON values before and after the change |
+| `ip` | The caller's address, without a port: the first address in `X-Forwarded-For`, else the connection's |
+| `request_id` | The caller's `X-Request-Id` when it is 8 to 64 of `A-Z a-z 0-9 . _ -`, else a new random id |
+
+### 5.1 Actions
+
+| Action | When | Notes |
+|--------|------|-------|
+| `user.login` | A password login succeeds | `after.session` is the session (`sid`) |
+| `user.login_failed` | A password login fails | `after.reason`: `unknown_user`, `no_password`, `bad_password`, `disabled`, `otp_missing`, `bad_otp`, `otp_reused`, `otp_error` or `rate_limited`. The caller still gets the one `invalid_grant` response (4.1) |
+| `refresh_token.reuse` | A used refresh token is presented again | The session is revoked; no actor |
+| `refresh_token.wrong_client` | A refresh token is presented by a service it wasn't issued to | `after.issued_to` names the right service. The token is left alone |
+| `session.revoke` | A refresh finds the user disabled or removed | `after.reason`: `user_disabled` or `user_missing` |
+
+A request whose client assertion fails is not recorded: it never reached a user.
+Passwords, OTP codes and tokens are never recorded.
+
+### 5.2 Append-only
+
+A trigger (`config/server/audit-append-only.sql`, run at every start) refuses
+`UPDATE`, `DELETE` and `TRUNCATE` on the table for every database role, including
+the one Oh CRUD connects as, which owns it. Only a role able to drop the trigger can
+change past entries.
+
+An action is recorded after it happens. If the write fails it is logged as an
+error, and the login or refresh it describes still succeeds.

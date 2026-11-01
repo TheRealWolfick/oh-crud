@@ -1,0 +1,103 @@
+name: audit_events
+version: 1.0.0
+table-name: audit_events
+service: ohc
+end-point: ""
+description: >
+  Append-only record of security and admin actions: who did what to which target,
+  through which service, how they had signed in, and the values before and after.
+  Written by Oh CRUD itself (package audit); a trigger refuses UPDATE and DELETE.
+
+primary-key: id
+
+indexes:
+  idx_audit_events_at:
+    index-fields: [at]
+  idx_audit_events_service_at:
+    index-fields: [service, at]
+  idx_audit_events_target_at:
+    index-fields: [target, at]
+  idx_audit_events_actor_at:
+    index-fields: [actor_user, at]
+  idx_audit_events_org_at:
+    index-fields: [org_id, at]
+
+fields:
+  id:
+    type: int
+    db-type: bigserial
+    json: id
+    skip-insert: true
+  at:
+    type: time
+    db-type: timestamptz
+    json: at
+    default: now()
+    nullable: false
+    skip-insert: true
+  action:
+    type: string
+    db-type: text
+    json: action
+    nullable: false
+    required-on-insert: true
+    description: "What happened, as <object>.<verb>: user.login, user.login_failed, refresh_token.reuse, service_key.revoke"
+  target:
+    type: string
+    db-type: text
+    json: target
+    nullable: false
+    required-on-insert: true
+    description: "What it happened to: a user id, svc:<id>, svc:<id>/<kid>, or username:<name> for a login to no known user"
+  service:
+    type: string
+    db-type: character varying(32)
+    json: service
+    nullable: false
+    required-on-insert: true
+    description: "The service that owns the target, so each service's admins can read their own entries"
+  actor_user:
+    type: string
+    db-type: text
+    json: actor_user
+    nullable: true
+    description: "The user who did it (users.id). Null for the system, or a login that did not identify anyone"
+  via_service:
+    type: string
+    db-type: text
+    json: via_service
+    nullable: true
+    description: "The service the request came through"
+  amr:
+    type: "[]string"
+    db-type: "text[]"
+    json: amr
+    default: "{}"
+    description: "How the actor had signed in: pwd, otp, fed"
+  org_id:
+    type: string
+    db-type: text
+    json: org_id
+    nullable: true
+    description: "Set when the action is inside an organisation"
+  before:
+    type: json
+    db-type: jsonb
+    json: before
+    nullable: true
+  after:
+    type: json
+    db-type: jsonb
+    json: after
+    nullable: true
+  ip:
+    type: string
+    db-type: text
+    json: ip
+    nullable: true
+    description: "The caller's address, without a port"
+  request_id:
+    type: string
+    db-type: text
+    json: request_id
+    nullable: true
