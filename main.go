@@ -66,6 +66,18 @@ func main() {
 	server_conf := models.NewSwappableServerConfig(intial_server_conf)
 	logger.Debug(logging.PrettyJSON(server_conf.Get()))
 
+	// From here on, logs at or above logging.db-level also go to the ohc_logs table.
+	// Retention and level are read from server.yaml on every maintenance run.
+	logSettings := func() logging.Settings {
+		c := server_conf.Get()
+		return logging.Settings{RetentionDays: c.LogRetentionDays(), Level: c.LogDBLevel()}
+	}
+	if sink, err := logging.AttachDB(context.Background(), pool, logSettings); err != nil {
+		logger.Warn("Logs are on stderr only: the database log could not be set up", "error", err)
+	} else {
+		defer sink.Close()
+	}
+
 
 	// ---------------------------------------------------------------
 	//                Data Models

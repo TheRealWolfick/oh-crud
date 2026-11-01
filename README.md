@@ -35,8 +35,9 @@ recommended.
 export DATABASE_USER=...      # PostgreSQL user
 export DATABASE_PWD=...       # PostgreSQL password
 export DATABASE_URL=...       # host:port/dbname
-export LOG_TYPE=dev           # "production" for JSON logs
-export LOG_LEVEL=info         # debug | info | warn | error
+export LOG_TYPE=dev           # "production" for JSON logs on stderr
+export LOG_LEVEL=info         # stderr level: debug | info | warn | error
+                              # logs also go to the ohc_logs table: see config-instructions.md 2.1
 
 go run main.go                # listens on :8080
 ```

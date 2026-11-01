@@ -24,3 +24,12 @@ rbac:
 issuer:    "https://ohcrud.internal"
 token-url: "https://ohcrud.internal/oauth/token"
 token-lifetime: 10m
+
+# Application logs, kept in the database table ohc_logs, one partition per day
+logging:
+  retention-days: 14   # older days are dropped whole
+  db-level: info       # lowest level written to the database; stderr follows LOG_LEVEL
+
+# Audit log (ohc_audit_events). Entries newer than this can never be pruned
+audit:
+  min-retention-days: 365

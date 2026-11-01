@@ -65,6 +65,13 @@ rbac:
 issuer:         "https://api.example.com"
 token-url:      "https://api.example.com/oauth/token"
 token-lifetime: 10m
+
+logging:
+  retention-days: 14
+  db-level: info
+
+audit:
+  min-retention-days: 365
 ```
 
 | Key | Meaning |
@@ -77,6 +84,9 @@ token-lifetime: 10m
 | `issuer` | `iss` of issued access tokens, and base of the discovery URLs. Public HTTPS URL of this server |
 | `token-url` | Public URL of `/oauth/token`. Service assertions must use it as `aud` |
 | `token-lifetime` | Access token lifetime, as a duration (`10m`, `1h`) |
+| `logging.retention-days` | Days of application logs kept in the database, today included. Older days are dropped whole. Default 14 |
+| `logging.db-level` | Lowest level written to the database: `debug`, `info`, `warn` or `error`. Default `info`. stderr follows `LOG_LEVEL` instead |
+| `audit.min-retention-days` | Audit entries newer than this can never be pruned. Default 365. Applies once the admin API's prune endpoint exists |
 
 **Reloading.** The file is watched, but settings take effect at different
 times:
@@ -84,11 +94,40 @@ times:
 | Setting | When a change applies |
 |---------|-----------------------|
 | `cors`, `token-url`, `token-lifetime` | Immediately |
+| `logging` | At the next log maintenance run, within the hour |
 | `rbac` | When each model's routes are next registered (a model version bump), or on restart |
 | `issuer` | Restart. It also invalidates every outstanding access token |
 
 The file is not validated on reload: a typo (for example a zero
 `token-lifetime`) is applied as-is.
+
+### 2.1 Logs
+
+Every log record goes to stderr, at `LOG_LEVEL` (`debug`, `info`, `warn`, `error`;
+default `info`), as JSON when `LOG_TYPE=production` and text otherwise. There is no
+log file.
+
+Records at or above `logging.db-level` are also written to the `ohc_logs` table, so
+they can be searched and cleaned up through the admin API. The table is partitioned
+by day (UTC): the partitions for yesterday, today and the next three days are kept
+ready, and days older than `logging.retention-days` are dropped whole, which is
+instant and leaves nothing behind. Maintenance runs at startup and every hour, by one
+instance at a time.
+
+| Column | Meaning |
+|--------|---------|
+| `at` | When the record was made |
+| `level`, `severity` | `INFO`, `WARN`, ... and slog's number for it (`-4` debug, `0` info, `4` warn, `8` error) |
+| `msg` | The message |
+| `request_id` | A top-level `request_id` attribute, moved to its own column |
+| `service` | Who logged it: `ohc` for Oh CRUD itself |
+| `attrs` | Every other attribute, as JSON. Groups become nested objects |
+
+Writing to the database never slows a request. Records are queued and written in
+batches every second; if the database falls behind, records are dropped from the
+queue (never from stderr) and a `log rows dropped` warning with the count is written
+once it catches up. If the table can't be created at startup, Oh CRUD logs a warning
+and carries on with stderr only.
 
 ---
 
