@@ -41,6 +41,7 @@ remove a model or function.
 | `DATABASE_URL` | Yes | `host:port/database` part of the PostgreSQL URL |
 | `DATABASE_USER`, `DATABASE_PWD` | Yes | Database credentials |
 | `OH_CRUD_SECRET` | Yes | Exactly 32 bytes. Encrypts the token signing keys, and signs messages between instances (`auth.md` 4.4). Every instance sharing a database must use the same value |
+| `OH_CRUD_ADMIN_PASSWORD` | No | The first admin's temporary password, at least 12 characters, used only when an instance starts with no users (`admin-api.md` 1.1). Unset, a random one is printed once to stderr. Remove it once the first admin has signed in |
 | `ADDR` | No | Address to listen on. Default `:8080` |
 | `LOG_LEVEL`, `LOG_TYPE` | No | stderr logging (2.1) |
 

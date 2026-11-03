@@ -28,6 +28,36 @@ Every answer carries `X-Request-Id`. Errors are RFC 9457 problem details:
 A `500` says only "Something went wrong"; the error is in the logs under the same
 `request_id` (`GET /admin/v1/logs?request_id=...`).
 
+### 1.1 The first admin
+
+A new instance has nobody to sign in as. So when an instance starts and there are no
+users yet, Oh CRUD creates one platform admin:
+
+| | |
+|--|--|
+| Username | `admin` (display name `admin`) |
+| Role | `rbac.admin-role` from `server.yaml` |
+| Password | `OH_CRUD_ADMIN_PASSWORD` when set (at least 12 characters). Otherwise 24 random characters, printed once to the console (stderr) and nowhere else |
+
+The password is temporary: the first login must choose a new one (`auth.md` 4.1). Do
+that straight away: until then, whoever has the temporary password can choose it
+instead.
+
+- **Only once.** Any user at all, including a disabled one or one who signs in through
+  Entra, means it is skipped. Service rows (`svc:<id>`) aren't users and don't count,
+  so an instance only services have used still gets one. Several instances starting
+  together create one admin between them.
+- **Recorded** in the audit log as `user.create` with no actor and `after.reason:
+  bootstrap`. The password never is, and is never written to the logs.
+- **Refusals stop the start.** With no `rbac.admin-role`, or an `OH_CRUD_ADMIN_PASSWORD`
+  under 12 characters, the instance logs why and exits rather than start with nobody
+  able to administer it. Neither is checked once there are users.
+- **Afterwards**, remove `OH_CRUD_ADMIN_PASSWORD` from the environment. It is ignored
+  from then on, but it's still a password left lying around.
+- **Lost the printed password?** If nobody has signed in yet, delete the row
+  (`DELETE FROM ohc_users WHERE username = 'admin'`) and start an instance again to
+  get a new one.
+
 ## 2. Lists
 
 Lists answer `{"items": [...], "next_cursor": "..."}`. Pass `cursor=<next_cursor>` to

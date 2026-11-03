@@ -131,6 +131,15 @@ const (
 // MinPassword is the shortest password an admin may set
 const MinPassword = 12
 
+// The first admin, created when an instance starts with no users (auth.EnsureFirstAdmin).
+// Their password comes from FirstAdminPasswordEnv, or is FirstAdminPasswordLength
+// random characters shown once on stderr.
+const (
+	FirstAdminUsername       = "admin"
+	FirstAdminPasswordEnv    = "OH_CRUD_ADMIN_PASSWORD"
+	FirstAdminPasswordLength = 24
+)
+
 // AuditCSVLimit caps an audit export; narrow the filters for more
 const AuditCSVLimit = 10000
 

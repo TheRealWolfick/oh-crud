@@ -161,6 +161,14 @@ const SQLUserSessions = `
 		  FROM ohc_refresh_tokens WHERE user_id = $1
 		 GROUP BY family_id, client_id ORDER BY max(expires_at) DESC LIMIT 50`
 
+// SQLUserCount counts the people who can sign in. Service rows (svc:<id>), which
+// record a service's own writes, aren't people and don't count.
+const SQLUserCount = `SELECT count(*) FROM ohc_users WHERE id NOT LIKE 'svc:%'`
+
+// SQLFirstAdminLock serialises creating the first admin across instances starting
+// together. It is held until the transaction ends.
+const SQLFirstAdminLock = `SELECT pg_advisory_xact_lock(hashtext('ohc_first_admin'))`
+
 // ---------------------------------------------------------------------------------
 // admin: user changes
 // ---------------------------------------------------------------------------------

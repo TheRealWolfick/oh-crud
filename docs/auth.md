@@ -495,6 +495,7 @@ itself (package `audit`). It has no data endpoint; the admin API will read it.
 | `user.login_failed` | A password login fails | `after.reason`: `unknown_user`, `no_password`, `bad_password`, `disabled`, `otp_missing`, `bad_otp`, `otp_reused`, `otp_error`, `rate_limited` or `password_changed_concurrently`, for which the caller gets the one `invalid_grant` response (4.1); or `password_change_required`, `new_password_too_short` or `new_password_unchanged`, which get their own answers |
 | `user.password_change` | A login replaces the password (4.1) | `after.reason`: `required` (after an admin set it) or `voluntary`. Written before the `user.login` entry |
 | `user.password_reset` | An admin sets a temporary password (`admin-api.md` 4) | The user must change it at their next login |
+| `user.create` | An admin creates a user (`admin-api.md` 4), or an instance starting with no users creates the first admin (`admin-api.md` 1.1) | The first admin's entry has no actor and `after.reason: bootstrap` |
 | `refresh_token.reuse` | A used refresh token is presented again | The session is revoked; no actor |
 | `refresh_token.wrong_client` | A refresh token is presented by a service it wasn't issued to | `after.issued_to` names the right service. The token is left alone |
 | `session.revoke` | A refresh finds the user disabled or removed | `after.reason`: `user_disabled` or `user_missing`. Every session the user has is ended |

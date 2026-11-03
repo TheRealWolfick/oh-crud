@@ -115,6 +115,16 @@ func main() {
 	// ---------------------------------------------------------------
 	oauthHandler := auth.AuthHandler(pool, server_conf, logger, ks)
 
+	// A new instance has nobody to sign in as: create the first admin (docs/admin-api.md 1.1)
+	created, generated, err := oauthHandler.EnsureFirstAdmin(context.Background(), server_conf.Get().AdminRole(), os.Getenv(globals.FirstAdminPasswordEnv))
+	if err != nil { logger.Error("Could not create the first admin", "error", err); os.Exit(1) }
+	if created { logger.Warn("Created the first admin, who must choose a new password at their first login", "username", globals.FirstAdminUsername) }
+	if generated != "" {
+		// Straight to stderr, never the logger: it also writes to ohc_logs, which admins can read
+		fmt.Fprintf(os.Stderr, "\n  First admin created. Username: %s  Temporary password: %s\n  This is the only time it is shown. Sign in and choose a new password.\n\n",
+			globals.FirstAdminUsername, generated)
+	}
+
 	// Revoked users, sessions and services, held in memory. The recent ones are read once
 	// here; after that each instance tells the others of a revocation as it happens.
 	if err := oauthHandler.Blocks.Load(context.Background()); err != nil {
