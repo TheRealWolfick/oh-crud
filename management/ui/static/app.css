@@ -179,4 +179,9 @@ dialog p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
 .login-card .field { width: 100%; }
 .login-card .btn { width: 100%; min-height: 44px; }
 .login-error { background: #FDE8E8; color: #9B2C2C; border-radius: 12px; padding: 10px 14px; font-size: 14px; line-height: 1.45; }
+.login-lead { margin: -6px 0 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
+.login-lead b { color: var(--ink); }
+.login-alt { align-self: center; font-size: 13px; font-weight: 600; color: var(--muted); }
+.login-alt:hover { color: var(--ink); }
+.me-actions { display: flex; flex-direction: column; gap: 8px; }
 .login-hint { font-size: 12px; color: var(--muted); font-weight: 500; }

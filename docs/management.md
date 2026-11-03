@@ -64,12 +64,21 @@ schema changes, `<service>:admin`) can use it: Oh CRUD checks every call.
   refused.
 - **A refused token is retried once** with fresh tokens (a removed role, say); if that
   fails too, the person is signed out. A step-up challenge is passed to the page.
+- **Passwords.** A user whose password an admin set (on creation, a reset, or the
+  first admin) is asked for a new one straight after signing in (`auth.md` 4.1). The
+  password and code they signed in with wait on the server for up to 10 minutes,
+  behind their own cookie, and are never written into the page; "Start again" or a
+  new sign-in drops them. Anyone signed in can change their password from the side
+  panel, which needs their current password (and code). The session moves to the new
+  login's tokens and the old Oh CRUD session is ended at once. Admins set a temporary
+  password from a user's details (`POST /admin/v1/users/{id}/resetpw`).
 - **Strict headers**: a content security policy allowing only its own scripts and
   styles (and the design's web fonts), no framing, no sniffing.
 
 ## 3. Limits
 
 - **Sessions live in memory.** Restarting the platform signs everyone out, and two
-  instances behind a load balancer wouldn't share sessions.
+  instances behind a load balancer wouldn't share sessions, or sign-ins waiting for a
+  new password.
 - **Sign-in is the password grant.** Oh CRUD's own login page (with redirects and
   single sign-on) replaces it when it exists.

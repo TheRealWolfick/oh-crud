@@ -31,6 +31,7 @@ type fakeOhCRUD struct {
 	refreshes atomic.Int32
 	used      map[string]bool
 	calls     []*http.Request
+	logins    []url.Values // successful password grants, as sent
 	answer    func(w http.ResponseWriter, r *http.Request) // the admin API's answer; 200 {} by default
 	expiresIn int
 }
@@ -54,6 +55,18 @@ func newFake(t *testing.T) *fakeOhCRUD {
 				json.NewEncoder(w).Encode(map[string]any{"access_token": "svc-token", "expires_in": 600})
 			case "password":
 				if r.PostFormValue("password") != "right" { w.WriteHeader(400); json.NewEncoder(w).Encode(map[string]string{"error": "invalid_grant"}); return }
+				np := r.PostFormValue("new_password")
+				if np != "" && (len(np) < 12 || np == "right") {
+					w.WriteHeader(400)
+					json.NewEncoder(w).Encode(map[string]string{"error": "invalid_new_password", "error_description": "Use at least 12 characters."})
+					return
+				}
+				if np == "" && r.PostFormValue("username") == "newbie" {
+					w.WriteHeader(400)
+					json.NewEncoder(w).Encode(map[string]string{"error": "password_change_required", "error_description": "Choose a new password."})
+					return
+				}
+				f.logins = append(f.logins, r.PostForm)
 				f.n++
 				json.NewEncoder(w).Encode(map[string]any{"access_token": jwtFor(r.PostFormValue("username"), f.n), "refresh_token": fmt.Sprint("rt-", f.n), "expires_in": f.expiresIn})
 			case "refresh_token":
@@ -93,13 +106,20 @@ func dashboard(t *testing.T, f *fakeOhCRUD) (*httptest.Server, *http.Client, *Se
 }
 
 func signIn(t *testing.T, ts *httptest.Server, b *http.Client, password string) *http.Response {
-	req, _ := http.NewRequest("POST", ts.URL+"/login", strings.NewReader(url.Values{"username": {"alice"}, "password": {password}}.Encode()))
+	res, _ := postForm(t, ts, b, "/login", url.Values{"username": {"alice"}, "password": {password}})
+	return res
+}
+
+// postForm submits a form from the site's own page, and returns the answer and its body
+func postForm(t *testing.T, ts *httptest.Server, b *http.Client, path string, form url.Values) (*http.Response, string) {
+	req, _ := http.NewRequest("POST", ts.URL+path, strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Origin", ts.URL)
 	res, err := b.Do(req)
 	if err != nil { t.Fatal(err) }
+	body, _ := io.ReadAll(res.Body)
 	res.Body.Close()
-	return res
+	return res, string(body)
 }
 
 // csrfOf reads the page's CSRF token, as app.js does

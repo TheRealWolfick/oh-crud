@@ -41,10 +41,13 @@
         <div class="me-name"><b id="me-name">{{.Username}}</b><span>{{.Roles}}</span></div>
       </div>
       <span class="me-factor">{{.Factor}}</span>
-      <form method="post" action="/logout">
-        <input type="hidden" name="csrf" value="{{.CSRF}}">
-        <button class="btn btn-sm" type="submit">Sign out</button>
-      </form>
+      <div class="me-actions">
+        <button class="btn btn-sm" type="button" data-act="change-password">Change password</button>
+        <form method="post" action="/logout">
+          <input type="hidden" name="csrf" value="{{.CSRF}}">
+          <button class="btn btn-sm" type="submit">Sign out</button>
+        </form>
+      </div>
     </div>
   </nav>
   <main class="main" id="main">

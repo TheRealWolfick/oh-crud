@@ -241,3 +241,10 @@ const MgmtIdleTimeout = 12 * time.Hour
 // MgmtRefreshEarly renews the access token this long before it expires, so a request
 // never carries one that dies in flight
 const MgmtRefreshEarly = 30 * time.Second
+
+// MgmtPendingCookieName holds the id of a sign-in waiting for a new password
+const MgmtPendingCookieName = "ohc_mgmt_pending"
+
+// MgmtPendingTimeout is how long a person has to choose a new password after a
+// sign-in that needs one, before they must sign in again
+const MgmtPendingTimeout = 10 * time.Minute

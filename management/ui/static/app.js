@@ -29,6 +29,14 @@
   const freshness = (iso) => { const d = ageDays(iso); return d === Infinity ? 0 : d <= 1 ? 100 : Math.max(4, Math.round(100 - (d / IDLE_DAYS) * 100)); };
   const initials = (name) => String(name || '?').split(/[\s._-]+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('') || '?';
   const firstName = (name) => String(name || '').split(/[\s.]/)[0];
+  // A temporary password for an admin to hand on: 16 characters with no look-alikes
+  function temporaryPassword() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789', out = [];
+    const buf = new Uint32Array(16);
+    crypto.getRandomValues(buf);
+    for (const n of buf) out.push(chars[n % chars.length]);
+    return out.join('');
+  }
   const plural = (n, one, many) => n + ' ' + (n === 1 ? one : (many || one + 's'));
 
   const statusBadge = {
@@ -50,6 +58,7 @@
     'service.enable': ['Enabled', 'b-ok'], 'service_key.add': ['Key added', 'b-calm'], 'service_key.revoke': ['Key revoked', 'b-bad'],
     'user.create': ['User added', 'b-calm'], 'user.roles.update': ['Roles', 'b-calm'], 'user.disable': ['Disabled', 'b-bad'],
     'user.enable': ['Enabled', 'b-ok'], 'user.sessions_revoke': ['Sessions ended', 'b-warn'], 'user.session_revoke': ['Session ended', 'b-warn'],
+    'user.password_change': ['Password', 'b-calm'], 'user.password_reset': ['Password reset', 'b-warn'],
     'schema.approve': ['Schema', 'b-mute'], 'schema.deny': ['Schema', 'b-mute'],
   };
   const kindOf = (a) => actionWords[a] || [a, 'b-mute'];
@@ -78,6 +87,8 @@
       case 'user.enable': return `Enabled ${t}`;
       case 'user.sessions_revoke': return `Ended every session of ${t}`;
       case 'user.session_revoke': return `Ended a session of ${t}`;
+      case 'user.password_change': return `${t} chose a new password` + (after.reason === 'required' ? ' (required)' : '');
+      case 'user.password_reset': return `Set a temporary password for ${t}`;
       case 'schema.approve': return `Approved a schema change on ${e.target}`;
       case 'schema.deny': return `Denied a schema change on ${e.target}`;
       default: return `${e.action} on ${t}`;
@@ -102,11 +113,13 @@
     }
   }
 
-  async function api(method, path, body) {
+  // api calls Oh CRUD's admin API through /api; request calls this server directly
+  const api = (method, path, body) => request(method, '/api' + path, body);
+  async function request(method, url, body) {
     const opts = { method, headers: {}, credentials: 'same-origin' };
     if (method !== 'GET') opts.headers['X-CSRF-Token'] = csrf;
     if (body !== undefined) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
-    const res = await fetch('/api' + path, opts);
+    const res = await fetch(url, opts);
     let data = null;
     try { data = await res.json(); } catch (_) { /* empty or not JSON */ }
     const challenge = res.headers.get('WWW-Authenticate') || '';
@@ -350,9 +363,10 @@
       disabled: `Disabled ${full(u.disabled_at)}. They can't sign in until enabled.`,
       service: 'Service rows hold no password. Writes the service makes on its own are recorded under this row.',
     };
+    const temp = u.needs_new_password ? 'Their password is temporary: they choose their own at their next sign-in.' : '';
     openDrawer({
-      kind: 'User', title: u.display_name || u.username, sub: `${u.username}, ${u.id}`, status: u.status, note: notes[u.status] || '',
-      facts: [['Sign-in', how], ['Last login', u.is_service ? '—' : when(u.last_login_at)], ['Live sessions', String(live.length)], ['Created', full(u.created_at)]],
+      kind: 'User', title: u.display_name || u.username, sub: `${u.username}, ${u.id}`, status: u.status, note: [notes[u.status], temp].filter(Boolean).join(' '),
+      facts: [['Sign-in', how + (u.needs_new_password ? ', temporary' : '')], ['Last login', u.is_service ? '—' : when(u.last_login_at)], ['Live sessions', String(live.length)], ['Created', full(u.created_at)]],
       sections: [
         u.is_service ? '' : `<div class="section"><h3>Roles</h3>
           <form class="inline-form" data-form="roles" data-id="${esc(u.id)}">
@@ -369,6 +383,7 @@
           <div class="item"><div class="item-text"><b>${esc(describe(e))}</b><span>${esc(when(e.at))}${e.actor_user && e.actor_user !== u.id ? ' by ' + esc(nameOf(e.actor_user)) : ''}</span></div></div>`).join('')}</div>` : '',
       ],
       actions: u.is_service ? [] : [
+        ...(u.has_password ? [['Set temporary password', '', 'reset-password', u.id]] : []),
         ['End all sessions', '', 'end-sessions', u.id],
         u.status === 'disabled' ? ['Enable', 'btn-primary', 'user-enable', u.id] : ['Disable', 'btn-danger', 'user-disable', u.id],
       ],
@@ -473,7 +488,7 @@
       <h2>${esc(title)}</h2>${text ? `<p>${esc(text)}</p>` : ''}
       ${fields.map((f) => `<label class="flabel">${esc(f.label)}
         ${f.type === 'textarea' ? `<textarea class="field mono" name="${f.name}" ${f.required ? 'required' : ''} placeholder="${esc(f.placeholder || '')}"></textarea>`
-          : `<input class="field ${f.mono ? 'mono' : ''}" name="${f.name}" type="${f.type || 'text'}" ${f.required ? 'required' : ''} ${f.pattern ? `pattern="${f.pattern}"` : ''} ${f.minlength ? `minlength="${f.minlength}"` : ''} placeholder="${esc(f.placeholder || '')}" value="${esc(f.value || '')}" autocomplete="off">`}
+          : `<input class="field ${f.mono ? 'mono' : ''}" name="${f.name}" type="${f.type || 'text'}" ${f.required ? 'required' : ''} ${f.pattern ? `pattern="${f.pattern}"` : ''} ${f.minlength ? `minlength="${f.minlength}"` : ''} placeholder="${esc(f.placeholder || '')}" value="${esc(f.value || '')}" autocomplete="${esc(f.autocomplete || 'off')}" ${f.inputmode ? `inputmode="${f.inputmode}"` : ''} ${f.maxlength ? `maxlength="${f.maxlength}"` : ''}>`}
         ${f.hint ? `<span class="login-hint">${esc(f.hint)}</span>` : ''}</label>`).join('')}
       <div class="dialog-actions"><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" value="ok">${esc(submit)}</button></div>
     </form>`;
@@ -554,7 +569,7 @@
       const v = await ask({ title: 'Create a user', submit: 'Create', fields: [
         { name: 'username', label: 'Username', required: true, mono: true },
         { name: 'display_name', label: 'Name' },
-        { name: 'password', label: 'Password (optional)', type: 'password', minlength: 12, hint: 'At least 12 characters. Leave empty for someone who signs in another way.' },
+        { name: 'password', label: 'Password (optional)', type: 'password', minlength: 12, hint: 'At least 12 characters, and temporary: they choose their own at first sign-in. Leave empty for someone who signs in another way.' },
         { name: 'roles', label: 'Roles', mono: true, placeholder: 'user, inventory:editor' }] });
       if (!v) return;
       const roles = v.roles.split(',').map((r) => r.trim()).filter(Boolean);
@@ -575,6 +590,27 @@
       if (v) change('POST', `/users/${enc(d.id)}/disable`, undefined, 'User disabled', () => openUser(d.id));
     },
     'user-enable': (d) => change('POST', `/users/${enc(d.id)}/enable`, undefined, 'User enabled', () => openUser(d.id)),
+    'reset-password': async (d) => {
+      const v = await ask({ title: 'Set a temporary password?', danger: true, submit: 'Set password',
+        text: 'Every session they have ends now, and they choose their own password at their next sign-in. Tell them this one some other way: it isn\'t shown again.',
+        fields: [{ name: 'password', label: 'Temporary password', required: true, mono: true, minlength: 12, value: temporaryPassword(), hint: 'At least 12 characters. One is made up for you; copy it before you save.' }] });
+      if (v) change('POST', `/users/${enc(d.id)}/resetpw`, { password: v.password }, 'Temporary password set', () => openUser(d.id));
+    },
+    'change-password': async () => {
+      const v = await ask({ title: 'Change your password', submit: 'Change password',
+        text: 'Your other sessions end within a few minutes. This one carries on.',
+        fields: [
+          { name: 'current_password', label: 'Current password', type: 'password', required: true, autocomplete: 'current-password' },
+          { name: 'new_password', label: 'New password', type: 'password', required: true, minlength: 12, autocomplete: 'new-password', hint: 'At least 12 characters.' },
+          { name: 'confirm', label: 'New password again', type: 'password', required: true, minlength: 12, autocomplete: 'new-password' },
+          { name: 'otp', label: 'One-time code', mono: true, pattern: '[0-9]{6}', maxlength: 6, inputmode: 'numeric', autocomplete: 'one-time-code', hint: 'Leave empty if you don\'t use one.' }] });
+      if (!v) return;
+      if (v.new_password !== v.confirm) { toast('Password not changed', 'The two new passwords don\'t match.', true); return; }
+      try {
+        await request('POST', '/account/password', { current_password: v.current_password, new_password: v.new_password, otp: v.otp.trim() });
+        toast('Password changed');
+      } catch (err) { report(err); }
+    },
 
     'schema-approve': async (d) => {
       try {

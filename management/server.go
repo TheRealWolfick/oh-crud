@@ -44,6 +44,8 @@ func (srv *Server) Handler() http.Handler {
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(static)))
 	mux.HandleFunc("GET /login", srv.loginPage)
 	mux.HandleFunc("POST /login", srv.login)
+	mux.HandleFunc("POST /login/password", srv.loginNewPassword)
+	mux.HandleFunc("POST /account/password", srv.changePassword)
 	mux.HandleFunc("POST /logout", srv.logout)
 	mux.HandleFunc("/api/", srv.api)
 	mux.HandleFunc("GET /{$}", srv.app)
@@ -77,6 +79,21 @@ func (srv *Server) setCookie(w http.ResponseWriter, value string, maxAge int) {
 		HttpOnly: true, Secure: srv.secureCookie, SameSite: http.SameSiteStrictMode})
 }
 
+// setPendingCookie holds the id of a sign-in waiting for a new password. It is only
+// sent to the sign-in pages.
+func (srv *Server) setPendingCookie(w http.ResponseWriter, value string, maxAge int) {
+	http.SetCookie(w, &http.Cookie{Name: globals.MgmtPendingCookieName, Value: value, Path: "/login", MaxAge: maxAge,
+		HttpOnly: true, Secure: srv.secureCookie, SameSite: http.SameSiteStrictMode})
+}
+
+// dropPending forgets the request's waiting sign-in, if it has one
+func (srv *Server) dropPending(w http.ResponseWriter, r *http.Request) {
+	if c, err := r.Cookie(globals.MgmtPendingCookieName); err == nil {
+		srv.sessions.Release(c.Value)
+		srv.setPendingCookie(w, "", -1)
+	}
+}
+
 // sameOrigin reports whether a changing request came from this site's own pages. With
 // the SameSite cookie and the CSRF token it keeps other sites from acting for a person.
 func sameOrigin(r *http.Request) bool {
@@ -91,19 +108,30 @@ func sameOrigin(r *http.Request) bool {
 type loginView struct {
 	Error    string
 	Username string
+	Change   bool // choosing a new password, after a sign-in that needs one
+	HadOTP   bool // that sign-in sent a one-time code, which may expire meanwhile
 }
 
 func (srv *Server) loginPage(w http.ResponseWriter, r *http.Request) {
 	if _, ok := srv.session(r); ok { http.Redirect(w, r, "/", http.StatusSeeOther); return }
+	srv.dropPending(w, r) // "Start again" from the new password form lands here
 	srv.render(w, "login.html", http.StatusOK, loginView{})
 }
 
 func (srv *Server) login(w http.ResponseWriter, r *http.Request) {
 	if !sameOrigin(r) { http.Error(w, "forbidden", http.StatusForbidden); return }
+	srv.dropPending(w, r)
 	username := strings.TrimSpace(r.PostFormValue("username"))
-	t, err := srv.client.Login(r.Context(), username, r.PostFormValue("password"), strings.TrimSpace(r.PostFormValue("otp")))
+	password, otp := r.PostFormValue("password"), strings.TrimSpace(r.PostFormValue("otp"))
+	t, err := srv.client.Login(r.Context(), username, password, otp, "")
+	var pe *PasswordError
 	switch {
-	case errors.Is(err, ErrBadLogin):
+	case errors.As(err, &pe) && pe.Code == "password_change_required":
+		id := srv.sessions.Hold(username, password, otp)
+		srv.setPendingCookie(w, id, int(globals.MgmtPendingTimeout.Seconds()))
+		srv.render(w, "login.html", http.StatusOK, loginView{Change: true, Username: username, HadOTP: otp != ""})
+		return
+	case errors.Is(err, ErrBadLogin), errors.As(err, &pe):
 		srv.render(w, "login.html", http.StatusUnauthorized, loginView{Error: "Those details didn't work. Check them, and your one-time code if you use one.", Username: username})
 		return
 	case errors.Is(err, ErrSlowDown):
@@ -114,9 +142,115 @@ func (srv *Server) login(w http.ResponseWriter, r *http.Request) {
 		srv.render(w, "login.html", http.StatusBadGateway, loginView{Error: "Oh CRUD couldn't be reached. Try again shortly.", Username: username})
 		return
 	}
+	srv.startSession(w, r, t)
+}
+
+// loginNewPassword finishes a sign-in that needs a new password: the same login again,
+// with new_password. A one-time code is only used up by a login that succeeds, so the
+// held one is sent again unless the person typed a fresh one.
+func (srv *Server) loginNewPassword(w http.ResponseWriter, r *http.Request) {
+	if !sameOrigin(r) { http.Error(w, "forbidden", http.StatusForbidden); return }
+	c, err := r.Cookie(globals.MgmtPendingCookieName)
+	var p pendingLogin
+	ok := false
+	if err == nil { p, ok = srv.sessions.Held(c.Value) }
+	if !ok {
+		srv.setPendingCookie(w, "", -1)
+		srv.render(w, "login.html", http.StatusUnauthorized, loginView{Error: "That took too long. Sign in again."})
+		return
+	}
+	again := func(status int, msg string) {
+		srv.render(w, "login.html", status, loginView{Change: true, Username: p.username, HadOTP: p.otp != "", Error: msg})
+	}
+	restart := func(status int, msg string) {
+		srv.dropPending(w, r)
+		srv.render(w, "login.html", status, loginView{Error: msg, Username: p.username})
+	}
+
+	newPassword := r.PostFormValue("new_password")
+	if newPassword != r.PostFormValue("confirm") { again(http.StatusBadRequest, "The two new passwords don't match."); return }
+	otp := strings.TrimSpace(r.PostFormValue("otp"))
+	if otp == "" { otp = p.otp }
+
+	t, err := srv.client.Login(r.Context(), p.username, p.password, otp, newPassword)
+	var pe *PasswordError
+	switch {
+	case errors.As(err, &pe):
+		again(http.StatusBadRequest, passwordAdvice(pe))
+		return
+	case errors.Is(err, ErrBadLogin):
+		msg := "That didn't work. Sign in again."
+		if p.otp != "" { msg = "That didn't work: your one-time code may have expired. Sign in again with a fresh one." }
+		restart(http.StatusUnauthorized, msg)
+		return
+	case errors.Is(err, ErrSlowDown):
+		restart(http.StatusTooManyRequests, "Too many attempts. Wait a few minutes, then try again.")
+		return
+	case err != nil:
+		srv.lg.Error("login with a new password failed", "error", err)
+		again(http.StatusBadGateway, "Oh CRUD couldn't be reached. Try again shortly.")
+		return
+	}
+	srv.dropPending(w, r)
+	srv.startSession(w, r, t)
+}
+
+func (srv *Server) startSession(w http.ResponseWriter, r *http.Request, t *Tokens) {
 	s := srv.sessions.Start(t)
 	srv.setCookie(w, s.ID, int(globals.MgmtIdleTimeout.Seconds()))
 	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// passwordAdvice is what to tell a person whose new password was refused
+func passwordAdvice(pe *PasswordError) string {
+	if pe.Description != "" { return pe.Description }
+	return "Choose a different password: at least 12 characters, and not the one you have now."
+}
+
+// changePassword lets the signed-in person replace their password, from the dashboard.
+// It is a login with new_password, so it needs the current password (and code, if they
+// use one). The session moves to the new login's tokens; the old Oh CRUD session is
+// ended now rather than at its next refresh.
+func (srv *Server) changePassword(w http.ResponseWriter, r *http.Request) {
+	s, ok := srv.session(r)
+	if !ok { signedOut(w); return }
+	if !sameOrigin(r) || r.Header.Get("X-CSRF-Token") != s.CSRF {
+		apiProblem(w, http.StatusForbidden, "Refused", "This change didn't come from the dashboard.")
+		return
+	}
+	var in struct {
+		Current string `json:"current_password"`
+		New     string `json:"new_password"`
+		OTP     string `json:"otp"`
+	}
+	dec := json.NewDecoder(io.LimitReader(r.Body, 1<<16))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&in); err != nil || in.Current == "" || in.New == "" {
+		apiProblem(w, http.StatusBadRequest, "Bad body", "Send current_password and new_password.")
+		return
+	}
+
+	t, err := srv.client.Login(r.Context(), s.Claims().Username, in.Current, strings.TrimSpace(in.OTP), in.New)
+	var pe *PasswordError
+	switch {
+	case errors.As(err, &pe):
+		apiProblem(w, http.StatusBadRequest, "Choose a different password", passwordAdvice(pe))
+		return
+	case errors.Is(err, ErrBadLogin):
+		// 400, not 401: the page takes a 401 as being signed out
+		apiProblem(w, http.StatusBadRequest, "Those details didn't work", "Check your current password, and your one-time code if you use one.")
+		return
+	case errors.Is(err, ErrSlowDown):
+		apiProblem(w, http.StatusTooManyRequests, "Too many attempts", "Wait a few minutes, then try again.")
+		return
+	case err != nil:
+		srv.lg.Error("password change failed", "error", err)
+		apiProblem(w, http.StatusBadGateway, "Oh CRUD couldn't be reached", "Try again shortly.")
+		return
+	}
+	old := s.replace(t)
+	if err := srv.client.Logout(r.Context(), old); err != nil { srv.lg.Warn("ending the old session at Oh CRUD failed", "error", err) }
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (srv *Server) logout(w http.ResponseWriter, r *http.Request) {

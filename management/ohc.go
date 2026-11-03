@@ -57,6 +57,16 @@ var (
 	ErrExpired  = errors.New("session expired")
 )
 
+// PasswordError is Oh CRUD asking for a new password (password_change_required) or
+// refusing the one given (invalid_new_password). Both come only once the password and
+// any one-time code were right, and Description can be shown to the person.
+type PasswordError struct {
+	Code        string
+	Description string
+}
+
+func (e *PasswordError) Error() string { return e.Code + ": " + e.Description }
+
 // assertion is the signed statement that proves this request comes from the service.
 // Each is good for a minute and used once.
 func (c *Client) assertion() (string, error) {
@@ -115,10 +125,12 @@ func (c *Client) forgetServiceToken() {
 	c.mu.Unlock()
 }
 
-// Login signs a person in with their password, and their one-time code if they have one
-func (c *Client) Login(ctx context.Context, username, password, otp string) (*Tokens, error) {
+// Login signs a person in with their password, and their one-time code if they have
+// one. A newPassword replaces the password as part of the login.
+func (c *Client) Login(ctx context.Context, username, password, otp, newPassword string) (*Tokens, error) {
 	form := url.Values{"grant_type": {"password"}, "username": {username}, "password": {password}}
 	if otp != "" { form.Set("otp", otp) }
+	if newPassword != "" { form.Set("new_password", newPassword) }
 	code, body, err := c.token(ctx, form)
 	switch {
 	case err != nil:
@@ -126,6 +138,10 @@ func (c *Client) Login(ctx context.Context, username, password, otp string) (*To
 	case code == http.StatusTooManyRequests:
 		return nil, ErrSlowDown
 	case code == http.StatusBadRequest:
+		if e, _ := body["error"].(string); e == "password_change_required" || e == "invalid_new_password" {
+			d, _ := body["error_description"].(string)
+			return nil, &PasswordError{Code: e, Description: d}
+		}
 		return nil, ErrBadLogin
 	case code != http.StatusOK:
 		return nil, fmt.Errorf("login: Oh CRUD answered %d %v", code, body["error"])
