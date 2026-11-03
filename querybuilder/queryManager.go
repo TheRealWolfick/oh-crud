@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"lotusforge.au/api-server/datamodel"
+	"lotusforge.au/api-server/globals"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/tools"
 )
@@ -220,7 +221,7 @@ func setWhere(field string, value any, fieldType datamodel.FieldKind, setFunc fu
 					setFunc(field, v, "IS")
 					return
 				}
-				if fieldType != datamodel.FieldString {
+				if fieldType != globals.FieldString {
 					return
 				}
 			}
@@ -230,7 +231,7 @@ func setWhere(field string, value any, fieldType datamodel.FieldKind, setFunc fu
 			}
 
 			switch fieldType {
-			case datamodel.FieldInt:
+			case globals.FieldInt:
 				if mod_guess == "<" || mod_guess == ">" {
 					if mod_guess2 == "<=" || mod_guess2 == ">=" {
 						if value_as_int, err := strconv.ParseInt(value_as_string[2:], 10, 64); err == nil {
@@ -247,12 +248,12 @@ func setWhere(field string, value any, fieldType datamodel.FieldKind, setFunc fu
 					}
 				}
 
-			case datamodel.FieldBool:
+			case globals.FieldBool:
 				if value_as_bool, err := strconv.ParseBool(value_as_string); err == nil {
 					setFunc(field, value_as_bool, "=")
 				}
 
-			case datamodel.FieldFloat:
+			case globals.FieldFloat:
 				if mod_guess == "<" || mod_guess == ">" {
 					if mod_guess2 == "<=" || mod_guess2 == ">=" {
 						if value_as_float, err := strconv.ParseFloat(value_as_string[2:], 64); err == nil {
@@ -269,7 +270,7 @@ func setWhere(field string, value any, fieldType datamodel.FieldKind, setFunc fu
 					}
 				}
 
-			case datamodel.FieldTime:
+			case globals.FieldTime:
 				var dateString string
 				var operator string
 
@@ -291,20 +292,20 @@ func setWhere(field string, value any, fieldType datamodel.FieldKind, setFunc fu
 				}
 				setFunc(field, parsedDate, operator)
 
-			case datamodel.FieldJSON:
+			case globals.FieldJSON:
 				// Check if this has an override
 				if json.Valid([]byte(value_as_string)) {
 					setFunc(field, value_as_string, "=")
 				}
 
-			case datamodel.FieldUUID:
+			case globals.FieldUUID:
 				// UUIDs are matched exactly — a malformed value is dropped rather than
 				// passed through to a regex/range comparison that doesn't apply to them.
 				if _, err := uuid.Parse(value_as_string); err == nil {
 					setFunc(field, value_as_string, "=")
 				}
 
-			case datamodel.FieldStringList:
+			case globals.FieldStringList:
 				// Check mod guess if it is matches any (~) or matches all (!).
 				// Default is matches any if no mod guess match
 				switch mod_guess {
@@ -998,7 +999,7 @@ func (qb *QueryBuilder) processWhereFromConfig(r *http.Request, cfg *models.Data
 		// abstraction in place — the WHERE clause must filter on the same expression
 		// the SELECT list exposes (e.g. jsonb_array_length(col)), not the raw jsonb column.
 		column := field_name
-		if field_type == datamodel.FieldJSON{
+		if field_type == globals.FieldJSON{
 			updated_type, valid := datamodel.ValidateJsonSelectOverride(&field_cfg)
 			if valid {
 				field_type = updated_type

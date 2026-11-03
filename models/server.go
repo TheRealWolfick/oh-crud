@@ -3,6 +3,9 @@ package models
 import (
 	"sync"
 	"time"
+
+
+	"lotusforge.au/api-server/globals"
 )
 
 type CorsConfig struct {
@@ -82,15 +85,9 @@ type AuditConfig struct {
 	Min_retention_days int `yaml:"min-retention-days"` // Entries newer than this can never be pruned. Default 365
 }
 
-// Defaults for the settings above when server.yaml leaves them out
-const (
-	DefaultLogRetentionDays   = 14
-	DefaultAuditRetentionDays = 365
-)
-
 // LogRetentionDays is how many days of application logs to keep
 func (c *ServerConfig) LogRetentionDays() int {
-	if c == nil || c.Logging == nil || c.Logging.Retention_days <= 0 { return DefaultLogRetentionDays }
+	if c == nil || c.Logging == nil || c.Logging.Retention_days <= 0 { return globals.DefaultLogRetentionDays }
 	return c.Logging.Retention_days
 }
 
@@ -102,7 +99,7 @@ func (c *ServerConfig) LogDBLevel() string {
 
 // AuditMinRetentionDays is the age below which audit entries can never be pruned
 func (c *ServerConfig) AuditMinRetentionDays() int {
-	if c == nil || c.Audit == nil || c.Audit.Min_retention_days <= 0 { return DefaultAuditRetentionDays }
+	if c == nil || c.Audit == nil || c.Audit.Min_retention_days <= 0 { return globals.DefaultAuditRetentionDays }
 	return c.Audit.Min_retention_days
 }
 
@@ -110,7 +107,6 @@ type SwappableServerConfig struct {
 	current *ServerConfig
 	mu sync.RWMutex
 }
-
 
 func (s *SwappableServerConfig) Swap(new *ServerConfig) {
 	s.mu.Lock()

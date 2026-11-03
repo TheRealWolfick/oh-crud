@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/alexedwards/argon2id"
+	"lotusforge.au/api-server/globals"
 	"lotusforge.au/api-server/models/modelstest"
 )
 
@@ -18,8 +19,8 @@ func TestCreateUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}
-	if len(u.ID) != userIDLength {
-		t.Errorf("Expected a %d character id, got %q", userIDLength, u.ID)
+	if len(u.ID) != globals.UserIDLength {
+		t.Errorf("Expected a %d character id, got %q", globals.UserIDLength, u.ID)
 	}
 
 	call := db.LastCall()
@@ -54,7 +55,7 @@ func TestCreateUserRejects(t *testing.T) {
 	cases := map[string]string{
 		"empty username": "",
 		"too long":       strings.Repeat("a", 65),
-		"service prefix": serviceUserPrefix + "reader",
+		"service prefix": globals.ServiceUserPrefix + "reader",
 	}
 	for name, username := range cases {
 		t.Run(name, func(t *testing.T) {

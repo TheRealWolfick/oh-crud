@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+
+	"lotusforge.au/api-server/globals"
 )
 
 // LogEntry is one row of ohc_logs
@@ -59,7 +61,7 @@ func (a *API) listLogs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	n := limit(r)
-	sql := `SELECT at, level, msg, request_id, service, attrs FROM ohc_logs`
+	sql := globals.SQLLogsSelect
 	if len(where) > 0 { sql += " WHERE " + strings.Join(where, " AND ") }
 	args = append(args, n+1)
 	sql += " ORDER BY at DESC LIMIT $" + strconv.Itoa(len(args))

@@ -13,6 +13,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"lotusforge.au/api-server/auth"
+	"lotusforge.au/api-server/globals"
 	"lotusforge.au/api-server/logging"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/reqctx"
@@ -43,7 +44,6 @@ type EventManager struct {
 	db           models.DBExecQuery
 	auth         *auth.Auth
 }
-
 
 type Instructions struct {
 	webhook_url    webhook_action
@@ -80,10 +80,6 @@ type Client struct {
 	closeOnce sync.Once
 }
 
-// CloseCodeRevoked is the websocket close code sent when the token a socket was opened
-// with is revoked. It mirrors HTTP 401: reconnecting with the same token is refused.
-const CloseCodeRevoked = 4401
-
 // tokensFrom are the tokens on the upgrade request: the user's, and the service's when
 // a service called on the user's behalf
 func tokensFrom(ctx context.Context) []*models.Claims {
@@ -112,7 +108,7 @@ func (h *EventManager) CloseRevoked(key string, at time.Time) int {
 	// Closing writes to the socket, so it happens outside the lock and without
 	// holding up the revoking request
 	for _, c := range hit {
-		safe.Go(logging.Basic(), "websocket revoke", func() { c.closeWith(CloseCodeRevoked, "token revoked") })
+		safe.Go(logging.Basic(), "websocket revoke", func() { c.closeWith(globals.CloseCodeRevoked, "token revoked") })
 	}
 	if len(hit) > 0 {
 		logging.Basic().Info("Closed websockets for a revocation", "key", key, "sockets", len(hit))
@@ -738,7 +734,7 @@ func (h *EventManager) publish(ctx context.Context, action string, status string
 	// Publish to the database
 	if instructions.persist_to_db && action != "get" {
 		service, short_topic := models.SplitTopicKey(topic)
-		_, err := h.db.Exec(ctx, `INSERT INTO ohc_events(action, status, service, topic, log, time, "user") VALUES ($1, $2, $3, $4, $5, $6, $7)`, action, status, service, short_topic, payload, timestamp, user.Username)
+		_, err := h.db.Exec(ctx, globals.SQLInsertEvent, action, status, service, short_topic, payload, timestamp, user.Username)
 		if err != nil { logging.Basic().Error("Failed to log event to db", "error", err) }
 	}
 

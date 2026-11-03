@@ -29,19 +29,8 @@ import (
 	"sync"
 	"time"
 
+	"lotusforge.au/api-server/globals"
 	"lotusforge.au/api-server/secrets"
-)
-
-// Path is where an instance receives messages from its peers
-const Path = "/mesh/v1/peer/events"
-
-// SignatureHeader carries the hex HMAC-SHA256 of the request body
-const SignatureHeader = "X-OhCrud-Peer-Signature"
-
-const (
-	maxAge      = time.Minute // a message older than this, or this far in the future, is refused
-	maxBody     = 64 << 10
-	sendTimeout = 2 * time.Second
 )
 
 // retryDelays are the waits before each retry of a failed send
@@ -75,7 +64,7 @@ func New(secret []byte, peers func() []string, lg *slog.Logger) *Bus {
 	mac.Write([]byte("oh-crud peer messages v1"))
 	return &Bus{
 		id: id, key: mac.Sum(nil), peers: peers, lg: lg,
-		client:   &http.Client{Timeout: sendTimeout},
+		client:   &http.Client{Timeout: globals.ClusterSendTimeout},
 		retry:    retryDelays,
 		handlers: map[string]func(json.RawMessage) error{},
 	}
@@ -102,7 +91,7 @@ func (b *Bus) Publish(channel string, data any) {
 	body, _ := json.Marshal(Message{Origin: b.id, Sent: time.Now().UTC(), Channel: channel, Data: raw})
 	sig := b.sign(body)
 	for _, peer := range peers {
-		go b.deliver(strings.TrimRight(peer, "/")+Path, body, sig, channel)
+		go b.deliver(strings.TrimRight(peer, "/")+globals.ClusterPath, body, sig, channel)
 	}
 }
 
@@ -117,12 +106,12 @@ func (b *Bus) deliver(url string, body []byte, sig string, channel string) {
 }
 
 func (b *Bus) post(url string, body []byte, sig string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), sendTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), globals.ClusterSendTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil { return err }
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set(SignatureHeader, sig)
+	req.Header.Set(globals.ClusterSignatureHeader, sig)
 	res, err := b.client.Do(req)
 	if err != nil { return err }
 	io.Copy(io.Discard, res.Body)
@@ -151,10 +140,10 @@ var (
 // channel, 500 when the handler failed (the sender retries)
 func (b *Bus) Handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, err := io.ReadAll(io.LimitReader(r.Body, maxBody+1))
-		if err != nil || len(body) > maxBody { http.Error(w, "bad request", http.StatusBadRequest); return }
+		body, err := io.ReadAll(io.LimitReader(r.Body, globals.ClusterMaxBody+1))
+		if err != nil || len(body) > globals.ClusterMaxBody { http.Error(w, "bad request", http.StatusBadRequest); return }
 
-		m, err := b.open(body, r.Header.Get(SignatureHeader), time.Now())
+		m, err := b.open(body, r.Header.Get(globals.ClusterSignatureHeader), time.Now())
 		switch {
 		case errors.Is(err, errBadSignature):
 			b.lg.Warn("cluster message with a bad signature refused", "ip", r.RemoteAddr)
@@ -187,7 +176,7 @@ func (b *Bus) open(body []byte, sig string, now time.Time) (*Message, error) {
 	if err != nil || !hmac.Equal(want, mustHex(b.sign(body))) { return nil, errBadSignature }
 	var m Message
 	if err := json.Unmarshal(body, &m); err != nil || m.Channel == "" || m.Origin == "" { return nil, errors.New("malformed message") }
-	if d := now.Sub(m.Sent); d > maxAge || d < -maxAge { return nil, errStale }
+	if d := now.Sub(m.Sent); d > globals.ClusterMaxAge || d < -globals.ClusterMaxAge { return nil, errStale }
 	return &m, nil
 }
 

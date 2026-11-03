@@ -84,6 +84,7 @@ func (a *API) Routes(mux *http.ServeMux) {
 	mux.Handle("POST /admin/v1/services/{id}/disable", change(a.platformAdmin, a.setServiceDisabled(true)))
 	mux.Handle("POST /admin/v1/services/{id}/enable", change(a.platformAdmin, a.setServiceDisabled(false)))
 	mux.Handle("POST /admin/v1/users", change(a.platformAdmin, a.createUser))
+	mux.Handle("POST /admin/v1/users/{id}/resetpw", change(a.platformAdmin, a.resetUserPassword))
 	mux.Handle("PUT /admin/v1/users/{id}/roles", change(a.anyAdmin, a.setUserRoles)) // each role checked by canGrant
 	mux.Handle("POST /admin/v1/users/{id}/disable", change(a.platformAdmin, a.setUserDisabled(true)))
 	mux.Handle("POST /admin/v1/users/{id}/enable", change(a.platformAdmin, a.setUserDisabled(false)))

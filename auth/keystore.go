@@ -13,6 +13,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"lotusforge.au/api-server/globals"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/secrets"
 )
@@ -104,11 +105,7 @@ func (ks *KeyStore) insertKey(ctx context.Context, k *SigningKey, status string)
 	priv_sealed, err := secrets.Encrypt(ks.master, k.Private, []byte(k.KID))
 	if err != nil { return fmt.Errorf("encrypt %s: %w", k.KID, err) }
 
-	// activated_at is only stamped when the key goes straight in as active
-	qry := `INSERT INTO ohc_signing_keys(kid, public_key, private_key, status, activated_at)
-	VALUES ( $1, $2, $3, $4::varchar, CASE WHEN $4::varchar = 'active' THEN now() END )`
-
-	cmd, err := ks.db.Exec(ctx, qry, k.KID, k.Public, priv_sealed, status)
+	cmd, err := ks.db.Exec(ctx, globals.SQLInsertSigningKey, k.KID, k.Public, priv_sealed, status)
 	if err != nil { return fmt.Errorf("save %s: %w", k.KID, err) }
 	if cmd.RowsAffected() != 1 { return fmt.Errorf("save %s: row not inserted", k.KID) }
 	return nil
@@ -143,13 +140,13 @@ func (ks *KeyStore) Activate(ctx context.Context, kid string) error {
 
 	// Retire the current key, if there is one
 	if ks.active != nil {
-		cmd, err := tx.Exec(ctx, `UPDATE ohc_signing_keys SET status = 'retiring', retired_at = now() WHERE kid = $1`, ks.active.KID)
+		cmd, err := tx.Exec(ctx, globals.SQLRetireSigningKey, ks.active.KID)
 		if err != nil { return fmt.Errorf("activate: retire %s: %w", ks.active.KID, err) }
 		if cmd.RowsAffected() != 1 { return fmt.Errorf("activate: retire %s: row not found", ks.active.KID) }
 	}
 
 	// Activate the new key
-	cmd, err := tx.Exec(ctx, `UPDATE ohc_signing_keys SET status = 'active', activated_at = now() WHERE kid = $1`, k.KID)
+	cmd, err := tx.Exec(ctx, globals.SQLActivateSigningKey, k.KID)
 	if err != nil { return fmt.Errorf("activate: %s: %w", k.KID, err) }
 	if cmd.RowsAffected() != 1 { return fmt.Errorf("activate: %s: row not found", k.KID) }
 
@@ -251,10 +248,7 @@ func (ks *KeyStore) Verify(raw string) (*models.Claims, error) {
 // RefreshKeys loads every usable key from the database and swaps them in.
 // Safe to call at startup and on a timer. On any error the current keys are kept.
 func (ks *KeyStore) RefreshKeys(ctx context.Context) error {
-	rows, err := ks.db.Query(ctx, `
-	SELECT kid, public_key, private_key, status
-	FROM ohc_signing_keys
-	WHERE status IN ('next', 'active', 'retiring')`)
+	rows, err := ks.db.Query(ctx, globals.SQLUsableSigningKeys)
 	if err != nil {
 		return fmt.Errorf("query signing keys: %w", err)
 	}
@@ -330,12 +324,8 @@ var ErrFamilyRevoked = errors.New("refresh token family is revoked")
 // Save a new refresh token. A rotation racing a reuse revocation can reach here after the
 // family was revoked, so the insert is refused rather than leaving a live token behind.
 func (ks *KeyStore) SaveRefreshToken(ctx context.Context, rt *models.RefreshToken) error {
-	sql := `INSERT INTO ohc_refresh_tokens (token_hash, user_id, client_id, family_id, amr, expires_at, auth_time)
-	SELECT $1::text, $2::text, $3::text, $4::text, $5::text[], $6::timestamptz, $7::timestamptz
-	WHERE NOT EXISTS (SELECT 1 FROM ohc_refresh_tokens WHERE family_id = $4::text AND revoked_at IS NOT NULL)`
-
 	// Add the token to the database
-	cmd, err := ks.db.Exec(ctx, sql, rt.TokenHash, rt.UserID, rt.ClientID, rt.FamilyID, rt.AMR, rt.ExpiresAt, rt.AuthTime)
+	cmd, err := ks.db.Exec(ctx, globals.SQLInsertRefreshToken, rt.TokenHash, rt.UserID, rt.ClientID, rt.FamilyID, rt.AMR, rt.ExpiresAt, rt.AuthTime)
 	if err != nil { return err }
 	if cmd.RowsAffected() == 0 { return ErrFamilyRevoked }
 
@@ -344,12 +334,8 @@ func (ks *KeyStore) SaveRefreshToken(ctx context.Context, rt *models.RefreshToke
 
 // Read a refresh token
 func (ks *KeyStore) RefreshTokenbyHash(ctx context.Context, hash string) (*models.RefreshToken, error) {
-	sql := `SELECT id, token_hash, user_id, client_id, family_id, COALESCE(amr, '{}') AS amr,
-		expires_at, auth_time, used_at, revoked_at
-	FROM ohc_refresh_tokens WHERE token_hash = $1 LIMIT 1`
-
 	// Get the refresh token
-	rows, err := ks.db.Query(ctx, sql, hash)
+	rows, err := ks.db.Query(ctx, globals.SQLRefreshTokenByHash, hash)
 	if err != nil { return nil, err }
 
 	return pgx.CollectOneRow(rows, pgx.RowToAddrOfStructByName[models.RefreshToken])
@@ -358,10 +344,7 @@ func (ks *KeyStore) RefreshTokenbyHash(ctx context.Context, hash string) (*model
 // Mark a refresh token as used. Only one caller can win this for a given token:
 // false means it was already used, revoked or expired by the time we got to it
 func (ks *KeyStore) UseRefreshToken(ctx context.Context, id int) (bool, error) {
-	sql := `UPDATE ohc_refresh_tokens SET used_at = now()
-	WHERE id = $1 AND used_at IS NULL AND revoked_at IS NULL AND expires_at > now()`
-
-	cmd, err := ks.db.Exec(ctx, sql, id)
+	cmd, err := ks.db.Exec(ctx, globals.SQLUseRefreshToken, id)
 	if err != nil { return false, err }
 
 	return cmd.RowsAffected() == 1, nil
@@ -370,13 +353,11 @@ func (ks *KeyStore) UseRefreshToken(ctx context.Context, id int) (bool, error) {
 // Revoke every live refresh token in a family, ending that login session
 // RevokeUserRefreshTokens revokes every refresh token the user holds, in every session
 func (ks *KeyStore) RevokeUserRefreshTokens(ctx context.Context, userID string) error {
-	_, err := ks.db.Exec(ctx, `UPDATE ohc_refresh_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, userID)
+	_, err := ks.db.Exec(ctx, globals.SQLRevokeUserRefreshTokens, userID)
 	return err
 }
 
 func (ks *KeyStore) RevokeRefreshFamily(ctx context.Context, family string) error {
-	sql := `UPDATE ohc_refresh_tokens SET revoked_at = now() WHERE family_id = $1 AND revoked_at IS NULL`
-
-	_, err := ks.db.Exec(ctx, sql, family)
+	_, err := ks.db.Exec(ctx, globals.SQLRevokeRefreshFamily, family)
 	return err
 }

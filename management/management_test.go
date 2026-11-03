@@ -17,6 +17,9 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+
+	"lotusforge.au/api-server/globals"
 )
 
 // fakeOhCRUD stands in for Oh CRUD: it issues tokens, refuses a reused refresh token
@@ -136,7 +139,7 @@ func TestSignIn(t *testing.T) {
 		t.Fatalf("sign in: got %d", res.StatusCode)
 	}
 	cookie := res.Header.Get("Set-Cookie")
-	for _, want := range []string{CookieName + "=", "HttpOnly", "SameSite=Strict", "Path=/"} {
+	for _, want := range []string{globals.MgmtCookieName + "=", "HttpOnly", "SameSite=Strict", "Path=/"} {
 		if !strings.Contains(cookie, want) {
 			t.Errorf("cookie %q lacks %s", cookie, want)
 		}
@@ -318,7 +321,7 @@ func TestSecurityHeaders(t *testing.T) {
 func TestSessionExpiresWhenIdle(t *testing.T) {
 	st := NewStore()
 	s := st.Start(&Tokens{Access: jwtFor("alice", 1), ExpiresAt: time.Now().Add(time.Hour)})
-	s.lastSeen = time.Now().Add(-idleTimeout - time.Minute)
+	s.lastSeen = time.Now().Add(-globals.MgmtIdleTimeout - time.Minute)
 	if _, ok := st.Get(s.ID); ok {
 		t.Errorf("an idle session should be gone")
 	}

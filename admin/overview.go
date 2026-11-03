@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+
+	"lotusforge.au/api-server/globals"
 )
 
 // Task is one entry in the overview's "needs you" list. Kind and ID say what to open.
@@ -21,9 +23,6 @@ type KeyHealth struct {
 	LastSigned *time.Time `json:"last_signed_at"`
 	Status     string     `json:"status"`
 }
-
-// The audit actions that are logins and logouts, not changes an admin made
-const notAdminChanges = `('user.login', 'user.login_failed', 'user.logout', 'user.logout_all')`
 
 // GET /admin/v1/overview: the dashboard's first screen. "Today" is the UTC day.
 func (a *API) overview(w http.ResponseWriter, r *http.Request) {
@@ -50,22 +49,12 @@ func (a *API) overview(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var people, activeToday, endedToday, reuseToday, adminChanges, adminChangesOTP int
-	err = a.d.DB.QueryRow(ctx, `
-		SELECT (SELECT count(*) FROM ohc_users WHERE id NOT LIKE 'svc:%'),
-		       (SELECT count(DISTINCT target) FROM ohc_audit_events WHERE action = 'user.login' AND at >= date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'),
-		       (SELECT count(*) FROM ohc_audit_events WHERE action IN ('session.revoke', 'refresh_token.reuse') AND at >= date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'),
-		       (SELECT count(*) FROM ohc_audit_events WHERE action = 'refresh_token.reuse' AND at >= date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'),
-		       (SELECT count(*) FROM ohc_audit_events WHERE actor_user IS NOT NULL AND action NOT IN `+notAdminChanges+` AND at >= date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'),
-		       (SELECT count(*) FROM ohc_audit_events WHERE actor_user IS NOT NULL AND action NOT IN `+notAdminChanges+` AND 'otp' = ANY(amr) AND at >= date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')`).
+	err = a.d.DB.QueryRow(ctx, globals.SQLOverviewCounts).
 		Scan(&people, &activeToday, &endedToday, &reuseToday, &adminChanges, &adminChangesOTP)
 	if err != nil { a.serverError(w, r, "overview counts", err); return }
 
 	// Admins with no second factor, and anyone whose sessions were ended by token reuse
-	rows, err := a.d.DB.Query(ctx, `
-		SELECT id, username, COALESCE(roles, '{}') AS roles, totp_secret IS NOT NULL AS has_otp,
-		       EXISTS (SELECT 1 FROM ohc_audit_events a WHERE a.target = ohc_users.id AND a.action = 'refresh_token.reuse'
-		                  AND a.at > now() - interval '1 day') AS reused
-		  FROM ohc_users WHERE id NOT LIKE 'svc:%' AND disabled_at IS NULL ORDER BY username`)
+	rows, err := a.d.DB.Query(ctx, globals.SQLOverviewFlaggedUsers)
 	if err != nil { a.serverError(w, r, "overview users", err); return }
 	type flagged struct {
 		ID       string   `db:"id"`

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"lotusforge.au/api-server/datamodel"
+	"lotusforge.au/api-server/globals"
 	"lotusforge.au/api-server/logging"
 	"lotusforge.au/api-server/models"
 )
@@ -39,7 +40,7 @@ func TestStringListWhere(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			qb := NewQueryBuilder(logging.Basic())
-			qb.SetWhere("tags", c.value, datamodel.FieldStringList)
+			qb.SetWhere("tags", c.value, globals.FieldStringList)
 
 			if got := qb.BuildSelect("posts", []string{"id"}); got != c.wantSQL {
 				t.Errorf("Expected: %s\nReceived: %s", c.wantSQL, got)
@@ -52,7 +53,7 @@ func TestStringListWhere(t *testing.T) {
 
 	t.Run("malformed list adds no where clause", func(t *testing.T) {
 		qb := NewQueryBuilder(logging.Basic())
-		qb.SetWhere("tags", "[a,b", datamodel.FieldStringList)
+		qb.SetWhere("tags", "[a,b", globals.FieldStringList)
 		if got := qb.BuildSelect("posts", []string{"id"}); strings.Contains(got, "WHERE") {
 			t.Errorf("Expected no WHERE clause. Received: %s", got)
 		}

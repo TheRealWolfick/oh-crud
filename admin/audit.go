@@ -11,6 +11,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+
+
+	"lotusforge.au/api-server/globals"
 )
 
 // AuditEntry is one row of ohc_audit_events
@@ -35,9 +38,6 @@ type auditFilter struct {
 	subject                                   string // the user as target or actor
 	from, to                                  time.Time
 }
-
-// csvLimit caps an export; narrow the filters for more
-const csvLimit = 10000
 
 // audit lists entries newest first, after the cursor (an id), matching f
 func (a *API) audit(ctx context.Context, f auditFilter, after string, n int) ([]AuditEntry, error) {
@@ -66,8 +66,7 @@ func (a *API) audit(ctx context.Context, f auditFilter, after string, n int) ([]
 		if err != nil { return nil, fmt.Errorf("bad cursor") }
 		add("id < ?", id)
 	}
-	sql := `SELECT id, at, action, target, service, actor_user, via_service, amr, org_id, before, after, ip, request_id
-	          FROM ohc_audit_events`
+	sql := globals.SQLAuditSelect
 	if len(where) > 0 { sql += " WHERE " + strings.Join(where, " AND ") }
 	args = append(args, n)
 	sql += " ORDER BY id DESC LIMIT $" + strconv.Itoa(len(args))
@@ -113,7 +112,7 @@ func (a *API) listAudit(w http.ResponseWriter, r *http.Request) {
 	if err != nil { problem(w, r, http.StatusBadRequest, "Bad filter", err.Error()); return }
 
 	if r.URL.Query().Get("format") == "csv" {
-		list, err := a.audit(r.Context(), f, "", csvLimit)
+		list, err := a.audit(r.Context(), f, "", globals.AuditCSVLimit)
 		if err != nil { a.serverError(w, r, "export audit", err); return }
 		writeAuditCSV(w, list)
 		return

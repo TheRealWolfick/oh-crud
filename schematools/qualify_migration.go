@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
+	"lotusforge.au/api-server/globals"
 	"lotusforge.au/api-server/models"
 )
 
@@ -24,32 +25,6 @@ type catalogEntry struct {
 	Name  string
 	Table string // the table an index, sequence or constraint belongs to; "" for tables
 }
-
-// catalogSQL lists the tables, indexes, owned sequences and foreign keys in public
-const catalogSQL = `
-SELECT 'r' AS kind, c.relname AS name, '' AS tbl
-  FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
- WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')
-UNION ALL
-SELECT 'i', ic.relname, tc.relname
-  FROM pg_index x
-  JOIN pg_class ic ON ic.oid = x.indexrelid
-  JOIN pg_class tc ON tc.oid = x.indrelid
-  JOIN pg_namespace n ON n.oid = tc.relnamespace
- WHERE n.nspname = 'public'
-UNION ALL
-SELECT 'S', s.relname, t.relname
-  FROM pg_class s
-  JOIN pg_depend d ON d.objid = s.oid AND d.classid = 'pg_class'::regclass AND d.deptype IN ('a', 'i')
-  JOIN pg_class t ON t.oid = d.refobjid
-  JOIN pg_namespace n ON n.oid = s.relnamespace
- WHERE s.relkind = 'S' AND n.nspname = 'public'
-UNION ALL
-SELECT 'f', con.conname, t.relname
-  FROM pg_constraint con
-  JOIN pg_class t ON t.oid = con.conrelid
-  JOIN pg_namespace n ON n.oid = t.relnamespace
- WHERE con.contype = 'f' AND n.nspname = 'public'`
 
 // renamePlan is what one migration run will do
 type renamePlan struct {
@@ -73,7 +48,7 @@ func planQualifiedRenames(catalog []catalogEntry, loaded []models.DataModel) ren
 	var plan renamePlan
 	var ddl []string
 	rename := func(kind string, old string, new string) {
-		ddl = append(ddl, fmt.Sprintf("ALTER %s %s RENAME TO %s", kind, ident(old), ident(new)))
+		ddl = append(ddl, fmt.Sprintf(globals.SQLRenameRelationFmt, kind, ident(old), ident(new)))
 		exists[map[string]string{"TABLE": "r", "INDEX": "i", "SEQUENCE": "S"}[kind]+":"+new] = true
 	}
 
@@ -117,7 +92,7 @@ func planQualifiedRenames(catalog []catalogEntry, loaded []models.DataModel) ren
 				case "f":
 					// Only the history table's foreign keys are named after the table
 					if rest, ok := strings.CutPrefix(e.Name, "fk_"+short+"_history_"); ok && oldT == short+"_history" {
-						ddl = append(ddl, fmt.Sprintf("ALTER TABLE %s RENAME CONSTRAINT %s TO %s",
+						ddl = append(ddl, fmt.Sprintf(globals.SQLRenameConstraintFmt,
 							ident(newT), ident(e.Name), ident("fk_"+table+"_history_"+rest)))
 					}
 					continue
@@ -141,21 +116,21 @@ func planQualifiedRenames(catalog []catalogEntry, loaded []models.DataModel) ren
 	// columns used to allow, so widen them first, to the width their models now declare
 	// (widening a varchar rewrites nothing, and leaves the schema sync nothing to do).
 	if exists["r:ohc_diffs"] {
-		plan.Statements = append(plan.Statements, "ALTER TABLE ohc_diffs ALTER COLUMN diff_type TYPE character varying(63)")
+		plan.Statements = append(plan.Statements, globals.SQLWidenDiffType)
 	}
 	if exists["r:ohc_batch_numbers"] {
-		plan.Statements = append(plan.Statements, "ALTER TABLE ohc_batch_numbers ALTER COLUMN table_name TYPE character varying(63)")
+		plan.Statements = append(plan.Statements, globals.SQLWidenBatchTableName)
 	}
 	for _, r := range plan.Renamed {
 		short, table := r[0], r[1]
 		if exists["r:ohc_diffs"] {
 			plan.Statements = append(plan.Statements,
-				fmt.Sprintf("UPDATE ohc_diffs SET diff_type = %s WHERE diff_type = %s", literal(table), literal(short)))
+				fmt.Sprintf(globals.SQLRenameDiffTypeFmt, literal(table), literal(short)))
 		}
 		if exists["r:ohc_batch_numbers"] {
 			svc, _, _ := strings.Cut(table, "_")
 			plan.Statements = append(plan.Statements,
-				fmt.Sprintf("UPDATE ohc_batch_numbers SET table_name = %s, service = %s WHERE table_name = %s",
+				fmt.Sprintf(globals.SQLRenameBatchTableFmt,
 					literal(table), literal(svc), literal(short)))
 		}
 	}
@@ -167,7 +142,7 @@ func planQualifiedRenames(catalog []catalogEntry, loaded []models.DataModel) ren
 // one transaction. It then renames each table's schema sidecar files to match. Run it
 // on the loaded models before BootstrapModels. A model already migrated is a no-op.
 func MigrateToQualifiedNames(ctx context.Context, db models.DBTxBeginner, loaded []models.DataModel, logger *slog.Logger) error {
-	rows, err := db.Query(ctx, catalogSQL)
+	rows, err := db.Query(ctx, globals.SQLCatalog)
 	if err != nil { return fmt.Errorf("read catalog: %w", err) }
 	catalog, err := pgx.CollectRows(rows, pgx.RowToStructByPos[catalogEntry])
 	if err != nil { return fmt.Errorf("read catalog: %w", err) }

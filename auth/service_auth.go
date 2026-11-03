@@ -21,6 +21,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/pquerna/otp/totp"
 	"lotusforge.au/api-server/audit"
+	"lotusforge.au/api-server/globals"
 	"lotusforge.au/api-server/httpx"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/safe"
@@ -56,13 +57,20 @@ func AuthHandler(db models.DBExecQuery, svr_conf *models.SwappableServerConfig, 
 	}
 }
 
-
 // oauthError uses the standard OAuth error body. Keep messages generic:
 // "invalid_grant" for every login failure, never "unknown user" vs "wrong password".
 func oauthError(w http.ResponseWriter, code string, status int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(map[string]string{"error": code})
+}
+
+// oauthErrorDescribed adds a human-readable error_description (RFC 6749 5.2). Only use
+// it once the caller has proven who they are, such as asking for a new password.
+func oauthErrorDescribed(w http.ResponseWriter, code string, description string, status int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(map[string]string{"error": code, "error_description": description})
 }
 
 func unauthorized(w http.ResponseWriter) { http.Error(w, "unauthorized", http.StatusUnauthorized) }
@@ -149,7 +157,7 @@ func (a *Auth) ClientCredentials(w http.ResponseWriter, r *http.Request) {
 	signed, err := a.ks.Issue(models.Claims{
 		TokenUse: "service",
 		Roles: []string{svc.Role},
-		RegisteredClaims: jwt.RegisteredClaims{Subject: serviceUserPrefix+svc.ID},
+		RegisteredClaims: jwt.RegisteredClaims{Subject: globals.ServiceUserPrefix+svc.ID},
 	}, cfg.Token_lifetime)
 
 	// Handle a key that wasn't signed
@@ -163,19 +171,11 @@ func (a *Auth) ClientCredentials(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON_nostore(w, map[string]any{"access_token": signed, "token_type": "Bearer", "expires_in": int(cfg.Token_lifetime.Seconds())})
 }
 
-
-// serviceUserPrefix starts the subject of service tokens, and the id and username of
-// the user row each service writes as
-const serviceUserPrefix = "svc:"
-
 // ensureServiceUser gives a service a user row to record its writes against, since
 // history, diffs and events reference users.username. The row has no password or
 // roles, so it can never log in or be used to widen access.
 func (a *Auth) ensureServiceUser(ctx context.Context, svcID string) error {
-	// $1 fills both a text and a varchar column, so it is typed explicitly: PostgreSQL
-	// won't infer one type for a parameter used against two
-	sql := `INSERT INTO ohc_users (id, username, display_name, roles) VALUES ($1::text, $1::text, $2, '{}') ON CONFLICT DO NOTHING`
-	_, err := a.ks.db.Exec(ctx, sql, serviceUserPrefix+svcID, svcID)
+	_, err := a.ks.db.Exec(ctx, globals.SQLEnsureServiceUser, globals.ServiceUserPrefix+svcID, svcID)
 	return err
 }
 
@@ -204,7 +204,6 @@ func (r *ReplayMemory) Remember(jti string, until time.Time) bool {
 	return true
 }
 
-
 // The token endpoint that wraps the various pathways a request can proceed
 func (a *Auth) TokenEndpoint() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -221,7 +220,6 @@ func (a *Auth) TokenEndpoint() http.HandlerFunc {
 		}
 	}
 }
-
 
 // Returns the openid-configuration for Services
 func (a *Auth) OpenIDConfig() http.HandlerFunc {
@@ -248,37 +246,28 @@ func (a *Auth) OpenIDConfig() http.HandlerFunc {
 	}
 }
 
-// Text columns are nullable, so coalesce them to fit the plain string fields
-const userColumns = `
-	id, COALESCE(username, '') AS username, COALESCE(display_name, '') AS display_name,
-	COALESCE(password_hash, '') AS password_hash, totp_secret, created_at, disabled_at,
-	COALESCE(roles, '{}') AS roles`
-
-func (a *Auth) getUser(ctx context.Context, where string, arg string) (*models.User, error) {
-	rows, err := a.ks.db.Query(ctx, `SELECT `+userColumns+` FROM ohc_users WHERE `+where+` = $1 LIMIT 1`, arg)
+// getUser reads one user with query, which is globals.SQLGetUserByUsername or SQLGetUserByID
+func (a *Auth) getUser(ctx context.Context, query string, arg string) (*models.User, error) {
+	rows, err := a.ks.db.Query(ctx, query, arg)
 	if err != nil { return nil, err }
 
 	return pgx.CollectOneRow(rows, pgx.RowToAddrOfStructByName[models.User])
 }
 
 func (a *Auth) getUserByUsername(ctx context.Context, username string) (*models.User, error) {
-	return a.getUser(ctx, "username", username)
+	return a.getUser(ctx, globals.SQLGetUserByUsername, username)
 }
 
 func (a *Auth) getUserByID(ctx context.Context, id string) (*models.User, error) {
-	return a.getUser(ctx, "id", id)
+	return a.getUser(ctx, globals.SQLGetUserByID, id)
 }
 
 // Swap the stored hash only if it hasn't changed since it was read, so a
 // concurrent password change is never overwritten with the old password
 func (a *Auth) updatePasswordHash(ctx context.Context, userID string, oldHash string, newHash string) error {
-	sql := `UPDATE ohc_users SET password_hash = $1 WHERE id = $2 AND password_hash = $3`
-	_, err := a.ks.db.Exec(ctx, sql, newHash, userID, oldHash)
+	_, err := a.ks.db.Exec(ctx, globals.SQLSwapPasswordHash, newHash, userID, oldHash)
 	return err
 }
-
-// userIDLength is the length of a generated user id
-const userIDLength = 32
 
 // CreateUser adds a user with a random id and returns it. An empty password leaves the
 // user unable to log in with a password. The svc: prefix is reserved for service rows.
@@ -290,32 +279,54 @@ func (a *Auth) CreateUser(ctx context.Context, username string, display_name str
 // its audit entry commit together
 func (a *Auth) CreateUserWith(ctx context.Context, db models.DBExecutor, username string, display_name string, password string, roles []string) (*models.User, error) {
 	if username == "" || len(username) > 64 { return nil, errors.New("username must be between 1 and 64 characters") }
-	if strings.HasPrefix(username, serviceUserPrefix) { return nil, fmt.Errorf("username cannot start with %q", serviceUserPrefix) }
+	if strings.HasPrefix(username, globals.ServiceUserPrefix) { return nil, fmt.Errorf("username cannot start with %q", globals.ServiceUserPrefix) }
 	if roles == nil { roles = []string{} }
 
-	id, err := secrets.RandomString(userIDLength)
+	id, err := secrets.RandomString(globals.UserIDLength)
 	if err != nil { return nil, err }
 
 	// A NULL hash, not an empty one, marks a user with no password
 	var hash *string
+	password_reset := false
 	if password != "" {
 		h, err := secrets.HashPassword(password)
 		if err != nil { return nil, err }
 		hash = &h
+		password_reset = true
 	}
 
-	sql := `INSERT INTO ohc_users (id, username, display_name, password_hash, roles) VALUES ($1, $2, $3, $4, $5)`
-	if _, err := db.Exec(ctx, sql, id, username, display_name, hash, roles); err != nil { return nil, err }
+	if _, err := db.Exec(ctx, globals.SQLInsertUser, id, username, display_name, hash, roles, password_reset); err != nil { return nil, err }
 
 	user := &models.User{ID: id, Username: username, Displayname: display_name, Roles: roles}
 	if hash != nil { user.PasswordHash = *hash }
 	return user, nil
 }
 
+// errPasswordChanged means the temporary password was replaced, or reset again, after
+// the login read it
+var errPasswordChanged = errors.New("the password changed since it was read")
+
+// updatePassword stores new_password for usr during login: in place of a temporary
+// password, clearing the flag, or as the user's own choice. Either way it only applies
+// while the hash the login checked is still stored; errPasswordChanged means it isn't.
+func (a *Auth) updatePassword(ctx context.Context, new_password string, usr *models.User) error {
+	hash, err := secrets.HashPassword(new_password)
+	if err != nil { return err }
+
+	sql := globals.SQLUserUpdatePasswordHash
+	if usr.NeedsNewPassword { sql = globals.SQLUpdatePasswordHash }
+
+	cmdtag, err := a.ks.db.Exec(ctx, sql, hash, usr.ID, usr.PasswordHash)
+	if err != nil { return err }
+	if cmdtag.RowsAffected() != 1 { return errPasswordChanged }
+	return nil
+}
+
 // The password grant for a user login. The client must assert who it is.
 func (a *Auth) PasswordLogin(w http.ResponseWriter, r *http.Request) {
 	username := r.PostFormValue("username")
 	password := r.PostFormValue("password")   // The plain password, sent over TLS. Never pre-hashed by the client, or the hash becomes the password
+	new_password := r.PostFormValue("new_password")
 
 	// Verify which client is asking
 	svc, err := a.AuthenticateService(r)
@@ -328,7 +339,7 @@ func (a *Auth) PasswordLogin(w http.ResponseWriter, r *http.Request) {
 
 	// Ensure the request can be processed
 	if !a.Limiter.Allow(clientID+":"+username) {
-		a.record(r, audit.Event{Action: audit.UserLoginFailed, Target: "username:" + username, Service: audit.System,
+		a.record(r, audit.Event{Action: globals.ActionUserLoginFailed, Target: "username:" + username, Service: globals.AuditSystem,
 			ViaService: clientID, After: map[string]string{"reason": "rate_limited"}})
 		oauthError(w, "slow_down", http.StatusTooManyRequests)
 		return
@@ -347,7 +358,7 @@ func (a *Auth) PasswordLogin(w http.ResponseWriter, r *http.Request) {
 	fail := func(reason string) {
 		target := "username:" + username
 		if usr != nil { target = usr.ID }
-		a.record(r, audit.Event{Action: audit.UserLoginFailed, Target: target, Service: audit.System,
+		a.record(r, audit.Event{Action: globals.ActionUserLoginFailed, Target: target, Service: globals.AuditSystem,
 			ViaService: clientID, After: map[string]string{"reason": reason}})
 		loginFailed(w)
 	}
@@ -376,25 +387,63 @@ func (a *Auth) PasswordLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	amr := []string{"pwd"}
+	otpCode := ""
 	if len(usr.TotpSecret) > 0 {
 		code := r.PostFormValue("otp")
 		if code == "" { fail("otp_missing"); return }
-		secret, err := secrets.Decrypt(a.ks.master, usr.TotpSecret, []byte(usr.ID))
+		secret, err := secrets.Decrypt(a.ks.master, usr.TotpSecret, []byte(usr.ID))                       
 		if err != nil {
 			a.lg.Error("could not decrypt a TOTP secret", "user", usr.ID, "error", err)
 			fail("otp_error"); return
 		}
 		if !totp.Validate(code, string(secret)) { fail("bad_otp"); return }
-
-		// A code stays valid for up to three 30 s steps (skew of one either side), so
-		// remember it for longer than that and refuse it a second time
-		if !a.Replay.Remember("otp:"+usr.ID+":"+code, time.Now().Add(otpReplayWindow)) { fail("otp_reused"); return }
+		otpCode = code
 		amr = append(amr, "otp")
 	}
 
-	// Rehash if the stored hash used weaker params than we now require.
-	// The password is already verified, so a failure here must not fail the login
-	if secrets.NeedsRehash(params) {
+	// The password changes at login in two cases: a user with a temporary password (set
+	// by an admin) must choose their own before getting tokens, and any user may send
+	// new_password to replace theirs. Every factor has been checked by now, so these
+	// answers can say what is wrong without telling anyone else anything.
+	changing := usr.NeedsNewPassword || new_password != ""
+	if changing {
+		refuse := func(reason string, code string, description string) {
+			a.record(r, audit.Event{Action: globals.ActionUserLoginFailed, Target: usr.ID, Service: globals.AuditSystem,
+				ViaService: clientID, AMR: amr, After: map[string]string{"reason": reason}})
+			oauthErrorDescribed(w, code, description, http.StatusBadRequest)
+		}
+		switch {
+		case new_password == "": // only when the change is required
+			refuse("password_change_required", "password_change_required", "Choose a new password and send it as new_password."); return
+		case len(new_password) < globals.MinPassword:
+			refuse("new_password_too_short", "invalid_new_password", fmt.Sprintf("The new password needs at least %d characters.", globals.MinPassword)); return
+		case new_password == password:
+			refuse("new_password_unchanged", "invalid_new_password", "The new password must differ from the current one."); return
+		}
+	}
+
+	// Spend the OTP code only now it will be used, so being asked for a new password
+	// doesn't burn it. A code stays valid for up to three 30 s steps (skew of one either
+	// side), so remember it for longer than that and refuse it a second time.
+	if otpCode != "" && !a.Replay.Remember("otp:"+usr.ID+":"+otpCode, time.Now().Add(globals.OTPReplayWindow)) { fail("otp_reused"); return }
+
+	if changing {
+		if err := a.updatePassword(r.Context(), new_password, usr); err != nil {
+			// Another request changed it first, or an admin reset it again: start over
+			if errors.Is(err, errPasswordChanged) { fail("password_changed_concurrently"); return }
+			a.lg.Error("could not save a new password", "user", usr.ID, "error", err)
+			oauthError(w, "server_error", http.StatusInternalServerError); return
+		}
+		reason := "voluntary"
+		if usr.NeedsNewPassword { reason = "required" }
+		a.record(r, audit.Event{Action: globals.ActionUserPasswordChange, Target: usr.ID, Service: globals.AuditSystem,
+			ActorUser: usr.Username, ViaService: clientID, AMR: amr, After: map[string]string{"reason": reason}})
+	}
+
+	// Rehash if the stored hash used weaker params than we now require. Not after a
+	// password change: the stored hash is new. The password is already verified, so a
+	// failure here must not fail the login
+	if !changing && secrets.NeedsRehash(params) {
 		if h, err := secrets.HashPassword(password); err == nil {
 			if err := a.updatePasswordHash(r.Context(), usr.ID, usr.PasswordHash, h); err != nil {
 				a.lg.Warn("password rehash failed", "user", usr.ID, "error", err)
@@ -402,12 +451,25 @@ func (a *Auth) PasswordLogin(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// A voluntary change ends the user's other sessions: whoever knew the old password
+	// may hold one. Only their refresh tokens are revoked, before this login's session
+	// exists, so each ends at its next refresh, within one access token lifetime. A
+	// block-list entry would end them at once, but would also refuse this login's own
+	// tokens, issued in the same second. After a required change there are none to end:
+	// the admin reset already did. The password has changed, so a failure here is
+	// logged rather than failing the login.
+	if changing && !usr.NeedsNewPassword {
+		if err := a.ks.RevokeUserRefreshTokens(r.Context(), usr.ID); err != nil {
+			a.lg.Error("could not end the user's other sessions after a password change", "user", usr.ID, "error", err)
+		}
+	}
+
 	// issue the user token
 	now := time.Now()
 	family := uuid.NewString()
 	if a.issueUserTokens(w, r, usr, clientID, family, amr, &now, refreshExpiry(amr, nil)) {
-		a.record(r, audit.Event{Action: audit.UserLogin, Target: usr.ID, Service: audit.System,
-			ActorUser: usr.ID, ViaService: clientID, AMR: amr, After: map[string]string{"session": family}})
+		a.record(r, audit.Event{Action: globals.ActionUserLogin, Target: usr.ID, Service: globals.AuditSystem,
+			ActorUser: usr.Username, ViaService: clientID, AMR: amr, After: map[string]string{"session": family}})
 	}
 }
 
@@ -421,30 +483,15 @@ func (a *Auth) record(r *http.Request, e audit.Event) {
 	}
 }
 
-// How long a used OTP code is remembered. Longer than the 90 s a code can be accepted for.
-const otpReplayWindow = 2 * time.Minute
-
 // loginFailed is the one response for every failed password login (RFC 6749 5.2)
 func loginFailed(w http.ResponseWriter) { oauthError(w, "invalid_grant", http.StatusBadRequest) }
-
-
-const (
-	// amrFederated marks a login made through an external IdP such as Entra
-	amrFederated = "fed"
-
-	// Password sessions slide: each rotation extends them by the full lifetime
-	refreshLifetime = 14 * 24 * time.Hour
-	// External IdP sessions are capped from login and never extended, so the user goes
-	// back to the IdP daily and an account disabled there is noticed within a day
-	federatedRefreshLifetime = 24 * time.Hour
-)
 
 // refreshExpiry returns when a session's next refresh token expires. current is the
 // token being rotated, or nil for a new login.
 func refreshExpiry(amr []string, current *models.RefreshToken) time.Time {
-	if !slices.Contains(amr, amrFederated) { return time.Now().Add(refreshLifetime) }
+	if !slices.Contains(amr, globals.AMRFederated) { return time.Now().Add(globals.RefreshLifetime) }
 	if current != nil { return current.ExpiresAt }
-	return time.Now().Add(federatedRefreshLifetime)
+	return time.Now().Add(globals.FederatedRefreshLifetime)
 }
 
 // Issue a user token to the user. Reports whether the tokens were issued; on false an
@@ -549,8 +596,8 @@ func (a *Auth) RefreshGrant(w http.ResponseWriter, r *http.Request) {
 	// Token must be redeemed by the client it was issued to
 	if rt.ClientID != svc.ID {
 		a.lg.Warn("refresh token presented by the wrong client", "client", svc.ID, "family", rt.FamilyID)
-		a.record(r, audit.Event{Action: audit.RefreshTokenMisused, Target: rt.UserID, Service: audit.System,
-			ViaService: svc.ID, After: map[string]string{"session": rt.FamilyID, "issued_to": rt.ClientID}})
+		a.record(r, audit.Event{Action: globals.ActionRefreshTokenMisused, Target: rt.UserID, Service: globals.AuditSystem,
+		ViaService: svc.ID, After: map[string]string{"session": rt.FamilyID, "issued_to": rt.ClientID}})
 		oauthError(w, "invalid_grant", http.StatusBadRequest)
 		return
 	}
@@ -573,9 +620,9 @@ func (a *Auth) RefreshGrant(w http.ResponseWriter, r *http.Request) {
 		a.lg.Warn("refresh token reuse, revoking family", "user", rt.UserID, "client", svc.ID, "family", rt.FamilyID)
 		a.endSession(ctx, rt.FamilyID, "refresh_token.reuse")
 		// The system ends the session, so there is no actor
-		a.record(r, audit.Event{Action: audit.RefreshTokenReuse, Target: rt.UserID, Service: audit.System,
-			ViaService: svc.ID, Before: map[string]string{"session": rt.FamilyID, "state": "live"},
-			After: map[string]string{"session": rt.FamilyID, "state": "revoked"}})
+		a.record(r, audit.Event{Action: globals.ActionRefreshTokenReuse, Target: rt.UserID, Service: globals.AuditSystem,
+		ViaService: svc.ID, Before: map[string]string{"session": rt.FamilyID, "state": "live"},
+		After: map[string]string{"session": rt.FamilyID, "state": "revoked"}})
 		oauthError(w, "invalid_grant", http.StatusBadRequest)
 		return
 	}
@@ -589,9 +636,9 @@ func (a *Auth) RefreshGrant(w http.ResponseWriter, r *http.Request) {
 		}
 		reason := "user_disabled"
 		if err != nil { reason = "user_missing" }
-		a.record(r, audit.Event{Action: audit.SessionRevoke, Target: rt.UserID, Service: audit.System,
-			ViaService: svc.ID, Before: map[string]string{"session": rt.FamilyID, "state": "live"},
-			After: map[string]string{"session": rt.FamilyID, "state": "revoked", "reason": reason}})
+		a.record(r, audit.Event{Action: globals.ActionSessionRevoke, Target: rt.UserID, Service: globals.AuditSystem,
+		ViaService: svc.ID, Before: map[string]string{"session": rt.FamilyID, "state": "live"},
+		After: map[string]string{"session": rt.FamilyID, "state": "revoked", "reason": reason}})
 		oauthError(w, "invalid_grant", http.StatusBadRequest)
 		return
 	}
@@ -616,7 +663,7 @@ func (a *Auth) RevokeAccessTokens(ctx context.Context, userID string, reason str
 // new one, which a disabled service or a revoked key can't.
 func (a *Auth) RevokeService(ctx context.Context, serviceID string, reason string) error {
 	if a.Blocks == nil { return nil }
-	_, err := a.Blocks.Revoke(ctx, serviceKey(serviceUserPrefix+serviceID), reason)
+	_, err := a.Blocks.Revoke(ctx, serviceKey(globals.ServiceUserPrefix+serviceID), reason)
 	return err
 }
 
@@ -664,16 +711,16 @@ func (a *Auth) LogoutHandler() http.Handler {
 				oauthError(w, "server_error", http.StatusInternalServerError)
 				return
 			}
-			a.record(r, audit.Event{Action: audit.UserLogoutAll, Target: u.Subject, Service: audit.System,
-				ActorUser: u.Subject, ViaService: via, AMR: u.AMR, Before: session})
+			a.record(r, audit.Event{Action: globals.ActionUserLogoutAll, Target: u.Subject, Service: globals.AuditSystem,
+			ActorUser: u.Username, ViaService: via, AMR: u.AMR, Before: session})
 		} else {
 			if u.SID == "" {
 				oauthError(w, "invalid_request", http.StatusBadRequest)
 				return
 			}
 			a.endSession(r.Context(), u.SID, "logout")
-			a.record(r, audit.Event{Action: audit.UserLogout, Target: u.Subject, Service: audit.System,
-				ActorUser: u.Subject, ViaService: via, AMR: u.AMR, Before: session})
+			a.record(r, audit.Event{Action: globals.ActionUserLogout, Target: u.Subject, Service: globals.AuditSystem,
+			ActorUser: u.Username, ViaService: via, AMR: u.AMR, Before: session})
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}))

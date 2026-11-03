@@ -7,12 +7,10 @@ import (
 	"slices"
 	"strings"
 
+	"lotusforge.au/api-server/globals"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/reqctx"
 )
-
-// UserTokenHeader carries the user's access token when a service calls on their behalf
-const UserTokenHeader = "X-OhCrud-User"
 
 // Principal is who is making a request: the service calling Oh CRUD, and the user it acts for
 type Principal struct {
@@ -49,7 +47,7 @@ func (a *Auth) Middleware(next http.Handler) http.Handler {
 		}
 
 		p := &Principal{}
-		ut := r.Header.Get(UserTokenHeader)
+		ut := r.Header.Get(globals.UserTokenHeader)
 		switch first.TokenUse {
 		case "service":
 			p.Service = first
@@ -154,7 +152,7 @@ func (a *Auth) revoked(c *models.Claims) bool {
 }
 
 // serviceID is the services.id a service token was issued for
-func serviceID(c *models.Claims) string { return strings.TrimPrefix(c.Subject, serviceUserPrefix) }
+func serviceID(c *models.Claims) string { return strings.TrimPrefix(c.Subject, globals.ServiceUserPrefix) }
 
 // ServiceID is the services.id a service token was issued for
 func ServiceID(c *models.Claims) string { return serviceID(c) }

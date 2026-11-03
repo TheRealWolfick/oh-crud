@@ -333,6 +333,19 @@ grant_type=password&username=alice&password=...&otp=123456
 The password is sent as typed, over TLS. Oh CRUD hashes it. `otp` is required
 when the user has TOTP set up.
 
+**Changing the password.** Add `new_password` (at least 12 characters, different from
+`password`) to replace the password as part of the login:
+
+- A user given a password by an admin, when created or reset (`admin-api.md` 4), must
+  do this at their first login. Until they do, a login without `new_password` is
+  refused with `password_change_required`.
+- Any other user may do it at any login. Their other sessions end at their next
+  refresh, within one access token lifetime; the session this login starts is kept.
+
+The new password applies to this login and every one after it. A TOTP code is only used
+up by a login that succeeds, so a client can ask for the new password and send it with
+the same code.
+
 **Success** (`200`, `Cache-Control: no-store`):
 
 ```json
@@ -347,10 +360,15 @@ when the user has TOTP set up.
 | Status | Body | Cause |
 |--------|------|-------|
 | `401` | `{"error": "invalid_client"}` | The client assertion failed (2.4) |
-| `400` | `{"error": "invalid_grant"}` | Wrong username or password, disabled user, a user with no password (such as one who signs in through Entra), or a TOTP code that is missing, wrong or already used |
+| `400` | `{"error": "invalid_grant"}` | Wrong username or password, disabled user, a user with no password (such as one who signs in through Entra), a TOTP code that is missing, wrong or already used, or the password changed while this login was changing it |
+| `400` | `{"error": "password_change_required", "error_description": ...}` | The user must choose a new password: send the login again with `new_password` |
+| `400` | `{"error": "invalid_new_password", "error_description": ...}` | `new_password` is under 12 characters, or the same as `password` |
 | `429` | `{"error": "slow_down"}` | More than 10 attempts for this service and username in 15 minutes |
+| `500` | `{"error": "server_error"}` | The new password couldn't be saved; the login gets no tokens |
 
-Every login failure gives the identical response, so a caller can't tell which check failed. In particular a wrong TOTP code never confirms that the password was right. Each TOTP code can be used once; a second login with the same code fails.
+Every login failure gives the identical `invalid_grant` response, so a caller can't tell which check failed. In particular a wrong TOTP code never confirms that the password was right. Each TOTP code can be used once; a second login with the same code fails.
+
+The two password answers are the exception. They only come once the password and any TOTP code are right, so they tell nothing to someone without them. Their `error_description` can be shown to the user.
 
 ### 4.2 Refreshing (`refresh_token` grant)
 
@@ -474,7 +492,9 @@ itself (package `audit`). It has no data endpoint; the admin API will read it.
 | Action | When | Notes |
 |--------|------|-------|
 | `user.login` | A password login succeeds | `after.session` is the session (`sid`) |
-| `user.login_failed` | A password login fails | `after.reason`: `unknown_user`, `no_password`, `bad_password`, `disabled`, `otp_missing`, `bad_otp`, `otp_reused`, `otp_error` or `rate_limited`. The caller still gets the one `invalid_grant` response (4.1) |
+| `user.login_failed` | A password login fails | `after.reason`: `unknown_user`, `no_password`, `bad_password`, `disabled`, `otp_missing`, `bad_otp`, `otp_reused`, `otp_error`, `rate_limited` or `password_changed_concurrently`, for which the caller gets the one `invalid_grant` response (4.1); or `password_change_required`, `new_password_too_short` or `new_password_unchanged`, which get their own answers |
+| `user.password_change` | A login replaces the password (4.1) | `after.reason`: `required` (after an admin set it) or `voluntary`. Written before the `user.login` entry |
+| `user.password_reset` | An admin sets a temporary password (`admin-api.md` 4) | The user must change it at their next login |
 | `refresh_token.reuse` | A used refresh token is presented again | The session is revoked; no actor |
 | `refresh_token.wrong_client` | A refresh token is presented by a service it wasn't issued to | `after.issued_to` names the right service. The token is left alone |
 | `session.revoke` | A refresh finds the user disabled or removed | `after.reason`: `user_disabled` or `user_missing`. Every session the user has is ended |

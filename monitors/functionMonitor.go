@@ -6,6 +6,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"lotusforge.au/api-server/datamodel"
 	"lotusforge.au/api-server/events"
+	"lotusforge.au/api-server/globals"
 	"lotusforge.au/api-server/handlers"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/queue"
@@ -38,7 +39,7 @@ func FunctionsMonitor(
 	root := "./config/functions"
 
 	// Changes are staged per file until the file has been quiet for settleFor
-	settle := newSettler(settleFor, qm.Logger, "functions monitor")
+	settle := newSettler(globals.SettleFor, qm.Logger, "functions monitor")
 
 	// reload validates and re-registers the function in one YAML file
 	reload := func(path string) {
@@ -78,7 +79,7 @@ func FunctionsMonitor(
 						return
 					}
 					if event.Has(fsnotify.Write) && filepath.Ext(event.Name) == ".yaml" {
-						qm.Logger.Debug("Function file change staged", "file", event.Name, "settle", settleFor)
+						qm.Logger.Debug("Function file change staged", "file", event.Name, "settle", globals.SettleFor)
 						settle.stage(event.Name, func() { reload(event.Name) })
 					}
 				}()

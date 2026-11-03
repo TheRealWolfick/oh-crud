@@ -14,13 +14,13 @@ import (
 	"path"
 	"strings"
 	"time"
+
+
+	"lotusforge.au/api-server/globals"
 )
 
 //go:embed ui
 var uiFiles embed.FS
-
-// CookieName holds the session id; it is all the browser gets
-const CookieName = "ohc_mgmt"
 
 // Server serves the dashboard and its API
 type Server struct {
@@ -67,13 +67,13 @@ func headers(next http.Handler) http.Handler {
 
 // session finds the request's session, if it has one
 func (srv *Server) session(r *http.Request) (*Session, bool) {
-	c, err := r.Cookie(CookieName)
+	c, err := r.Cookie(globals.MgmtCookieName)
 	if err != nil { return nil, false }
 	return srv.sessions.Get(c.Value)
 }
 
 func (srv *Server) setCookie(w http.ResponseWriter, value string, maxAge int) {
-	http.SetCookie(w, &http.Cookie{Name: CookieName, Value: value, Path: "/", MaxAge: maxAge,
+	http.SetCookie(w, &http.Cookie{Name: globals.MgmtCookieName, Value: value, Path: "/", MaxAge: maxAge,
 		HttpOnly: true, Secure: srv.secureCookie, SameSite: http.SameSiteStrictMode})
 }
 
@@ -115,7 +115,7 @@ func (srv *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s := srv.sessions.Start(t)
-	srv.setCookie(w, s.ID, int(idleTimeout.Seconds()))
+	srv.setCookie(w, s.ID, int(globals.MgmtIdleTimeout.Seconds()))
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 

@@ -11,6 +11,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
 	"lotusforge.au/api-server/auth"
+	"lotusforge.au/api-server/globals"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/reqctx"
 )
@@ -74,8 +75,8 @@ func TestCloseRevokedClosesOnlyCoveredSockets(t *testing.T) {
 	if n := h.CloseRevoked("sid:fam1", time.Now()); n != 1 {
 		t.Fatalf("expected one socket closed, got %d", n)
 	}
-	if code := closeCode(revoked, 2*time.Second); code != CloseCodeRevoked {
-		t.Errorf("expected close code %d, got %d", CloseCodeRevoked, code)
+	if code := closeCode(revoked, 2*time.Second); code != globals.CloseCodeRevoked {
+		t.Errorf("expected close code %d, got %d", globals.CloseCodeRevoked, code)
 	}
 	waitFor(t, "the revoked client to be removed", func() bool { return clientCount(h) == 2 })
 

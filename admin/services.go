@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+
+	"lotusforge.au/api-server/globals"
 )
 
 // Service is one row of the services list
@@ -21,14 +23,6 @@ type Service struct {
 	Status        string     `json:"status" db:"-"`                      // active, idle or disabled
 	WritesAs      string     `json:"writes_recorded_as" db:"-"`
 }
-
-const serviceSQL = `
-SELECT s.id, s.role, s.entra_client_id, s.disabled_at,
-       count(k.kid) FILTER (WHERE k.revoked_at IS NULL)     AS active_keys,
-       count(k.kid) FILTER (WHERE k.revoked_at IS NOT NULL) AS revoked_keys,
-       max(k.last_used_at)                                  AS last_signed_at
-  FROM ohc_services s
-  LEFT JOIN ohc_service_keys k ON k.service_id = s.id`
 
 // status fills in what is worked out rather than stored
 func (a *API) finishService(s *Service) {
@@ -46,10 +40,7 @@ func (a *API) finishService(s *Service) {
 
 // services lists services by id, after the cursor, matching q (id or role)
 func (a *API) services(ctx context.Context, q string, after string, n int) ([]Service, error) {
-	rows, err := a.d.DB.Query(ctx, serviceSQL+`
-		WHERE ($1 = '' OR s.id ILIKE '%' || $1 || '%' OR s.role ILIKE '%' || $1 || '%')
-		  AND s.id > $2
-		GROUP BY s.id ORDER BY s.id LIMIT $3`, q, after, n)
+	rows, err := a.d.DB.Query(ctx, globals.SQLListServices, q, after, n)
 	if err != nil { return nil, err }
 	list, err := pgx.CollectRows(rows, pgx.RowToStructByNameLax[Service])
 	if err != nil { return nil, err }
@@ -79,15 +70,14 @@ type ServiceKey struct {
 // serviceView is a service as GET /services/{id} shows it: the service, its keys, and
 // what its role can reach
 func (a *API) serviceView(ctx context.Context, id string) (map[string]any, error) {
-	rows, err := a.d.DB.Query(ctx, serviceSQL+` WHERE s.id = $1 GROUP BY s.id`, id)
+	rows, err := a.d.DB.Query(ctx, globals.SQLGetService, id)
 	if err != nil { return nil, err }
 	s, err := pgx.CollectOneRow(rows, pgx.RowToStructByNameLax[Service])
 	if errors.Is(err, pgx.ErrNoRows) { return nil, refuse(http.StatusNotFound, "No such service", "No service %q.", id) }
 	if err != nil { return nil, err }
 	a.finishService(&s)
 
-	rows, err = a.d.DB.Query(ctx, `SELECT kid, created_at, last_used_at, revoked_at, revoked_reason
-		FROM ohc_service_keys WHERE service_id = $1 ORDER BY created_at DESC`, id)
+	rows, err = a.d.DB.Query(ctx, globals.SQLServiceKeys, id)
 	if err != nil { return nil, err }
 	keys, err := pgx.CollectRows(rows, pgx.RowToStructByName[ServiceKey])
 	if err != nil { return nil, err }

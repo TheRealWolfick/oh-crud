@@ -6,17 +6,13 @@ import (
 	"encoding/base64"
 	"sync"
 	"time"
+
+
+	"lotusforge.au/api-server/globals"
 )
 
 // Sessions live in memory: restarting the management platform signs everyone out.
 // That suits one instance; several would need the sessions shared.
-
-// idleTimeout signs a person out after this long without a request
-const idleTimeout = 12 * time.Hour
-
-// refreshEarly renews the access token this long before it expires, so a request never
-// carries one that dies in flight
-const refreshEarly = 30 * time.Second
 
 // Session is one signed-in person
 type Session struct {
@@ -56,7 +52,7 @@ func (s *Session) set(t *Tokens) {
 func (s *Session) Access(ctx context.Context, c *Client, force bool) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if !force && time.Now().Before(s.expiresAt.Add(-refreshEarly)) { return s.access, nil }
+	if !force && time.Now().Before(s.expiresAt.Add(-globals.MgmtRefreshEarly)) { return s.access, nil }
 	t, err := c.Refresh(ctx, s.refresh)
 	if err != nil { return "", err }
 	s.set(t)
@@ -86,7 +82,7 @@ func (st *Store) Start(t *Tokens) *Session {
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	for id, old := range st.sessions {
-		if time.Since(old.lastSeen) > idleTimeout { delete(st.sessions, id) }
+		if time.Since(old.lastSeen) > globals.MgmtIdleTimeout { delete(st.sessions, id) }
 	}
 	st.sessions[s.ID] = s
 	return s
@@ -98,7 +94,7 @@ func (st *Store) Get(id string) (*Session, bool) {
 	defer st.mu.Unlock()
 	s, ok := st.sessions[id]
 	if !ok { return nil, false }
-	if time.Since(s.lastSeen) > idleTimeout {
+	if time.Since(s.lastSeen) > globals.MgmtIdleTimeout {
 		delete(st.sessions, id)
 		return nil, false
 	}

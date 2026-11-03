@@ -10,7 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/pquerna/otp/totp"
-	"lotusforge.au/api-server/audit"
+	"lotusforge.au/api-server/globals"
 	"lotusforge.au/api-server/models/modelstest"
 )
 
@@ -19,11 +19,11 @@ func TestLoginIsAudited(t *testing.T) {
 	_, claims := loginTokens(t, f)
 
 	row := f.tables.lastAudit(t)
-	if row.Action != audit.UserLogin || row.Target != testUserID || row.Service != audit.System {
+	if row.Action != globals.ActionUserLogin || row.Target != testUserID || row.Service != globals.AuditSystem {
 		t.Errorf("unexpected entry %+v", row)
 	}
-	if row.ActorUser != testUserID || row.ViaService != testServiceID {
-		t.Errorf("expected actor %s via %s, got %v via %v", testUserID, testServiceID, row.ActorUser, row.ViaService)
+	if row.ActorUser != testUsername || row.ViaService != testServiceID {
+		t.Errorf("expected actor %s via %s, got %v via %v", testUsername, testServiceID, row.ActorUser, row.ViaService)
 	}
 	if !equalStrings(row.AMR, []string{"pwd"}) {
 		t.Errorf("expected amr [pwd], got %v", row.AMR)
@@ -63,7 +63,7 @@ func TestFailedLoginsAreAuditedWithReason(t *testing.T) {
 			mustFail(t, f.post(t, testServiceID, tc.setup(f)), http.StatusBadRequest, "invalid_grant")
 
 			row := f.tables.lastAudit(t)
-			if row.Action != audit.UserLoginFailed || row.Target != tc.target || row.ViaService != testServiceID {
+			if row.Action != globals.ActionUserLoginFailed || row.Target != tc.target || row.ViaService != testServiceID {
 				t.Errorf("unexpected entry %+v", row)
 			}
 			if row.ActorUser != nil {
@@ -101,7 +101,7 @@ func TestRateLimitedLoginIsAudited(t *testing.T) {
 
 	mustFail(t, f.login(t, testServiceID, testUsername, testPassword), http.StatusTooManyRequests, "slow_down")
 	row := f.tables.lastAudit(t)
-	if row.Action != audit.UserLoginFailed || row.Target != "username:"+testUsername || afterField(t, row, "reason") != "rate_limited" {
+	if row.Action != globals.ActionUserLoginFailed || row.Target != "username:"+testUsername || afterField(t, row, "reason") != "rate_limited" {
 		t.Errorf("unexpected entry %+v", row)
 	}
 }
@@ -122,7 +122,7 @@ func TestRefreshTokenReuseIsAudited(t *testing.T) {
 
 	mustFail(t, f.refresh(t, testServiceID, first.RefreshToken), http.StatusBadRequest, "invalid_grant")
 	row := f.tables.lastAudit(t)
-	if row.Action != audit.RefreshTokenReuse || row.Target != testUserID || row.ActorUser != nil {
+	if row.Action != globals.ActionRefreshTokenReuse || row.Target != testUserID || row.ActorUser != nil {
 		t.Errorf("unexpected entry %+v", row)
 	}
 	if afterField(t, row, "session") != claims.SID || afterField(t, row, "state") != "revoked" {
@@ -137,7 +137,7 @@ func TestRefreshByWrongClientIsAudited(t *testing.T) {
 
 	mustFail(t, f.refresh(t, otherService, first.RefreshToken), http.StatusBadRequest, "invalid_grant")
 	row := f.tables.lastAudit(t)
-	if row.Action != audit.RefreshTokenMisused || row.ViaService != otherService || afterField(t, row, "issued_to") != testServiceID {
+	if row.Action != globals.ActionRefreshTokenMisused || row.ViaService != otherService || afterField(t, row, "issued_to") != testServiceID {
 		t.Errorf("unexpected entry %+v", row)
 	}
 }
@@ -150,7 +150,7 @@ func TestRefreshForDisabledUserIsAudited(t *testing.T) {
 
 	mustFail(t, f.refresh(t, testServiceID, first.RefreshToken), http.StatusBadRequest, "invalid_grant")
 	row := f.tables.lastAudit(t)
-	if row.Action != audit.SessionRevoke || afterField(t, row, "reason") != "user_disabled" {
+	if row.Action != globals.ActionSessionRevoke || afterField(t, row, "reason") != "user_disabled" {
 		t.Errorf("unexpected entry %+v", row)
 	}
 }
@@ -161,7 +161,7 @@ func TestLoginSucceedsWhenAuditWriteFails(t *testing.T) {
 	db := f.a.ks.db.(*modelstest.FakeDB)
 	exec := db.ExecFunc
 	db.ExecFunc = func(sql string, args []any) (pgconn.CommandTag, error) {
-		if strings.Contains(sql, audit.Table) { return pgconn.CommandTag{}, fmt.Errorf("audit table down") }
+		if strings.Contains(sql, globals.AuditTable) { return pgconn.CommandTag{}, fmt.Errorf("audit table down") }
 		return exec(sql, args)
 	}
 	loginTokens(t, f)

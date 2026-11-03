@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	"lotusforge.au/api-server/audit"
+	"lotusforge.au/api-server/globals"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/schematools"
 )
@@ -14,12 +15,6 @@ import (
 // Approving applies every approved change together, so interdependent changes go in as
 // one. The instance that decides tells its peers on the cluster bus, since each holds
 // its own pending changes and config files.
-
-// Cluster channels for schema decisions
-const (
-	SchemaAppliedChannel = "schema.applied"
-	SchemaDeniedChannel  = "schema.denied"
-)
 
 type schemaMessage struct {
 	Tables []string `json:"tables"`
@@ -78,7 +73,7 @@ func (a *API) approve(w http.ResponseWriter, r *http.Request, pick []PendingSche
 	var tables []string
 	for _, p := range pick {
 		tables = append(tables, p.Table)
-		e := a.event(r, audit.SchemaApprove, p.Table)
+		e := a.event(r, globals.ActionSchemaApprove, p.Table)
 		e.Service = p.Service
 		e.Before = map[string]string{"version_pending": p.Version, "changes": p.Changes}
 		e.After = map[string]any{"applied": out.Applied, "message": out.Message}
@@ -90,7 +85,7 @@ func (a *API) approve(w http.ResponseWriter, r *http.Request, pick []PendingSche
 		writeJSONStatus(w, http.StatusAccepted, out)
 		return
 	}
-	if a.d.Bus != nil { a.d.Bus.Publish(SchemaAppliedChannel, schemaMessage{Tables: tables}) }
+	if a.d.Bus != nil { a.d.Bus.Publish(globals.SchemaAppliedChannel, schemaMessage{Tables: tables}) }
 	writeJSON(w, out)
 }
 
@@ -112,20 +107,20 @@ func (a *API) denySchema(w http.ResponseWriter, r *http.Request) {
 	if p == nil { problem(w, r, http.StatusNotFound, "Nothing pending", "No schema change is waiting for "+table+"."); return }
 	if err := schematools.RevertChange(a.d.Gate, table, a.d.Logger); err != nil { a.serverError(w, r, "revert schema change", err); return }
 
-	e := a.event(r, audit.SchemaDeny, table)
+	e := a.event(r, globals.ActionSchemaDeny, table)
 	e.Service = p.Service
 	e.Before = map[string]string{"version_pending": p.Version, "changes": p.Changes}
 	e.After = map[string]string{"reason": in.Reason}
 	a.after(r, "record the denial", audit.Record(r.Context(), a.d.DB, e))
 
-	if a.d.Bus != nil { a.d.Bus.Publish(SchemaDeniedChannel, schemaMessage{Tables: []string{table}}) }
+	if a.d.Bus != nil { a.d.Bus.Publish(globals.SchemaDeniedChannel, schemaMessage{Tables: []string{table}}) }
 	writeJSON(w, SchemaDecision{Tables: []PendingSchema{*p}, Message: "denied; the model file is back to its last-good version"})
 }
 
 // listenToPeers handles schema decisions made on other instances: the change is already
 // in the database (or dropped), so this instance only brings its own state in line
 func (a *API) listenToPeers() {
-	a.d.Bus.Handle(SchemaAppliedChannel, func(data json.RawMessage) error {
+	a.d.Bus.Handle(globals.SchemaAppliedChannel, func(data json.RawMessage) error {
 		var m schemaMessage
 		if err := json.Unmarshal(data, &m); err != nil { return err }
 		a.schemaMu.Lock()
@@ -137,7 +132,7 @@ func (a *API) listenToPeers() {
 		}
 		return nil
 	})
-	a.d.Bus.Handle(SchemaDeniedChannel, func(data json.RawMessage) error {
+	a.d.Bus.Handle(globals.SchemaDeniedChannel, func(data json.RawMessage) error {
 		var m schemaMessage
 		if err := json.Unmarshal(data, &m); err != nil { return err }
 		a.schemaMu.Lock()

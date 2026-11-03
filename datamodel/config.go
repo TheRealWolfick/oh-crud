@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"gopkg.in/yaml.v3"
+	"lotusforge.au/api-server/globals"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/tools"
 )
@@ -39,27 +40,12 @@ func LoadYAMLIntoModel[T any](path string) (*T, error) {
 	return nil, errors.New("File passed was not a yaml file")
 }
 
-// FieldKind identifies a model field's config-declared type ("int", "json", "time", ...).
-// It exists so WHERE-clause building (setWhere) and value validation (ValidateFieldValue)
-// can distinguish types like "time" and "json" that don't map onto distinct reflect.Kind
-// values (both could otherwise only be represented as reflect.Struct/reflect.Map).
-type FieldKind string
-
-const (
-	FieldInt    		FieldKind = "int"
-	FieldFloat  		FieldKind = "float"
-	FieldString 		FieldKind = "string"
-	FieldBool   		FieldKind = "bool"
-	FieldTime   		FieldKind = "time"
-	FieldJSON   		FieldKind = "json"
-	FieldUUID   		FieldKind = "uuid"
-	FieldByte   		FieldKind = "byte"
-	FieldStringList FieldKind = "[]string"
-)
+// FieldKind is globals.FieldKind, kept here so existing signatures still read datamodel.FieldKind
+type FieldKind = globals.FieldKind
 
 func DecodeFieldType(typ string) (FieldKind, error) {
 	switch FieldKind(typ) {
-	case FieldInt, FieldFloat, FieldString, FieldBool, FieldTime, FieldJSON, FieldUUID, FieldByte, FieldStringList:
+	case globals.FieldInt, globals.FieldFloat, globals.FieldString, globals.FieldBool, globals.FieldTime, globals.FieldJSON, globals.FieldUUID, globals.FieldByte, globals.FieldStringList:
 		return FieldKind(typ), nil
 	}
 	return "", fmt.Errorf("Unsupported data format %s", typ)
@@ -75,26 +61,26 @@ func ValidateFieldValue(kind FieldKind, raw any) bool {
 	as_string := fmt.Sprintf("%v", raw)
 
 	switch kind {
-	case FieldInt:
+	case globals.FieldInt:
 		_, err := strconv.ParseInt(as_string, 10, 64)
 		return err == nil
-	case FieldFloat:
+	case globals.FieldFloat:
 		_, err := strconv.ParseFloat(as_string, 64)
 		return err == nil
-	case FieldBool:
+	case globals.FieldBool:
 		_, err := strconv.ParseBool(as_string)
 		return err == nil
-	case FieldString, FieldStringList:
+	case globals.FieldString, globals.FieldStringList:
 		return true
-	case FieldTime:
+	case globals.FieldTime:
 		_, err := tools.ParseDate(as_string)
 		return err == nil
-	case FieldJSON:
+	case globals.FieldJSON:
 		return json.Valid([]byte(as_string))
-	case FieldUUID:
+	case globals.FieldUUID:
 		_, err := uuid.Parse(as_string)
 		return err == nil
-	case FieldByte:
+	case globals.FieldByte:
 		return true
 	}
 	return false
@@ -244,7 +230,6 @@ func CheckFieldGetValid(key string, cfg *models.DataModel) (string, bool) {
 	}
 	return "", false
 }
-
 
 // ── DataModel constructors and coercion ───────────────────────────────────────
 
@@ -630,7 +615,6 @@ func CoerceType(raw any, type_name string) (any, error) {
 		}
 	}
 
-
 	return nil, fmt.Errorf("could not convert %v (%T) into type %s", raw, raw, type_name)
 }
 
@@ -692,16 +676,6 @@ var reservedEndpointSegments = []string{"group", "diff", "fn", "history", "ws", 
 // '_' of a qualified name always ends the service. A TopicKey relies on it having no '/'.
 var servicePattern = regexp.MustCompile(`^[a-z][a-z0-9]{1,31}$`)
 
-// maxIdentifier is PostgreSQL's identifier limit. Longer names are silently truncated,
-// which would make the table Oh CRUD creates differ from the one it queries.
-const maxIdentifier = 63
-
-// SystemService owns Oh CRUD's own tables. Only models in SystemModelsDir may use it.
-const SystemService = "ohc"
-
-// SystemModelsDir holds Oh CRUD's own models
-const SystemModelsDir = "config/default"
-
 // reservedServices are top-level route segments the server uses, so no service may take them
 var reservedServices = []string{"admin", "mesh", "oauth", "ws", "fn", "health"}
 
@@ -717,15 +691,15 @@ func ValidateService(id string) error {
 }
 
 // ValidateModelOwner checks that only Oh CRUD's own models (those loaded from
-// SystemModelsDir) use the system service, and that they all do
+// globals.SystemModelsDir) use the system service, and that they all do
 func ValidateModelOwner(m models.DataModel) error {
 	if m.Service == nil { return errors.New("service name is required") }
-	system := m.Filepath != nil && filepath.Dir(filepath.Clean(*m.Filepath)) == SystemModelsDir
+	system := m.Filepath != nil && filepath.Dir(filepath.Clean(*m.Filepath)) == globals.SystemModelsDir
 	switch {
-	case system && *m.Service != SystemService:
-		return fmt.Errorf("models in %s must use service %q, not %q", SystemModelsDir, SystemService, *m.Service)
-	case !system && *m.Service == SystemService:
-		return fmt.Errorf("service %q is reserved for Oh CRUD's own models", SystemService)
+	case system && *m.Service != globals.SystemService:
+		return fmt.Errorf("models in %s must use service %q, not %q", globals.SystemModelsDir, globals.SystemService, *m.Service)
+	case !system && *m.Service == globals.SystemService:
+		return fmt.Errorf("service %q is reserved for Oh CRUD's own models", globals.SystemService)
 	}
 	return nil
 }
@@ -986,7 +960,6 @@ func ConvertFieldJsonSelect(cfg *models.DataModelField) (string, bool) {
 	return fmt.Sprintf("%s AS %s", expr, *cfg.JSON), true
 }
 
-
 // ── Model transformers ────────────────────────────────────────────────────────────
 
 // qualifiedNameErrors checks that every name the model gets in the database, once its
@@ -995,8 +968,8 @@ func qualifiedNameErrors(m models.DataModel) []string {
 	var errs []string
 	svc := *m.Service
 	check := func(what string, name string) {
-		if len(name) > maxIdentifier {
-			errs = append(errs, fmt.Sprintf("%s %q is %d characters, over PostgreSQL's limit of %d. Shorten it, or the service name", what, name, len(name), maxIdentifier))
+		if len(name) > globals.MaxIdentifier {
+			errs = append(errs, fmt.Sprintf("%s %q is %d characters, over PostgreSQL's limit of %d. Shorten it, or the service name", what, name, len(name), globals.MaxIdentifier))
 		}
 	}
 	if m.Table_name != nil && strings.TrimSpace(*m.Table_name) != "" {

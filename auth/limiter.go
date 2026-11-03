@@ -3,12 +3,10 @@ package auth
 import (
 	"sync"
 	"time"
+
+
+	"lotusforge.au/api-server/globals"
 )
-
-
-// How many Allow calls between sweeps of idle requesters
-const sweep_every = 500
-
 
 type Limiter struct {
 	mu      sync.Mutex
@@ -18,7 +16,6 @@ type Limiter struct {
 	count   int // Allow calls since the last sweep
 }
 
-
 func newLimiter(max_req int, window time.Duration) *Limiter {
 	return &Limiter{
 		reqs: map[string][]time.Time{},
@@ -26,7 +23,6 @@ func newLimiter(max_req int, window time.Duration) *Limiter {
 		window: window,
 	}
 }
-
 
 func (l *Limiter) Allow(requester string) bool {
 	l.mu.Lock()
@@ -37,7 +33,7 @@ func (l *Limiter) Allow(requester string) bool {
 
 	// Periodically drop requesters with no live requests, capping map growth
 	l.count++
-	if l.count >= sweep_every {
+	if l.count >= globals.LimiterSweepEvery {
 		l.sweep(cutoff)
 		l.count = 0
 	}
@@ -59,14 +55,12 @@ func (l *Limiter) Allow(requester string) bool {
 	return true
 }
 
-
 // Sweep removes requesters with no live requests
 func (l *Limiter) Sweep() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.sweep(time.Now().Add(-l.window))
 }
-
 
 // sweep assumes l.mu is held
 func (l *Limiter) sweep(cutoff time.Time) {

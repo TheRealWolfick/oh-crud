@@ -12,11 +12,9 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"lotusforge.au/api-server/datamodel"
+	"lotusforge.au/api-server/globals"
 	"lotusforge.au/api-server/models"
 )
-
-// hclDir is where generated HCL files (and their .version sidecars) are written.
-const hclDir = "./config/database"
 
 // ---------------------------------------------------------------------------
 // Version-check helpers
@@ -24,7 +22,7 @@ const hclDir = "./config/database"
 
 // hclPathFor returns the HCL file path for a given table.
 func hclPathFor(tableName string) string {
-	return filepath.Join(hclDir, tableName+".pg.hcl")
+	return filepath.Join(globals.HCLDir, tableName+".pg.hcl")
 }
 
 // hclVersionPath returns the sidecar file that stores the last-applied version
@@ -37,7 +35,7 @@ func hclVersionPath(hclPath string) string {
 // good config. If any destructive changes are rejected, this file will overwrite
 // the updated config file, reverting it back to its previous state
 func configLastGoodPath(tableName string) string {
-	return filepath.Join(hclDir, tableName+".current.yaml")
+	return filepath.Join(globals.HCLDir, tableName+".current.yaml")
 }
 
 // needsSync returns true when:

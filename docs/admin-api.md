@@ -76,7 +76,8 @@ bound a date includes the whole day.
 | `service` | The rows a service's own writes are recorded against (`svc:<id>`). A service gets one when it first takes a token |
 
 `q` searches the username, id, display name and roles. Each user has `has_password`,
-`has_otp`, `last_login_at` (from the audit log), `live_sessions` and `status`.
+`has_otp`, `needs_new_password` (they must choose a new password at their next login),
+`last_login_at` (from the audit log), `live_sessions` and `status`.
 
 A user's sessions are their refresh token families: `session` (the `sid`), the
 `service` it was started through, `amr`, `started_at`, `expires_at` and `state`
@@ -138,7 +139,8 @@ tokens, runs once it has committed. Bodies are JSON; unknown fields are refused.
 | `POST /admin/v1/services/{id}/keys` | platform | Adds a key: `{"kid", "public_key"}`. `201` |
 | `POST /admin/v1/services/{id}/keys/{kid}/revoke` | platform | `{"reason"?}`. The key can't sign again, and every token the service holds now is refused (a leaked key may have got them); it asserts again with another key |
 | `POST /admin/v1/services/{id}/disable`, `/enable` | platform | Disabling refuses the service's tokens and stops it getting new ones |
-| `POST /admin/v1/users` | platform | `{"username", "display_name"?, "password"?, "roles"?}`. Without a password the user can't sign in with one. `201` |
+| `POST /admin/v1/users` | platform | `{"username", "display_name"?, "password"?, "roles"?}`. Without a password the user can't sign in with one. With one, they must replace it at their first login. `201` |
+| `POST /admin/v1/users/{id}/resetpw` | platform | `{"password"}`: a temporary password the user must replace at their next login. Ends every session the user has. A user without a password (Entra, say) is a `409` |
 | `PUT /admin/v1/users/{id}/roles` | platform, or a service admin (below) | `{"roles": [...]}`, the whole list |
 | `POST /admin/v1/users/{id}/disable`, `/enable` | platform | Disabling ends every session and stops sign-in |
 | `POST /admin/v1/users/{id}/sessions/revoke` | platform | Ends every session the user has |
@@ -149,7 +151,9 @@ Each answers with the service or user as its `GET` route shows it.
 - **Service ids** follow the model rule: 2 to 32 lower case letters or digits, not
   `ohc` or a reserved name. A `kid` is 1 to 32 of `A-Z a-z 0-9 . _ -`. A public key is
   the 32 byte Ed25519 key in base64 (standard or URL, padded or not).
-- **Passwords** set here are at least 12 characters.
+- **Passwords** set here are at least 12 characters, and are temporary: the user
+  chooses their own at their next login (`auth.md` 4.1). Tell them the temporary
+  password some other way; it is never shown again or recorded.
 - **Roles.** A platform admin can give or take any role. The admin of a service
   (`<service>:admin`) can give or take only that service's roles (`<service>:...`),
   including appointing other admins of it. Removing a role refuses the user's current

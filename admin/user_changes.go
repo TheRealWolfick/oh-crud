@@ -12,14 +12,13 @@ import (
 	"github.com/jackc/pgx/v5"
 	"lotusforge.au/api-server/audit"
 	"lotusforge.au/api-server/auth"
+	"lotusforge.au/api-server/globals"
 	"lotusforge.au/api-server/models"
+	"lotusforge.au/api-server/secrets"
 )
 
 // rolePattern is a role name: a plain role, or <service>:<role>
 var rolePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$`)
-
-// minPassword is the shortest password an admin may set
-const minPassword = 12
 
 // isAdminRole reports whether role makes its holder an admin: the platform admin role,
 // or a service's <service>:admin
@@ -43,13 +42,13 @@ func (a *API) canGrant(r *http.Request, role string) bool {
 // lastHolder reports whether user is the only active holder of role
 func lastHolder(ctx context.Context, tx pgx.Tx, role string, user string) (bool, error) {
 	var others int
-	err := tx.QueryRow(ctx, `SELECT count(*) FROM ohc_users WHERE $1 = ANY(roles) AND disabled_at IS NULL AND id <> $2`, role, user).Scan(&others)
+	err := tx.QueryRow(ctx, globals.SQLCountOtherRoleHolders, role, user).Scan(&others)
 	return others == 0, err
 }
 
 // lockUser reads a user for change, refusing service rows
 func lockUser(ctx context.Context, tx pgx.Tx, id string) (roles []string, disabled bool, err error) {
-	err = tx.QueryRow(ctx, `SELECT COALESCE(roles, '{}'), disabled_at IS NOT NULL FROM ohc_users WHERE id = $1 FOR UPDATE`, id).Scan(&roles, &disabled)
+	err = tx.QueryRow(ctx, globals.SQLLockUser, id).Scan(&roles, &disabled)
 	if errors.Is(err, pgx.ErrNoRows) { return nil, false, refuse(http.StatusNotFound, "No such user", "No user %q.", id) }
 	if err == nil && strings.HasPrefix(id, "svc:") {
 		err = refuse(http.StatusConflict, "That is a service row", "Service rows record a service's own writes; manage the service instead.")
@@ -68,6 +67,39 @@ func cleanRoles(in []string) ([]string, error) {
 	return out, nil
 }
 
+
+// POST /admin/v1/users/{id}/resetpw {"password"}: give a user a temporary password they
+// must replace at their next login, and end their sessions. Users without a password
+// (Entra, say) sign in elsewhere and are refused.
+func (a *API) resetUserPassword(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var in struct {
+		Password string `json:"password"`
+	}
+	if err := decode(r, &in); err != nil { a.fail(w, r, "", err); return }
+	if len(in.Password) < globals.MinPassword {
+		a.fail(w, r, "", refuse(http.StatusBadRequest, "Password too short", "Use at least %d characters.", globals.MinPassword))
+		return
+	}
+	hash, err := secrets.HashPassword(in.Password)
+	if err != nil { a.fail(w, r, "hash password", err); return }
+
+	err = a.inTx(r.Context(), func(tx pgx.Tx) error {
+		if _, _, err := lockUser(r.Context(), tx, id); err != nil { return err }
+		tag, err := tx.Exec(r.Context(), globals.SQLResetPassword, hash, id)
+		if err != nil { return err }
+		if tag.RowsAffected() == 0 {
+			return refuse(http.StatusConflict, "No password to reset", "This user signs in through an external identity provider.")
+		}
+		return audit.Record(r.Context(), tx, a.event(r, globals.ActionUserPasswordReset, id))
+	})
+	if err != nil { a.fail(w, r, "reset password", err); return }
+
+	// Whoever holds the old password may hold a session too
+	a.after(r, "end the user's sessions", a.d.Auth.RevokeUser(r.Context(), id, "password reset by an admin"))
+	a.writeUser(w, r, http.StatusOK, id)
+}
+
 // POST /admin/v1/users {"username", "display_name"?, "password"?, "roles"?}
 // Without a password the user can't sign in with one (an Entra user, say).
 func (a *API) createUser(w http.ResponseWriter, r *http.Request) {
@@ -80,8 +112,8 @@ func (a *API) createUser(w http.ResponseWriter, r *http.Request) {
 	if err := decode(r, &in); err != nil { a.fail(w, r, "", err); return }
 	roles, err := cleanRoles(in.Roles)
 	if err != nil { a.fail(w, r, "", err); return }
-	if in.Password != "" && len(in.Password) < minPassword {
-		a.fail(w, r, "", refuse(http.StatusBadRequest, "Password too short", "Use at least %d characters.", minPassword))
+	if in.Password != "" && len(in.Password) < globals.MinPassword {
+		a.fail(w, r, "", refuse(http.StatusBadRequest, "Password too short", "Use at least %d characters.", globals.MinPassword))
 		return
 	}
 
@@ -93,7 +125,7 @@ func (a *API) createUser(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 		id = u.ID
-		e := a.event(r, audit.UserCreate, u.ID)
+		e := a.event(r, globals.ActionUserCreate, u.ID)
 		e.After = map[string]any{"username": u.Username, "roles": roles, "password": in.Password != ""}
 		return audit.Record(r.Context(), tx, e)
 	})
@@ -133,8 +165,8 @@ func (a *API) setUserRoles(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		if _, err := tx.Exec(r.Context(), `UPDATE ohc_users SET roles = $2 WHERE id = $1`, id, want); err != nil { return err }
-		e := a.event(r, audit.UserRolesUpdate, id)
+		if _, err := tx.Exec(r.Context(), globals.SQLUpdateUserRoles, id, want); err != nil { return err }
+		e := a.event(r, globals.ActionUserRolesUpdate, id)
 		e.Service = roleService(append(append([]string{}, added...), removed...))
 		e.Before, e.After = map[string][]string{"roles": have}, map[string][]string{"roles": want}
 		return audit.Record(r.Context(), tx, e)
@@ -152,10 +184,10 @@ func roleService(roles []string) string {
 	svc := ""
 	for _, r := range roles {
 		s, _, ok := strings.Cut(r, ":")
-		if !ok || (svc != "" && s != svc) { return audit.System }
+		if !ok || (svc != "" && s != svc) { return globals.AuditSystem }
 		svc = s
 	}
-	if svc == "" { return audit.System }
+	if svc == "" { return globals.AuditSystem }
 	return svc
 }
 
@@ -164,8 +196,8 @@ func roleService(roles []string) string {
 func (a *API) setUserDisabled(disable bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
-		action := audit.UserEnable
-		if disable { action = audit.UserDisable }
+		action := globals.ActionUserEnable
+		if disable { action = globals.ActionUserDisable }
 		changed := false
 		err := a.inTx(r.Context(), func(tx pgx.Tx) error {
 			roles, was, err := lockUser(r.Context(), tx, id)
@@ -184,8 +216,8 @@ func (a *API) setUserDisabled(disable bool) http.HandlerFunc {
 					}
 				}
 			}
-			sql := `UPDATE ohc_users SET disabled_at = NULL WHERE id = $1`
-			if disable { sql = `UPDATE ohc_users SET disabled_at = now() WHERE id = $1` }
+			sql := globals.SQLEnableUser
+			if disable { sql = globals.SQLDisableUser }
 			if _, err := tx.Exec(r.Context(), sql, id); err != nil { return err }
 			changed = true
 			e := a.event(r, action, id)
@@ -205,7 +237,7 @@ func (a *API) revokeUserSessions(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	err := a.inTx(r.Context(), func(tx pgx.Tx) error {
 		if _, _, err := lockUser(r.Context(), tx, id); err != nil { return err }
-		return audit.Record(r.Context(), tx, a.event(r, audit.UserSessionsRevoke, id))
+		return audit.Record(r.Context(), tx, a.event(r, globals.ActionUserSessionsRevoke, id))
 	})
 	if err != nil { a.fail(w, r, "revoke sessions", err); return }
 	a.after(r, "end the user's sessions", a.d.Auth.RevokeUser(r.Context(), id, "ended by an admin"))
@@ -218,11 +250,10 @@ func (a *API) revokeUserSession(w http.ResponseWriter, r *http.Request) {
 	err := a.inTx(r.Context(), func(tx pgx.Tx) error {
 		if _, _, err := lockUser(r.Context(), tx, id); err != nil { return err }
 		var live bool
-		err := tx.QueryRow(r.Context(), `SELECT bool_or(revoked_at IS NULL AND used_at IS NULL AND expires_at > now())
-			FROM ohc_refresh_tokens WHERE user_id = $1 AND family_id = $2 HAVING count(*) > 0`, id, session).Scan(&live)
+		err := tx.QueryRow(r.Context(), globals.SQLSessionLive, id, session).Scan(&live)
 		if errors.Is(err, pgx.ErrNoRows) { return refuse(http.StatusNotFound, "No such session", "User %q has no session %q.", id, session) }
 		if err != nil { return err }
-		e := a.event(r, audit.UserSessionRevoke, id)
+		e := a.event(r, globals.ActionUserSessionRevoke, id)
 		e.Before = map[string]any{"session": session, "live": live}
 		return audit.Record(r.Context(), tx, e)
 	})

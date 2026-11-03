@@ -10,6 +10,9 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+
+	"lotusforge.au/api-server/globals"
 )
 
 var secret = []byte("0123456789abcdef0123456789abcdef")
@@ -85,7 +88,7 @@ func TestWrongSecretRefused(t *testing.T) {
 func post(t *testing.T, b *Bus, p *peer, body []byte, sig string) int {
 	t.Helper()
 	req, _ := http.NewRequest(http.MethodPost, p.srv.URL, bytes.NewReader(body))
-	req.Header.Set(SignatureHeader, sig)
+	req.Header.Set(globals.ClusterSignatureHeader, sig)
 	res, err := http.DefaultClient.Do(req)
 	if err != nil { t.Fatal(err) }
 	res.Body.Close()

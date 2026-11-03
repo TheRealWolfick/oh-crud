@@ -14,6 +14,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"lotusforge.au/api-server/datamodel"
 	"lotusforge.au/api-server/events"
+	"lotusforge.au/api-server/globals"
 	"lotusforge.au/api-server/httpx"
 	"lotusforge.au/api-server/logging"
 	"lotusforge.au/api-server/middleware"
@@ -902,7 +903,7 @@ func dynamicActionDiff(
 		log.Debug("Checksum decoded", "checksum", checksum)
 
 		// Read the diff row as a raw map so JSONB columns come back as []byte
-		rows, err := qm.Db.Query(r.Context(), `SELECT * FROM ohc_diffs WHERE diff_type = $1 AND checksum = $2 LIMIT 1;`, *cfg.Table_name, checksum)
+		rows, err := qm.Db.Query(r.Context(), globals.SQLGetDiff, *cfg.Table_name, checksum)
 		if err != nil {
 			log.Error("DATA_READ_ERROR", "error", err)
 			http.Error(w, "Error reading diff", http.StatusInternalServerError)
@@ -947,11 +948,7 @@ func dynamicActionDiff(
 		// request falls through to the SELECT below and reads back the committed value
 		// instead of calling generate_batch_number again.
 		var batchNumber int64
-		claimRow := qm.Db.QueryRow(r.Context(), `
-			UPDATE ohc_diffs
-			SET batched = true, batch_number = generate_batch_number($1, $4, $2), batched_date = now()
-			WHERE diff_type = $1 AND checksum = $3 AND batched = false
-			RETURNING batch_number`, *cfg.Table_name, reqctx.Username(r.Context()), checksum, *cfg.Service)
+		claimRow := qm.Db.QueryRow(r.Context(), globals.SQLClaimDiffBatch, *cfg.Table_name, reqctx.Username(r.Context()), checksum, *cfg.Service)
 		if err := claimRow.Scan(&batchNumber); err != nil {
 			if !errors.Is(err, pgx.ErrNoRows) {
 				log.Error("BATCH_CODE_ERROR", "error", err)
@@ -959,7 +956,7 @@ func dynamicActionDiff(
 				return
 			}
 			// Already batched -- read back the committed batch number.
-			existingRow := qm.Db.QueryRow(r.Context(), `SELECT batch_number FROM ohc_diffs WHERE diff_type = $1 AND checksum = $2`, *cfg.Table_name, checksum)
+			existingRow := qm.Db.QueryRow(r.Context(), globals.SQLDiffBatchNumber, *cfg.Table_name, checksum)
 			if err := existingRow.Scan(&batchNumber); err != nil {
 				log.Error("BATCH_CODE_ERROR", "error", err)
 				http.Error(w, "Error reading batch code", http.StatusInternalServerError)

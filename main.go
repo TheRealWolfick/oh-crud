@@ -15,6 +15,7 @@ import (
 	"lotusforge.au/api-server/cluster"
 	"lotusforge.au/api-server/datamodel"
 	"lotusforge.au/api-server/events"
+	"lotusforge.au/api-server/globals"
 	"lotusforge.au/api-server/handlers"
 	"lotusforge.au/api-server/logging"
 	"lotusforge.au/api-server/middleware"
@@ -125,8 +126,8 @@ func main() {
 	//                Cluster (instance to instance messages)
 	// ---------------------------------------------------------------
 	bus := cluster.New([]byte(os.Getenv("OH_CRUD_SECRET")), func() []string { return server_conf.Get().ClusterPeers() }, logger)
-	oauthHandler.Blocks.ShareWith(func(r auth.Revocation) { bus.Publish(auth.RevocationChannel, r) })
-	bus.Handle(auth.RevocationChannel, oauthHandler.Blocks.Receive)
+	oauthHandler.Blocks.ShareWith(func(r auth.Revocation) { bus.Publish(globals.RevocationChannel, r) })
+	bus.Handle(globals.RevocationChannel, oauthHandler.Blocks.Receive)
 	authMiddleware := handlers.ModelAuth(oauthHandler.ForModel)   // Bearer tokens, then each model's access rule
 
 
@@ -201,7 +202,7 @@ func main() {
 	mux.Handle("GET /.well-known/openid-configuration", oauthHandler.OpenIDConfig())
 	mux.Handle("POST /oauth/token", oauthHandler.TokenEndpoint())
 	mux.Handle("POST /oauth/logout", oauthHandler.LogoutHandler())
-	mux.Handle("POST "+cluster.Path, bus.Handler())
+	mux.Handle("POST "+globals.ClusterPath, bus.Handler())
 
 	// Admin API: what the management platform reads (and later changes)
 	// Once an approved schema change is applied, its model takes over: register it and

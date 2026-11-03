@@ -10,28 +10,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"lotusforge.au/api-server/globals"
 	"lotusforge.au/api-server/models"
-)
-
-// Access tokens can't be recalled, so revoking a session, user or service writes a row
-// to ohc_revocations and every instance keeps recent revocations in memory. A token is
-// refused when any of its keys was revoked at or after the moment it was issued, so a
-// login made after a revocation works straight away.
-//
-// An instance loads the recent rows once, at startup. After that it hears of each new
-// revocation as it happens: its own directly, and other instances' as a message on the
-// cluster bus (RevocationChannel). The database is never polled.
-//
-// Keys:
-//   user:<users.id>  every token for the user
-//   sid:<session>    every token in one login session (refresh token family)
-//   svc:<id>         every token the service holds
-const (
-	revocationsTable = "ohc_revocations"
-
-	// A revocation only matters while a token issued before it could still be live
-	userTokenLifetime = 15 * time.Minute
-	revocationMargin  = 5 * time.Minute
 )
 
 func userKey(id string) string       { return "user:" + id }
@@ -49,9 +29,6 @@ type BlockList struct {
 	share     func(Revocation) // sends this instance's revocations to its peers
 }
 
-// RevocationChannel is the cluster channel revocations travel on
-const RevocationChannel = "auth.revocation"
-
 // Revocation is the message one instance sends the others
 type Revocation struct {
 	Key string    `json:"key"`
@@ -66,7 +43,7 @@ func (b *BlockList) ShareWith(fn func(Revocation)) {
 }
 
 // Receive applies a revocation another instance made. It is the cluster handler for
-// RevocationChannel, and safe to receive twice.
+// globals.RevocationChannel, and safe to receive twice.
 func (b *BlockList) Receive(data json.RawMessage) error {
 	var r Revocation
 	if err := json.Unmarshal(data, &r); err != nil { return err }
@@ -135,14 +112,14 @@ func RevocationCovers(key string, at time.Time, c *models.Claims) bool {
 
 func NewBlockList(db models.DBExecQuery, serviceTokenLifetime func() time.Duration) *BlockList {
 	return &BlockList{db: db, revoked: map[string]time.Time{}, lifetime: func() time.Duration {
-		longest := userTokenLifetime
+		longest := globals.UserTokenLifetime
 		if l := serviceTokenLifetime(); l > longest { longest = l }
 		return longest
 	}}
 }
 
 // window is how far back revocations are kept: the longest token lifetime plus a margin
-func (b *BlockList) window() time.Duration { return b.lifetime() + revocationMargin }
+func (b *BlockList) window() time.Duration { return b.lifetime() + globals.RevocationMargin }
 
 // Blocked reports whether a token issued at iat for any of keys has been revoked.
 // A token issued in the same second as a revocation is refused: JWT times are whole
@@ -161,7 +138,7 @@ func (b *BlockList) Blocked(iat time.Time, keys ...string) bool {
 // It returns the moment the revocation took effect.
 func (b *BlockList) Revoke(ctx context.Context, key string, reason string) (time.Time, error) {
 	var at time.Time
-	err := b.db.QueryRow(ctx, `INSERT INTO `+revocationsTable+` (key, reason) VALUES ($1, $2) RETURNING created_at`,
+	err := b.db.QueryRow(ctx, globals.SQLInsertRevocation,
 		key, nullable(reason)).Scan(&at)
 	if err != nil { return time.Time{}, err }
 	b.apply(key, at)
@@ -175,8 +152,7 @@ func (b *BlockList) Revoke(ctx context.Context, key string, reason string) (time
 // Load reads the revocations still inside the window, once, when the instance starts:
 // those made before it was running, which no peer will send it again
 func (b *BlockList) Load(ctx context.Context) error {
-	rows, err := b.db.Query(ctx, `SELECT key, max(created_at) FROM `+revocationsTable+`
-		WHERE created_at > now() - make_interval(secs => $1) GROUP BY key`, b.window().Seconds())
+	rows, err := b.db.Query(ctx, globals.SQLRecentRevocations, b.window().Seconds())
 	if err != nil { return err }
 	type row struct {
 		Key string

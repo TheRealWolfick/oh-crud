@@ -8,11 +8,6 @@ import (
 	"lotusforge.au/api-server/safe"
 )
 
-// settleFor is how long a changed file must stay unchanged before it is read. Editors
-// often save in several writes, and a model is checked, synced and logged only once
-// its file has settled, so a single save gives a single reload of the final contents.
-const settleFor = 10 * time.Second
-
 // settler stages work per file: each new change restarts that file's wait and replaces
 // what will run, so only the last change within the window is acted on
 type settler struct {

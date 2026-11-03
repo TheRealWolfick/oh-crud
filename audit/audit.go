@@ -15,42 +15,10 @@ import (
 	"regexp"
 	"strings"
 
+	"lotusforge.au/api-server/globals"
 	"lotusforge.au/api-server/httpx"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/secrets"
-)
-
-// Table is where entries are written
-const Table = "ohc_audit_events"
-
-// System is the service that owns Oh CRUD's own targets: users, services and keys
-const System = "ohc"
-
-// Actions recorded today. Keep the <object>.<verb> shape for new ones.
-const (
-	UserLogin            = "user.login"
-	UserLoginFailed      = "user.login_failed"
-	RefreshTokenReuse    = "refresh_token.reuse"
-	RefreshTokenMisused  = "refresh_token.wrong_client"
-	SessionRevoke        = "session.revoke"
-	UserLogout           = "user.logout"
-	UserLogoutAll        = "user.logout_all"
-
-	// Admin changes
-	ServiceCreate       = "service.create"
-	ServiceUpdate       = "service.update"
-	ServiceDisable      = "service.disable"
-	ServiceEnable       = "service.enable"
-	ServiceKeyAdd       = "service_key.add"
-	ServiceKeyRevoke    = "service_key.revoke"
-	UserCreate          = "user.create"
-	UserRolesUpdate     = "user.roles.update"
-	UserDisable         = "user.disable"
-	UserEnable          = "user.enable"
-	UserSessionsRevoke  = "user.sessions_revoke"
-	UserSessionRevoke   = "user.session_revoke"
-	SchemaApprove       = "schema.approve"
-	SchemaDeny          = "schema.deny"
 )
 
 // Event is one entry. Action, Target and Service are required; leave anything unknown empty.
@@ -58,7 +26,7 @@ type Event struct {
 	Action     string   // what happened: one of the constants above
 	Target     string   // what it happened to: a user id, svc:<id>, svc:<id>/<kid>, username:<name>
 	Service    string   // the service that owns the target
-	ActorUser  string   // users.id of who did it; empty for the system
+	ActorUser  string   // users.username of who did it; empty for the system
 	ViaService string   // the service the request came through
 	AMR        []string // how the actor had signed in
 	OrgID      string
@@ -67,10 +35,6 @@ type Event struct {
 	IP         string   // see IP
 	RequestID  string   // see RequestID
 }
-
-const insertSQL = `INSERT INTO ` + Table + `
-	(action, target, service, actor_user, via_service, amr, org_id, before, after, ip, request_id)
-	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`
 
 // Record writes e through db, which may be a transaction
 func Record(ctx context.Context, db models.DBExecutor, e Event) error {
@@ -84,7 +48,7 @@ func Record(ctx context.Context, db models.DBExecutor, e Event) error {
 	amr := e.AMR
 	if amr == nil { amr = []string{} }
 
-	_, err = db.Exec(ctx, insertSQL, e.Action, e.Target, e.Service, null(e.ActorUser), null(e.ViaService),
+	_, err = db.Exec(ctx, globals.SQLInsertAuditEvent, e.Action, e.Target, e.Service, null(e.ActorUser), null(e.ViaService),
 		amr, null(e.OrgID), before, after, null(e.IP), null(e.RequestID))
 	return err
 }

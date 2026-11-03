@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"lotusforge.au/api-server/audit"
 	"lotusforge.au/api-server/auth"
+	"lotusforge.au/api-server/globals"
 )
 
 // Changes made through the admin API are written in one transaction with their audit
@@ -82,7 +83,7 @@ func (a *API) changes(h http.HandlerFunc) http.HandlerFunc {
 // event starts an audit entry for this request's actor
 func (a *API) event(r *http.Request, action string, target string) audit.Event {
 	p := auth.PrincipalFrom(r.Context())
-	e := audit.Event{Action: action, Target: target, Service: audit.System, ActorUser: p.User.Subject,
+	e := audit.Event{Action: action, Target: target, Service: globals.AuditSystem, ActorUser: p.User.Username,
 		AMR: p.User.AMR, IP: audit.IP(r), RequestID: requestID(r)}
 	if p.Service != nil { e.ViaService = auth.ServiceID(p.Service) }
 	return e

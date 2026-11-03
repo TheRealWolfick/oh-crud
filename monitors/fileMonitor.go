@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"lotusforge.au/api-server/datamodel"
 	"lotusforge.au/api-server/events"
+	"lotusforge.au/api-server/globals"
 	"lotusforge.au/api-server/handlers"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/queue"
@@ -30,7 +31,7 @@ func ModelsMonitor(handlerRegistry *registry.HandlerRegistry, modelRegistry *reg
 	flat := []string{"./config/special-models", "./config/default"}
 
 	// Changes are staged per file until the file has been quiet for settleFor
-	settle := newSettler(settleFor, qm.Logger, "models monitor")
+	settle := newSettler(globals.SettleFor, qm.Logger, "models monitor")
 
 	// reload validates, syncs and re-registers the model in one YAML file
 	reload := func(path string) {
@@ -89,7 +90,7 @@ func ModelsMonitor(handlerRegistry *registry.HandlerRegistry, modelRegistry *reg
 						return
 					}
 					if event.Has(fsnotify.Write) && filepath.Ext(event.Name) == ".yaml" {
-						qm.Logger.Debug("Model file change staged", "file", event.Name, "settle", settleFor)
+						qm.Logger.Debug("Model file change staged", "file", event.Name, "settle", globals.SettleFor)
 						settle.stage(event.Name, func() { reload(event.Name) })
 					}
 				}()

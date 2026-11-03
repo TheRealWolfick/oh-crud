@@ -7,3 +7,4 @@ config/database/*
 docs/testing-guide.md
 config/base-models/*.yaml
 .config
+*.pem

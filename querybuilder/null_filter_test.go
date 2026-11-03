@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"lotusforge.au/api-server/datamodel"
+	"lotusforge.au/api-server/globals"
 	"lotusforge.au/api-server/logging"
 	"lotusforge.au/api-server/models"
 )
@@ -67,7 +68,7 @@ func TestNullSigilValue(t *testing.T) {
 // clause regardless of field type, and that a single such filter alone doesn't hit
 // the buildWhereClause off-by-one (args[val] vs args[val-1]) that used to panic.
 func TestSetWhere_NullSigil_AcrossFieldTypes(t *testing.T) {
-	types := []datamodel.FieldKind{datamodel.FieldInt, datamodel.FieldFloat, datamodel.FieldBool, datamodel.FieldTime, datamodel.FieldUUID, datamodel.FieldString}
+	types := []datamodel.FieldKind{globals.FieldInt, globals.FieldFloat, globals.FieldBool, globals.FieldTime, globals.FieldUUID, globals.FieldString}
 	for _, ft := range types {
 		t.Run(string(ft)+"/#NULL", func(t *testing.T) {
 			qb := NewQueryBuilder(logging.Basic())
@@ -94,14 +95,14 @@ func TestSetWhere_NullSigil_AcrossFieldTypes(t *testing.T) {
 func TestSetWhere_HashPrefix_NonSigil(t *testing.T) {
 	t.Run("non-string field: dropped", func(t *testing.T) {
 		qb := NewQueryBuilder(logging.Basic())
-		qb.SetWhere("f", "#5", datamodel.FieldInt)
+		qb.SetWhere("f", "#5", globals.FieldInt)
 		if where := qb.buildWhereClause(); where != "" {
 			t.Errorf("expected no clause, got %q", where)
 		}
 	})
 	t.Run("string field: falls through to free-text search", func(t *testing.T) {
 		qb := NewQueryBuilder(logging.Basic())
-		qb.SetWhere("tag", "#urgent", datamodel.FieldString)
+		qb.SetWhere("tag", "#urgent", globals.FieldString)
 		where := qb.buildWhereClause()
 		if where != " WHERE tag ~* $1" {
 			t.Errorf("got %q", where)

@@ -9,29 +9,9 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"lotusforge.au/api-server/globals"
 	"lotusforge.au/api-server/safe"
 )
-
-// logTable holds the application log, partitioned by day (UTC), so old days are
-// dropped whole: instant, and leaving no dead rows for VACUUM. It isn't a YAML model:
-// the model format can't declare partitioning, and the schema sync only manages the
-// tables it is given, so the two never meet.
-const logTable = "ohc_logs"
-
-const setupSQL = `
-CREATE TABLE IF NOT EXISTS ohc_logs (
-    at         timestamptz NOT NULL,
-    level      text        NOT NULL,
-    severity   smallint    NOT NULL,
-    msg        text        NOT NULL,
-    request_id text,
-    service    text        NOT NULL DEFAULT 'ohc',
-    attrs      jsonb       NOT NULL DEFAULT '{}'
-) PARTITION BY RANGE (at);
-CREATE INDEX IF NOT EXISTS ohc_logs_at ON ohc_logs (at);
-CREATE INDEX IF NOT EXISTS ohc_logs_severity_at ON ohc_logs (severity, at);
-CREATE INDEX IF NOT EXISTS ohc_logs_service_at ON ohc_logs (service, at);
-CREATE INDEX IF NOT EXISTS ohc_logs_request_id ON ohc_logs (request_id) WHERE request_id IS NOT NULL;`
 
 // DB is what AttachDB needs from a pgx pool
 type DB interface {
@@ -48,22 +28,16 @@ type Settings struct {
 	Level         string // lowest level written to the database
 }
 
-// How far ahead partitions are made, and how often maintenance runs
-const (
-	daysAhead     = 3
-	maintainEvery = time.Hour
-)
-
 // AttachDB creates ohc_logs and today's partitions, then starts writing every logger
 // from Load to it, and keeps the partitions maintained until ctx ends. If the table
 // can't be set up it returns the error and logging stays on stderr.
 func AttachDB(ctx context.Context, db DB, settings func() Settings) (*Sink, error) {
-	if _, err := db.Exec(ctx, setupSQL); err != nil {
-		return nil, fmt.Errorf("create %s: %w", logTable, err)
+	if _, err := db.Exec(ctx, globals.SQLSetupLogs); err != nil {
+		return nil, fmt.Errorf("create %s: %w", globals.LogTable, err)
 	}
 	s := settings()
 	if _, _, err := maintain(ctx, db, time.Now(), s.RetentionDays); err != nil {
-		return nil, fmt.Errorf("create %s partitions: %w", logTable, err)
+		return nil, fmt.Errorf("create %s partitions: %w", globals.LogTable, err)
 	}
 
 	sink := newSink(db)
@@ -75,7 +49,7 @@ func AttachDB(ctx context.Context, db DB, settings func() Settings) (*Sink, erro
 	dbSlot.sink.Store(sink)
 
 	safe.Go(fallback(), "attach db", func() {
-		t := time.NewTicker(maintainEvery)
+		t := time.NewTicker(globals.LogMaintainEvery)
 		defer t.Stop()
 		for {
 			select {
@@ -104,16 +78,12 @@ func maintain(ctx context.Context, db DB, now time.Time, retentionDays int) (cre
 	defer tx.Rollback(ctx)
 
 	var locked bool
-	if err := tx.QueryRow(ctx, `SELECT pg_try_advisory_xact_lock(hashtext('ohc_logs_maintenance'))`).Scan(&locked); err != nil {
+	if err := tx.QueryRow(ctx, globals.SQLLogMaintenanceLock).Scan(&locked); err != nil {
 		return nil, nil, err
 	}
 	if !locked { return nil, nil, nil }
 
-	rows, err := tx.Query(ctx, `
-		SELECT c.relname FROM pg_inherits i
-		  JOIN pg_class c ON c.oid = i.inhrelid
-		  JOIN pg_class p ON p.oid = i.inhparent
-		 WHERE p.relname = $1`, logTable)
+	rows, err := tx.Query(ctx, globals.SQLLogPartitions, globals.LogTable)
 	if err != nil { return nil, nil, err }
 	existing, err := pgx.CollectRows(rows, pgx.RowTo[string])
 	if err != nil { return nil, nil, err }
@@ -121,25 +91,23 @@ func maintain(ctx context.Context, db DB, now time.Time, retentionDays int) (cre
 	create, drop := partitionPlan(now, existing, retentionDays)
 	for _, day := range create {
 		name := partitionName(day)
-		sql := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s PARTITION OF %s FOR VALUES FROM ('%s') TO ('%s')`,
-			pgx.Identifier{name}.Sanitize(), logTable, day.Format("2006-01-02")+" 00:00:00+00", day.AddDate(0, 0, 1).Format("2006-01-02")+" 00:00:00+00")
+		sql := fmt.Sprintf(globals.SQLCreateLogPartitionFmt,
+			pgx.Identifier{name}.Sanitize(), globals.LogTable, day.Format("2006-01-02")+" 00:00:00+00", day.AddDate(0, 0, 1).Format("2006-01-02")+" 00:00:00+00")
 		if _, err := tx.Exec(ctx, sql); err != nil { return nil, nil, err }
 		created = append(created, name)
 	}
 	for _, name := range drop {
-		if _, err := tx.Exec(ctx, `DROP TABLE IF EXISTS `+pgx.Identifier{name}.Sanitize()); err != nil { return nil, nil, err }
+		if _, err := tx.Exec(ctx, fmt.Sprintf(globals.SQLDropTableFmt, pgx.Identifier{name}.Sanitize())); err != nil { return nil, nil, err }
 		dropped = append(dropped, name)
 	}
 	return created, dropped, tx.Commit(ctx)
 }
 
-const partitionPrefix = logTable + "_p"
-
-func partitionName(day time.Time) string { return partitionPrefix + day.Format("20060102") }
+func partitionName(day time.Time) string { return globals.LogPartitionPrefix + day.Format("20060102") }
 
 // partitionDay is the UTC day a partition holds, if name is one of ours
 func partitionDay(name string) (time.Time, bool) {
-	rest, ok := strings.CutPrefix(name, partitionPrefix)
+	rest, ok := strings.CutPrefix(name, globals.LogPartitionPrefix)
 	if !ok { return time.Time{}, false }
 	d, err := time.Parse("20060102", rest)
 	return d, err == nil
@@ -178,7 +146,7 @@ func partitionPlan(now time.Time, existing []string, retentionDays int) (create 
 	// If first date is before the oldest allowed date, update first to be the oldest date instead 
 	if first.Before(oldestKept) { first = oldestKept }
 	// For every day between first and 3 days later 
-	for d := first; !d.After(today.AddDate(0, 0, daysAhead)); d = d.AddDate(0, 0, 1) {
+	for d := first; !d.After(today.AddDate(0, 0, globals.LogPartitionDaysAhead)); d = d.AddDate(0, 0, 1) {
 		// If it doesn't exist, append it to the create list
 		if !have[d] { create = append(create, d) }
 	}

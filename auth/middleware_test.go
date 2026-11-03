@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"lotusforge.au/api-server/globals"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/models/modelstest"
 	"lotusforge.au/api-server/reqctx"
@@ -42,7 +43,7 @@ func issue(t *testing.T, a *Auth, c models.Claims) string {
 
 func serviceToken(t *testing.T, a *Auth, svcID string, roles ...string) string {
 	return issue(t, a, models.Claims{TokenUse: "service", Roles: roles,
-		RegisteredClaims: jwt.RegisteredClaims{Subject: serviceUserPrefix + svcID}})
+		RegisteredClaims: jwt.RegisteredClaims{Subject: globals.ServiceUserPrefix + svcID}})
 }
 
 func userToken(t *testing.T, a *Auth, clientID string, roles ...string) string {
@@ -58,7 +59,7 @@ func call(mw func(http.Handler) http.Handler, bearer, user string) (*httptest.Re
 		r.Header.Set("Authorization", "Bearer "+bearer)
 	}
 	if user != "" {
-		r.Header.Set(UserTokenHeader, user)
+		r.Header.Set(globals.UserTokenHeader, user)
 	}
 	w := httptest.NewRecorder()
 	mw(s.handler()).ServeHTTP(w, r)
@@ -144,7 +145,7 @@ func TestMiddlewareRejects(t *testing.T) {
 				r.Header.Set("Authorization", "Bearer "+tc.bearer)
 			}
 			if tc.user != "" {
-				r.Header.Set(UserTokenHeader, tc.user)
+				r.Header.Set(globals.UserTokenHeader, tc.user)
 			}
 			w := httptest.NewRecorder()
 			// allow-direct, so the failure can only come from authentication

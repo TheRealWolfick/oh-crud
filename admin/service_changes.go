@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"lotusforge.au/api-server/audit"
 	"lotusforge.au/api-server/datamodel"
+	"lotusforge.au/api-server/globals"
 )
 
 // kidPattern is a key id: it is sent in every assertion header and stored as varchar(32)
@@ -37,13 +38,13 @@ func (k KeyInput) decode() ([]byte, error) {
 func (a *API) insertKey(ctx context.Context, tx pgx.Tx, service string, k KeyInput) error {
 	pub, err := k.decode()
 	if err != nil { return err }
-	_, err = tx.Exec(ctx, `INSERT INTO ohc_service_keys (kid, service_id, public_key) VALUES ($1, $2, $3)`, k.KID, service, pub)
+	_, err = tx.Exec(ctx, globals.SQLInsertServiceKey, k.KID, service, pub)
 	return err
 }
 
 // serviceExists refuses with 404 unless the service exists, and returns its row
 func (a *API) serviceRow(ctx context.Context, tx pgx.Tx, id string) (role string, disabled bool, err error) {
-	err = tx.QueryRow(ctx, `SELECT role, disabled_at IS NOT NULL FROM ohc_services WHERE id = $1 FOR UPDATE`, id).Scan(&role, &disabled)
+	err = tx.QueryRow(ctx, globals.SQLLockService, id).Scan(&role, &disabled)
 	if errors.Is(err, pgx.ErrNoRows) { err = refuse(http.StatusNotFound, "No such service", "No service %q.", id) }
 	return role, disabled, err
 }
@@ -57,20 +58,20 @@ func (a *API) createService(w http.ResponseWriter, r *http.Request) {
 		Key           *KeyInput `json:"key"`
 	}
 	if err := decode(r, &in); err != nil { a.fail(w, r, "", err); return }
-	if err := datamodel.ValidateService(in.ID); err != nil || in.ID == datamodel.SystemService {
+	if err := datamodel.ValidateService(in.ID); err != nil || in.ID == globals.SystemService {
 		a.fail(w, r, "", refuse(http.StatusBadRequest, "Bad service id", "2 to 32 lower case letters or digits, starting with a letter, and not a reserved name."))
 		return
 	}
 	if !rolePattern.MatchString(in.Role) { a.fail(w, r, "", refuse(http.StatusBadRequest, "Bad role", "role is required.")); return }
 
 	err := a.inTx(r.Context(), func(tx pgx.Tx) error {
-		if _, err := tx.Exec(r.Context(), `INSERT INTO ohc_services (id, role, entra_client_id) VALUES ($1, $2, $3)`, in.ID, in.Role, in.EntraClientID); err != nil { return err }
+		if _, err := tx.Exec(r.Context(), globals.SQLInsertService, in.ID, in.Role, in.EntraClientID); err != nil { return err }
 		after := map[string]any{"role": in.Role}
 		if in.Key != nil {
 			if err := a.insertKey(r.Context(), tx, in.ID, *in.Key); err != nil { return err }
 			after["kid"] = in.Key.KID
 		}
-		e := a.event(r, audit.ServiceCreate, "svc:"+in.ID)
+		e := a.event(r, globals.ActionServiceCreate, "svc:"+in.ID)
 		e.After = after
 		return audit.Record(r.Context(), tx, e)
 	})
@@ -95,8 +96,8 @@ func (a *API) updateService(w http.ResponseWriter, r *http.Request) {
 	err := a.inTx(r.Context(), func(tx pgx.Tx) error {
 		old, _, err := a.serviceRow(r.Context(), tx, id)
 		if err != nil { return err }
-		if _, err := tx.Exec(r.Context(), `UPDATE ohc_services SET role = $2 WHERE id = $1`, id, in.Role); err != nil { return err }
-		e := a.event(r, audit.ServiceUpdate, "svc:"+id)
+		if _, err := tx.Exec(r.Context(), globals.SQLUpdateServiceRole, id, in.Role); err != nil { return err }
+		e := a.event(r, globals.ActionServiceUpdate, "svc:"+id)
 		e.Before, e.After = map[string]string{"role": old}, map[string]string{"role": in.Role}
 		return audit.Record(r.Context(), tx, e)
 	})
@@ -114,7 +115,7 @@ func (a *API) addServiceKey(w http.ResponseWriter, r *http.Request) {
 	err := a.inTx(r.Context(), func(tx pgx.Tx) error {
 		if _, _, err := a.serviceRow(r.Context(), tx, id); err != nil { return err }
 		if err := a.insertKey(r.Context(), tx, id, in); err != nil { return err }
-		e := a.event(r, audit.ServiceKeyAdd, "svc:"+id+"/"+in.KID)
+		e := a.event(r, globals.ActionServiceKeyAdd, "svc:"+id+"/"+in.KID)
 		e.After = map[string]string{"kid": in.KID}
 		return audit.Record(r.Context(), tx, e)
 	})
@@ -132,11 +133,10 @@ func (a *API) revokeServiceKey(w http.ResponseWriter, r *http.Request) {
 		if err := decode(r, &in); err != nil { a.fail(w, r, "", err); return }
 	}
 	err := a.inTx(r.Context(), func(tx pgx.Tx) error {
-		tag, err := tx.Exec(r.Context(), `UPDATE ohc_service_keys SET revoked_at = now(), revoked_reason = $3
-			WHERE service_id = $1 AND kid = $2 AND revoked_at IS NULL`, id, kid, nullable(in.Reason))
+		tag, err := tx.Exec(r.Context(), globals.SQLRevokeServiceKey, id, kid, nullable(in.Reason))
 		if err != nil { return err }
 		if tag.RowsAffected() == 0 { return refuse(http.StatusNotFound, "No such key", "Service %q has no active key %q.", id, kid) }
-		e := a.event(r, audit.ServiceKeyRevoke, "svc:"+id+"/"+kid)
+		e := a.event(r, globals.ActionServiceKeyRevoke, "svc:"+id+"/"+kid)
 		e.Before, e.After = map[string]string{"status": "active"}, map[string]string{"status": "revoked", "reason": in.Reason}
 		return audit.Record(r.Context(), tx, e)
 	})
@@ -150,14 +150,14 @@ func (a *API) revokeServiceKey(w http.ResponseWriter, r *http.Request) {
 func (a *API) setServiceDisabled(disable bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
-		action := audit.ServiceEnable
-		if disable { action = audit.ServiceDisable }
+		action := globals.ActionServiceEnable
+		if disable { action = globals.ActionServiceDisable }
 		err := a.inTx(r.Context(), func(tx pgx.Tx) error {
 			_, was, err := a.serviceRow(r.Context(), tx, id)
 			if err != nil { return err }
 			if was == disable { return nil } // already so: nothing to record
-			sql := `UPDATE ohc_services SET disabled_at = NULL WHERE id = $1`
-			if disable { sql = `UPDATE ohc_services SET disabled_at = now() WHERE id = $1` }
+			sql := globals.SQLEnableService
+			if disable { sql = globals.SQLDisableService }
 			if _, err := tx.Exec(r.Context(), sql, id); err != nil { return err }
 			e := a.event(r, action, "svc:"+id)
 			e.Before, e.After = map[string]bool{"disabled": was}, map[string]bool{"disabled": disable}

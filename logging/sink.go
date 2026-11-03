@@ -10,21 +10,15 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+
+
+	"lotusforge.au/api-server/globals"
 )
 
 // Copier is the part of a pgx pool the sink uses
 type Copier interface {
 	CopyFrom(ctx context.Context, table pgx.Identifier, columns []string, rows pgx.CopyFromSource) (int64, error)
 }
-
-// Sizes and timings for writing logs. A batch goes out when it is full or a second
-// has passed, whichever is first.
-const (
-	queueSize    = 10000
-	batchSize    = 500
-	flushEvery   = time.Second
-	writeTimeout = 5 * time.Second
-)
 
 var logColumns = []string{"at", "level", "severity", "msg", "request_id", "service", "attrs"}
 
@@ -45,7 +39,7 @@ type Sink struct {
 func newSink(db Copier) *Sink {
 	return &Sink{
 		db:     db,
-		queue:  make(chan Row, queueSize),
+		queue:  make(chan Row, globals.LogQueueSize),
 		done:   make(chan struct{}),
 		stderr: func(f string, a ...any) { fmt.Fprintf(os.Stderr, "logging: "+f+"\n", a...) },
 	}
@@ -62,8 +56,8 @@ func (s *Sink) enqueue(r Row) {
 // run writes batches until ctx ends, then flushes what is left
 func (s *Sink) run(ctx context.Context) {
 	defer close(s.done)
-	batch := make([]Row, 0, batchSize)
-	tick := time.NewTicker(flushEvery)
+	batch := make([]Row, 0, globals.LogBatchSize)
+	tick := time.NewTicker(globals.LogFlushEvery)
 	defer tick.Stop()
 
 	flush := func() {
@@ -80,7 +74,7 @@ func (s *Sink) run(ctx context.Context) {
 		select {
 		case r := <-s.queue:
 			batch = append(batch, r)
-			if len(batch) >= batchSize { flush() }
+			if len(batch) >= globals.LogBatchSize { flush() }
 		case <-tick.C:
 			flush()
 		case <-ctx.Done():
@@ -88,7 +82,7 @@ func (s *Sink) run(ctx context.Context) {
 				select {
 				case r := <-s.queue:
 					batch = append(batch, r)
-					if len(batch) >= batchSize { flush() }
+					if len(batch) >= globals.LogBatchSize { flush() }
 				default:
 					flush()
 					return
@@ -99,9 +93,9 @@ func (s *Sink) run(ctx context.Context) {
 }
 
 func (s *Sink) write(batch []Row) {
-	ctx, cancel := context.WithTimeout(context.Background(), writeTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), globals.LogWriteTimeout)
 	defer cancel()
-	_, err := s.db.CopyFrom(ctx, pgx.Identifier{logTable}, logColumns, pgx.CopyFromSlice(len(batch), func(i int) ([]any, error) {
+	_, err := s.db.CopyFrom(ctx, pgx.Identifier{globals.LogTable}, logColumns, pgx.CopyFromSlice(len(batch), func(i int) ([]any, error) {
 		r := batch[i]
 		var reqID any
 		if r.RequestID != "" { reqID = r.RequestID }
@@ -110,7 +104,7 @@ func (s *Sink) write(batch []Row) {
 		return []any{r.At, r.Level.String(), int16(r.Level), r.Msg, reqID, r.Service, attrs}, nil
 	}))
 	if err != nil {
-		s.stderr("could not write %d log rows to %s (they are on stderr): %v", len(batch), logTable, err)
+		s.stderr("could not write %d log rows to %s (they are on stderr): %v", len(batch), globals.LogTable, err)
 	}
 }
 

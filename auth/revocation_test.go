@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"lotusforge.au/api-server/audit"
+	"lotusforge.au/api-server/globals"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/models/modelstest"
 )
@@ -133,7 +133,7 @@ func TestMiddlewareRefusesRevokedTokens(t *testing.T) {
 func logout(f *grantFixture, bearer, user, query string) *httptest.ResponseRecorder {
 	r := httptest.NewRequest(http.MethodPost, "/oauth/logout"+query, nil)
 	if bearer != "" { r.Header.Set("Authorization", "Bearer "+bearer) }
-	if user != "" { r.Header.Set(UserTokenHeader, user) }
+	if user != "" { r.Header.Set(globals.UserTokenHeader, user) }
 	w := httptest.NewRecorder()
 	f.a.LogoutHandler().ServeHTTP(w, r)
 	return w
@@ -164,7 +164,7 @@ func TestLogoutEndsTheSession(t *testing.T) {
 	mustTokens(t, f.refresh(t, testServiceID, other.RefreshToken), f.a.ks)
 
 	row := f.tables.audits[2] // two logins, then the logout
-	if row.Action != audit.UserLogout || row.ActorUser != testUserID || row.ViaService != testServiceID {
+	if row.Action != globals.ActionUserLogout || row.ActorUser != testUsername || row.ViaService != testServiceID {
 		t.Errorf("unexpected audit entry %+v", row)
 	}
 	if _, ok := f.a.Blocks.revoked["sid:"+claims.SID]; !ok {
@@ -189,7 +189,7 @@ func TestLogoutAllEndsEverySession(t *testing.T) {
 		}
 		mustFail(t, f.refresh(t, testServiceID, tok.RefreshToken), http.StatusBadRequest, "invalid_grant")
 	}
-	if f.tables.lastAudit(t).Action != audit.UserLogoutAll {
+	if f.tables.lastAudit(t).Action != globals.ActionUserLogoutAll {
 		t.Errorf("expected a user.logout_all entry")
 	}
 }

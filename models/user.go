@@ -3,14 +3,15 @@ package models
 import "time"
 
 type User struct {
-	ID            string     `json:"id" db:"id"`
-	Username      string     `json:"username" db:"username"`
-	Displayname   string     `json:"display_name" db:"display_name"`
-	PasswordHash  string     `json:"password_hash" db:"password_hash"`
-	TotpSecret    []byte     `json:"totp_secret" db:"totp_secret"`
-	CreatedAt     time.Time  `json:"create_at" db:"created_at"`
-	DisabledAt    *time.Time `json:"disabled_at" db:"disabled_at"`
-	Roles         []string   `json:"roles" db:"roles"`
+	ID                string     `json:"id" db:"id"`
+	Username          string     `json:"username" db:"username"`
+	Displayname       string     `json:"display_name" db:"display_name"`
+	PasswordHash      string     `json:"password_hash" db:"password_hash"`
+	TotpSecret        []byte     `json:"totp_secret" db:"totp_secret"`
+	CreatedAt         time.Time  `json:"create_at" db:"created_at"`
+	DisabledAt        *time.Time `json:"disabled_at" db:"disabled_at"`
+	Roles             []string   `json:"roles" db:"roles"`
+	NeedsNewPassword  bool       `json:"needs_new_password" db:"needs_new_password"`
 }
 
 type RefreshToken struct {

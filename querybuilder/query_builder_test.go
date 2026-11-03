@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"lotusforge.au/api-server/datamodel"
+	"lotusforge.au/api-server/globals"
 	"lotusforge.au/api-server/logging"
 )
 
@@ -25,7 +25,7 @@ func TestQueryBuilder(t *testing.T) {
 
   t.Run("Does a new query builder have updates?", func(t *testing.T) {if qb.HasUpdates() {t.Error("Expected there to be no updates")}})
 
-	qb.SetWhere("dbword", "primvalue", datamodel.FieldString)
+	qb.SetWhere("dbword", "primvalue", globals.FieldString)
 	qb.SetValue("dbsomething" ,*insertStruct.Something)
 	qb.SetValue("dbvalue", *insertStruct.Value)
 

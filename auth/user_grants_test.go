@@ -19,6 +19,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/pquerna/otp/totp"
+	"lotusforge.au/api-server/globals"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/models/modelstest"
 	"lotusforge.au/api-server/secrets"
@@ -56,7 +57,7 @@ type auditRow struct {
 	IP, RequestID           any
 }
 
-var userCols = []string{"id", "username", "display_name", "password_hash", "totp_secret", "created_at", "disabled_at", "roles"}
+var userCols = []string{"id", "username", "display_name", "password_hash", "totp_secret", "created_at", "disabled_at", "roles", "needs_new_password"}
 var tokenCols = []string{"id", "token_hash", "user_id", "client_id", "family_id", "amr", "expires_at", "auth_time", "used_at", "revoked_at"}
 
 func (tb *authTables) fakeDB() *modelstest.FakeDB {
@@ -85,7 +86,7 @@ func (tb *authTables) read(sql string, args []any) (pgx.Rows, error) {
 		for _, u := range tb.users {
 			if (byID && u.ID == args[0]) || (!byID && u.Username == args[0]) {
 				return &modelstest.FakeRows{Cols: userCols, Data: [][]any{{
-					u.ID, u.Username, u.Displayname, u.PasswordHash, u.TotpSecret, u.CreatedAt, u.DisabledAt, u.Roles,
+					u.ID, u.Username, u.Displayname, u.PasswordHash, u.TotpSecret, u.CreatedAt, u.DisabledAt, u.Roles, u.NeedsNewPassword,
 				}}}, nil
 			}
 		}
@@ -157,9 +158,12 @@ func (tb *authTables) exec(sql string, args []any) (pgconn.CommandTag, error) {
 		return pgconn.NewCommandTag("INSERT 0 1"), nil
 
 	case strings.Contains(sql, "UPDATE ohc_users SET password_hash"):
+		// The new-password update also clears the flag, and only matches while it is set
+		changing := strings.Contains(sql, "needs_new_password = FALSE")
 		for _, u := range tb.users {
-			if u.ID == args[1] && u.PasswordHash == args[2] {
+			if u.ID == args[1] && u.PasswordHash == args[2] && (!changing || u.NeedsNewPassword) {
 				u.PasswordHash = args[0].(string)
+				if changing { u.NeedsNewPassword = false }
 				return pgconn.NewCommandTag("UPDATE 1"), nil
 			}
 		}
@@ -628,7 +632,7 @@ func TestRefreshGrantRotates(t *testing.T) {
 // federatedLogin starts a session as the token exchange grant will, since that grant does not exist yet
 func federatedLogin(t *testing.T, f *grantFixture) userTokens {
 	t.Helper()
-	amr := []string{amrFederated, "mfa"}
+	amr := []string{globals.AMRFederated, "mfa"}
 	r := httptest.NewRequest(http.MethodPost, "/oauth/token", nil)
 	w := httptest.NewRecorder()
 	now := time.Now()
@@ -645,7 +649,7 @@ func TestRefreshLifetimePasswordSessionSlides(t *testing.T) {
 
 	old := f.tables.token(first.RefreshToken)
 	if !within(old.ExpiresAt, time.Now().Add(14*24*time.Hour)) {
-		t.Fatalf("Expected a password login to last %v, got expiry %v", refreshLifetime, old.ExpiresAt)
+		t.Fatalf("Expected a password login to last %v, got expiry %v", globals.RefreshLifetime, old.ExpiresAt)
 	}
 
 	// Pretend the token is near its end, then rotate: the session is extended in full
@@ -653,7 +657,7 @@ func TestRefreshLifetimePasswordSessionSlides(t *testing.T) {
 	second, _ := mustTokens(t, f.refresh(t, testServiceID, first.RefreshToken), f.a.ks)
 
 	if next := f.tables.token(second.RefreshToken); !within(next.ExpiresAt, time.Now().Add(14*24*time.Hour)) {
-		t.Errorf("Expected rotation to extend a password session to %v, got expiry %v", refreshLifetime, next.ExpiresAt)
+		t.Errorf("Expected rotation to extend a password session to %v, got expiry %v", globals.RefreshLifetime, next.ExpiresAt)
 	}
 }
 
@@ -664,7 +668,7 @@ func TestRefreshLifetimeFederatedSessionIsCapped(t *testing.T) {
 
 	old := f.tables.token(first.RefreshToken)
 	if !within(old.ExpiresAt, time.Now().Add(24*time.Hour)) {
-		t.Fatalf("Expected a federated login to last %v, got expiry %v", federatedRefreshLifetime, old.ExpiresAt)
+		t.Fatalf("Expected a federated login to last %v, got expiry %v", globals.FederatedRefreshLifetime, old.ExpiresAt)
 	}
 
 	// Rotation keeps the expiry from login rather than extending it
@@ -673,7 +677,7 @@ func TestRefreshLifetimeFederatedSessionIsCapped(t *testing.T) {
 	if !next.ExpiresAt.Equal(old.ExpiresAt) {
 		t.Errorf("Expected rotation to keep expiry %v, got %v", old.ExpiresAt, next.ExpiresAt)
 	}
-	if !equalStrings(claims.AMR, []string{amrFederated, "mfa"}) || !equalStrings(next.AMR, claims.AMR) {
+	if !equalStrings(claims.AMR, []string{globals.AMRFederated, "mfa"}) || !equalStrings(next.AMR, claims.AMR) {
 		t.Errorf("Expected the federated amr to carry over, got %v and %v", claims.AMR, next.AMR)
 	}
 

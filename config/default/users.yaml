@@ -73,3 +73,8 @@ fields:
       - role
     db-type: "text[]"
     default: "{}"
+  needs_new_password:
+    type: bool
+    db-type: boolean
+    json: needs_new_password
+    default: false

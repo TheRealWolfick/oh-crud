@@ -5,20 +5,21 @@ import (
 	"strings"
 	"testing"
 
+	"lotusforge.au/api-server/globals"
 	"lotusforge.au/api-server/models/modelstest"
 )
 
 func TestRecord(t *testing.T) {
 	db := &modelstest.FakeDB{}
 	err := Record(t.Context(), db, Event{
-		Action: UserLogin, Target: "usr_1", Service: System, ActorUser: "usr_1",
+		Action: globals.ActionUserLogin, Target: "usr_1", Service: globals.AuditSystem, ActorUser: "usr_1",
 		AMR: []string{"pwd"}, After: map[string]string{"session": "fam1"}, IP: "192.0.2.1",
 	})
 	if err != nil {
 		t.Fatalf("Record: %v", err)
 	}
 	c := db.LastCall()
-	if !strings.Contains(c.SQL, "INSERT INTO "+Table) || len(c.Args) != 11 {
+	if !strings.Contains(c.SQL, "INSERT INTO "+globals.AuditTable) || len(c.Args) != 11 {
 		t.Fatalf("unexpected call %s %v", c.SQL, c.Args)
 	}
 	// Empty optional fields are NULL, not empty strings, so "is null" queries work
@@ -32,7 +33,7 @@ func TestRecord(t *testing.T) {
 
 func TestRecordNeverStoresNilAMR(t *testing.T) {
 	db := &modelstest.FakeDB{}
-	if err := Record(t.Context(), db, Event{Action: "a.b", Target: "t", Service: System}); err != nil {
+	if err := Record(t.Context(), db, Event{Action: "a.b", Target: "t", Service: globals.AuditSystem}); err != nil {
 		t.Fatal(err)
 	}
 	if amr, ok := db.LastCall().Args[5].([]string); !ok || amr == nil {

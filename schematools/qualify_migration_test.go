@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"lotusforge.au/api-server/datamodel"
+	"lotusforge.au/api-server/globals"
 	"lotusforge.au/api-server/models"
 	"lotusforge.au/api-server/models/modelstest"
 	"ariga.io/atlas/sql/schema"
@@ -147,9 +148,9 @@ func TestMigrateToQualifiedNames(t *testing.T) {
 	// Sidecar files live under ./config/database, so work in a scratch folder
 	dir := t.TempDir()
 	t.Chdir(dir)
-	if err := os.MkdirAll(hclDir, 0o755); err != nil { t.Fatal(err) }
+	if err := os.MkdirAll(globals.HCLDir, 0o755); err != nil { t.Fatal(err) }
 	for _, f := range []string{"users.pg.hcl", "users.pg.hcl.version", "users.current.yaml"} {
-		if err := os.WriteFile(filepath.Join(hclDir, f), []byte(f), 0o644); err != nil { t.Fatal(err) }
+		if err := os.WriteFile(filepath.Join(globals.HCLDir, f), []byte(f), 0o644); err != nil { t.Fatal(err) }
 	}
 
 	db := &modelstest.FakeDB{}
@@ -177,12 +178,12 @@ func TestMigrateToQualifiedNames(t *testing.T) {
 		"ohc_users.pg.hcl.version": true, "ohc_users.current.yaml": true,
 		"users.pg.hcl.version": false, "users.current.yaml": false, "users.pg.hcl": false, "ohc_users.pg.hcl": false,
 	} {
-		_, err := os.Stat(filepath.Join(hclDir, f))
+		_, err := os.Stat(filepath.Join(globals.HCLDir, f))
 		if (err == nil) != want {
 			t.Errorf("%s: expected exists=%v", f, want)
 		}
 	}
-	if b, _ := os.ReadFile(filepath.Join(hclDir, "ohc_users.pg.hcl.version")); string(b) != "users.pg.hcl.version" {
+	if b, _ := os.ReadFile(filepath.Join(globals.HCLDir, "ohc_users.pg.hcl.version")); string(b) != "users.pg.hcl.version" {
 		t.Errorf("expected the version file's contents to move with it, got %q", b)
 	}
 }
@@ -191,8 +192,8 @@ func TestMigrateToQualifiedNames(t *testing.T) {
 func TestMigrateToQualifiedNamesRollsBack(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	if err := os.MkdirAll(hclDir, 0o755); err != nil { t.Fatal(err) }
-	os.WriteFile(filepath.Join(hclDir, "users.pg.hcl.version"), []byte("1.0.0"), 0o644)
+	if err := os.MkdirAll(globals.HCLDir, 0o755); err != nil { t.Fatal(err) }
+	os.WriteFile(filepath.Join(globals.HCLDir, "users.pg.hcl.version"), []byte("1.0.0"), 0o644)
 
 	db := &modelstest.FakeDB{}
 	db.QueryFunc = func(sql string, args []any) (pgx.Rows, error) {
@@ -207,7 +208,7 @@ func TestMigrateToQualifiedNamesRollsBack(t *testing.T) {
 	if db.Tx == nil || db.Tx.Committed {
 		t.Errorf("expected the transaction not to commit")
 	}
-	if _, err := os.Stat(filepath.Join(hclDir, "users.pg.hcl.version")); err != nil {
+	if _, err := os.Stat(filepath.Join(globals.HCLDir, "users.pg.hcl.version")); err != nil {
 		t.Errorf("expected the sidecar files to stay put after a failure")
 	}
 }
